@@ -1,0 +1,102 @@
+# Policy profile: research
+# Version: 1
+# Purpose: Research-oriented disclosure with longitudinal consistency concerns.
+# Principle: allow date shifts, stricter rare-condition checks.
+
+profile: research
+version: "1"
+
+rules:
+  hard:
+    - condition:
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: UNTRUSTED_RECIPIENT
+
+    - condition:
+        facts_contain: [GOVERNMENT_ID]
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: GOVERNMENT_ID_PRESENT
+
+    - condition:
+        facts_contain: [BIOMETRIC, GENETIC]
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: BIOMETRIC_DATA_PRESENT
+
+    - condition:
+        facts_contain: [PARSER_FAILURE]
+      verdict: BLOCK
+      reason_code: PARSER_FAILURE
+
+    - condition:
+        facts_contain: [UNSUPPORTED_FORMAT]
+      verdict: BLOCK
+      reason_code: UNSUPPORTED_FORMAT
+
+  identifiers:
+    PHONE:
+      action: REMOVE
+      risk_score: 20
+    EMAIL:
+      action: REMOVE
+      risk_score: 20
+    URL:
+      action: REMOVE
+      risk_score: 15
+    IP_ADDRESS:
+      action: REMOVE
+      risk_score: 15
+    PERSON_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    GOVERNMENT_ID:
+      action: REMOVE
+      risk_score: 40
+    MEDICAL_RECORD_NUMBER:
+      action: REMOVE
+      risk_score: 25
+    EXACT_DATE:
+      action: DATE_SHIFT
+      risk_score: 10
+    PRECISE_LOCATION:
+      action: GENERALIZE
+      risk_score: 15
+    BIOMETRIC:
+      action: BLOCK
+      risk_score: 50
+    GENETIC:
+      action: BLOCK
+      risk_score: 50
+
+  medical:
+    MEDICAL_CONTENT:
+      risk_score: 5
+    RARE_CONDITION:
+      risk_score: 30
+
+recipient_risk:
+  LOCAL: 0
+  INTERNAL_TRUSTED: 0
+  EXTERNAL_APPROVED: 5
+  EXTERNAL_UNKNOWN: 15
+  EXTERNAL_BLOCKED: 100
+
+purpose_risk:
+  TREATMENT: 0
+  RESEARCH: 0
+  EDUCATION: 5
+  OPERATIONS: 5
+  PUBLICATION: 15
+  EXTERNAL_AI_ASSISTANCE: 15
+  UNKNOWN: 30
+
+# Engineering score reference bands; not standalone disclosure authorization.
+thresholds:
+  allow_max: 10
+  sanitize_max: 70
+
+verification:
+  required: true
+  fail_verdict: BLOCK

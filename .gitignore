@@ -1,0 +1,39 @@
+# Python bytecode and test caches (may embed local absolute paths)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+*.whl
+
+# Virtual environments and local configuration
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# IDE / OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime audit output: metadata is privacy-sensitive and must stay local
+audit/
+*.jsonl
+
+# Local scratch files
+*.tmp
+*.bak
+
+# Internal project notes: local-only, never publish
+.internal/
