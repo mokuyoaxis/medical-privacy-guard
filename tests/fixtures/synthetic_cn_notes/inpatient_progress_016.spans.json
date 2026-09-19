@@ -1,0 +1,68 @@
+{
+  "doc_id": "inpatient_progress_016",
+  "language": "zh-CN",
+  "document_type": "inpatient_progress",
+  "department": "内分泌科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 12,
+      "end": 22
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 30
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 34,
+      "end": 36
+    },
+    {
+      "type": "SEX",
+      "start": 40,
+      "end": 41
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 46,
+      "end": 56
+    },
+    {
+      "type": "BED_NUMBER",
+      "start": 60,
+      "end": 63
+    },
+    {
+      "type": "WARD",
+      "start": 64,
+      "end": 67
+    },
+    {
+      "type": "AGE",
+      "start": 71,
+      "end": 74
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 80,
+      "end": 90
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 263,
+      "end": 265
+    },
+    {
+      "type": "NURSE_NAME",
+      "start": 273,
+      "end": 276
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

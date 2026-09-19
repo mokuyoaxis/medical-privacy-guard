@@ -1,0 +1,68 @@
+{
+  "doc_id": "lab_report_005",
+  "language": "zh-CN",
+  "document_type": "lab_report",
+  "department": "肾内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 11,
+      "end": 21
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 27,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 39
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 43,
+      "end": 45
+    },
+    {
+      "type": "SEX",
+      "start": 49,
+      "end": 50
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 55,
+      "end": 65
+    },
+    {
+      "type": "AGE",
+      "start": 69,
+      "end": 72
+    },
+    {
+      "type": "POSTAL_CODE",
+      "start": 78,
+      "end": 84
+    },
+    {
+      "type": "SPECIMEN_ID",
+      "start": 89,
+      "end": 97
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 162,
+      "end": 165
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 174,
+      "end": 184
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

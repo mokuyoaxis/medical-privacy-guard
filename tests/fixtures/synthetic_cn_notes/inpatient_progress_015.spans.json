@@ -1,0 +1,73 @@
+{
+  "doc_id": "inpatient_progress_015",
+  "language": "zh-CN",
+  "document_type": "inpatient_progress",
+  "department": "普通外科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 12,
+      "end": 22
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 30
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 34,
+      "end": 36
+    },
+    {
+      "type": "SEX",
+      "start": 40,
+      "end": 41
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 46,
+      "end": 56
+    },
+    {
+      "type": "PHONE",
+      "start": 62,
+      "end": 73
+    },
+    {
+      "type": "BED_NUMBER",
+      "start": 77,
+      "end": 80
+    },
+    {
+      "type": "WARD",
+      "start": 81,
+      "end": 84
+    },
+    {
+      "type": "AGE",
+      "start": 88,
+      "end": 91
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 97,
+      "end": 107
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 282,
+      "end": 285
+    },
+    {
+      "type": "NURSE_NAME",
+      "start": 293,
+      "end": 296
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

@@ -1,0 +1,63 @@
+{
+  "doc_id": "operation_note_019",
+  "language": "zh-CN",
+  "document_type": "operation_note",
+  "department": "泌尿外科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 10,
+      "end": 20
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 30
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 36,
+      "end": 39
+    },
+    {
+      "type": "SEX",
+      "start": 43,
+      "end": 44
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 49,
+      "end": 59
+    },
+    {
+      "type": "AGE",
+      "start": 63,
+      "end": 66
+    },
+    {
+      "type": "ACCESSION_NUMBER",
+      "start": 71,
+      "end": 80
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 171,
+      "end": 173
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 180,
+      "end": 183
+    },
+    {
+      "type": "NURSE_NAME",
+      "start": 191,
+      "end": 194
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

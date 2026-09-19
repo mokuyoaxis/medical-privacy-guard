@@ -1,0 +1,53 @@
+{
+  "doc_id": "consultation_note_016",
+  "language": "zh-CN",
+  "document_type": "consultation_note",
+  "department": "肾内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 10,
+      "end": 20
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 29
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 35,
+      "end": 39
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 43,
+      "end": 45
+    },
+    {
+      "type": "SEX",
+      "start": 49,
+      "end": 50
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 55,
+      "end": 65
+    },
+    {
+      "type": "AGE",
+      "start": 69,
+      "end": 72
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 153,
+      "end": 155
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

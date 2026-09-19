@@ -1,0 +1,68 @@
+{
+  "doc_id": "inpatient_progress_020",
+  "language": "zh-CN",
+  "document_type": "inpatient_progress",
+  "department": "神经内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 12,
+      "end": 22
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 30
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 34,
+      "end": 37
+    },
+    {
+      "type": "SEX",
+      "start": 41,
+      "end": 42
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 47,
+      "end": 57
+    },
+    {
+      "type": "BED_NUMBER",
+      "start": 61,
+      "end": 64
+    },
+    {
+      "type": "WARD",
+      "start": 65,
+      "end": 68
+    },
+    {
+      "type": "AGE",
+      "start": 72,
+      "end": 75
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 81,
+      "end": 91
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 266,
+      "end": 269
+    },
+    {
+      "type": "NURSE_NAME",
+      "start": 277,
+      "end": 279
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

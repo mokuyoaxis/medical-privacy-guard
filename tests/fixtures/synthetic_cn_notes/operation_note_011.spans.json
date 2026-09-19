@@ -1,0 +1,63 @@
+{
+  "doc_id": "operation_note_011",
+  "language": "zh-CN",
+  "document_type": "operation_note",
+  "department": "心内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 10,
+      "end": 20
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 29
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 35,
+      "end": 38
+    },
+    {
+      "type": "SEX",
+      "start": 42,
+      "end": 43
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 48,
+      "end": 58
+    },
+    {
+      "type": "AGE",
+      "start": 62,
+      "end": 65
+    },
+    {
+      "type": "ACCESSION_NUMBER",
+      "start": 70,
+      "end": 79
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 165,
+      "end": 167
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 174,
+      "end": 176
+    },
+    {
+      "type": "NURSE_NAME",
+      "start": 184,
+      "end": 186
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

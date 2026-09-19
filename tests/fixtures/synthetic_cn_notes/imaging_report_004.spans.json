@@ -1,0 +1,63 @@
+{
+  "doc_id": "imaging_report_004",
+  "language": "zh-CN",
+  "document_type": "imaging_report",
+  "department": "检验科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 13,
+      "end": 23
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 29,
+      "end": 32
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 38,
+      "end": 41
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 47,
+      "end": 49
+    },
+    {
+      "type": "SEX",
+      "start": 53,
+      "end": 54
+    },
+    {
+      "type": "AGE",
+      "start": 58,
+      "end": 61
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 66,
+      "end": 76
+    },
+    {
+      "type": "ACCESSION_NUMBER",
+      "start": 81,
+      "end": 90
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 166,
+      "end": 168
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 177,
+      "end": 179
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}
