@@ -1,0 +1,140 @@
+# Scope
+
+The authoritative capability boundary for medical-privacy-guard. This file,
+[README.md](../README.md), and [architecture.md](architecture.md) must agree;
+when they disagree, this file wins and the other two are updated.
+
+## Supported
+
+- UTF-8 plain text input (Python API and CLI);
+- deterministic baseline detectors: CN mobile numbers, landlines, CN resident
+  ID candidates (GB 11643-1999 check digit), email, social-media handles,
+  exact dates, labelled patient names, staff names (title or suffix form),
+  relatives named in the history, medical record / specimen / accession
+  numbers, HTTP(S) URLs, IPv4 addresses, labelled precise addresses, postal
+  codes (label-required), institution names, department names, ward
+  designations, bed numbers, ages, sex (clinical-context only) and a baseline
+  medical-content signal;
+- mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
+  valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
+  and day. Detection retains original source spans; these are bounded format
+  families, not universal Unicode or OCR normalization;
+- policy-driven decisions: ALLOW / SANITIZE / ASK / BLOCK;
+- transformations: REMOVE, MASK, TOKENIZE and GENERALIZE (dates to month, ages
+  to bands, location/institution/department/ward to type markers), plus
+  DATE_SHIFT;
+- post-transformation verification and residual policy re-evaluation; the
+  hardening contract requires independent checks of execution evidence and
+  type-specific postconditions, not exemptions for untransformed dates;
+- metadata-only JSONL audit when configured (no raw PHI, token maps or internal
+  transformation evidence); incomplete/short writes must prevent release;
+- BLOCK for explicitly typed unsupported payloads and failed verification;
+- an evaluation harness over 175 synthetic Chinese clinical notes (140 with
+  labelled identifiers, 1474 spans, and 35 identifier-free notes). Expected
+  paths are **135 SANITIZE, 5 ASK, 35 ALLOW**. The hardened contract adds strict
+  one-to-one exact-span scoring and per-document release/verification/audit
+  gates — see [evaluation.md](evaluation.md) for validation status.
+
+## Measured vs unmeasured
+
+The normal corpus is generated to match detector capabilities. Its historical
+1.0 **overlap** recall shows agreement with those templates, not strict full-span
+coverage or real-world generalisation. Unlabelled narrative names, uncommon
+surnames, local institution vocabulary and quasi-identifier combination risk
+are not comprehensively evaluated by it.
+
+The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
+the five annotated rare-context notes correctly returned ASK. That run did not
+prove the gates reject failures: verification failures and missing audit records
+could pass the old benchmark. The hardened contract checks each expected
+lifecycle, verification failure, and missing/corrupt/mismatched audit events.
+Those stronger requirements need fresh validation, not reuse of historical
+scores. Over-redaction is measurable on both annotated and identifier-free
+notes; withholding every note cannot satisfy the expected SANITIZE/ALLOW paths.
+
+## Deliberate non-detection
+
+Some identifier-shaped text is left alone on purpose, because redacting it
+removes clinical meaning while protecting nobody. The test in each case is
+whether the value is attributed to *this patient*:
+
+| Pattern | Example | Why it is not redacted |
+|---|---|---|
+| population age | `多见于50岁以上人群` | describes a cohort, not the patient |
+| generic institution | `转诊至上级医院`, `三级甲等医院` | names no institution |
+| referral target | `建议神经内科会诊` | names a service, not the patient's department |
+| generic ward | `本病区`, `各病区` | refers to no specific ward |
+| rare-disease policy | `加强罕见病诊疗管理` | names no patient |
+| capacity concept | `床位紧张` | a bed count, not a bed identifier |
+
+These are measured, not assumed: the benchmark's 35 identifier-free documents
+contain them, and a detector firing on one of them fails the precision gate.
+
+## Unsupported
+
+No parsers or sanitization support exist for:
+
+- CSV / XLSX (planned v0.3)
+- JSON-like payload traversal (planned v0.3)
+- FHIR (planned v0.5)
+- DICOM (planned v0.6)
+- PDF / DOCX
+- arbitrary binary files
+- multimodal content (images / audio / video)
+- streaming request inspection (planned v0.4 with explicit semantics)
+
+Explicit non-text `Payload.kind` values return BLOCK. `str` and
+`Payload(kind="text")` are caller declarations: the API caller is responsible
+for supplying plain text, not encoded JSON, CSV or binary content.
+
+The CLI admission contract blocks known unsupported extensions, NUL and other
+unsupported control characters, and JSON-container content before detection.
+UTF-8 decoding is necessary but is not format validation. Extension/content
+checks cannot reliably recognize arbitrary disguised formats: a renamed CSV
+or encoded structured value is not made supported by escaping those checks.
+
+CLI output must not alias its input or the configured audit log, including
+existing hard-link aliases. Collision checks must happen before writes. These
+checks do not promise protection against concurrent filesystem changes in
+attacker-writable directories; use deployment-controlled paths. Configured
+audit writes must be complete and durable before release: short/zero writes
+and persistence errors must withhold the payload. These hardening requirements
+need implementation-level regression validation, not just documentation.
+
+## Experimental
+
+Nothing. Experimental capabilities live behind explicit feature flags and are
+listed here only when they exist.
+
+## Definitions
+
+- **Direct identifier**: a value that identifies a person on its own (name,
+  phone, government ID, MRN).
+- **Quasi-identifier**: a value that identifies only in combination (age,
+  sex, region, exact dates, rare diagnosis).
+- **PHI**: protected health information — any health-related data tied to an
+  identifiable person.
+- **Trust boundary**: the edge where data leaves the deploying organization's
+  control (external LLM API, MCP tool, HTTP endpoint, file upload).
+- **Fail closed**: withhold content on recognized unsupported types, failed
+  verification, configured audit failures or policy uncertainty; errors may
+  raise/exit rather than produce a verdict. This does not mean all unrecognized
+  sensitive content is detected and blocked. No facts is not proof of safety.
+- **Residual PHI**: sensitive values surviving a required transformation;
+  benchmark counts are bounded checks, not proof that all residual PHI is found.
+
+## Safety claims allowed
+
+- "reduces accidental disclosure risk before data crosses a trust boundary"
+- "detects a defined baseline of deterministic identifier patterns"
+- "withholds release on explicitly unsupported payload types and failed verification"
+- "produces metadata-only audit records when configured"
+
+## Safety claims prohibited
+
+- HIPAA / GDPR / PIPL / institutional compliance certification of any kind
+- "fully anonymized" / "de-identified data is anonymous"
+- "guarantees data safety" / "prevents all leaks"
+- "replaces ethics review, legal review, or institutional data governance"
+- DICOM pixel-clean claims before an implemented pixel-risk check exists
+- any claim that a declared purpose equals patient consent

@@ -6,9 +6,9 @@ The core produces exactly one of four verdicts:
 
 | Verdict | Meaning | Typical follow-up |
 |---|---|---|
-| `ALLOW` | Proven safe under current policy and context | Release payload as-is |
+| `ALLOW` | No configured detector matched under current policy and context | Release payload as-is |
 | `SANITIZE` | Sensitive content exists but can be transformed to a safe state | Execute `DisclosurePlan`, then verify |
-| `ASK` | Risk is known but requires human intent / institutional policy | Escalate to human, scoped and time-bound |
+| `ASK` | Risk is known but requires human intent / institutional policy | Escalate to a human; the caller owns scoping, expiry and one-time use |
 | `BLOCK` | Unsafe or violates non-overridable rule | Refuse release, provide remediation |
 
 ## Core principle
@@ -117,7 +117,7 @@ Important: **SANITIZE is not ALLOW.** The payload is released only after verific
 | Tier | Verdict | User experience |
 |---|---|---|
 | SAFE | ALLOW / SANITIZE with verification PASS | Silent continue |
-| AMBIGUOUS | ASK | Explicit, scoped, one-time or time-bound authorization |
+| AMBIGUOUS | ASK | Explicit authorization; grant scoping and expiry are caller responsibilities |
 | FORBIDDEN | BLOCK | Refuse with safe remediation |
 
 ## DisclosureRequest context
@@ -190,5 +190,7 @@ Even if the risk-score algorithm would produce a lower score, a hard rule must n
 6. **Unknown-recipient-is-not-trusted**: unknown endpoints default to EXTERNAL_UNKNOWN.
 7. **No-silent-fallback**: sanitization failure does not fall back to original payload.
 8. **Unsupported-is-not-clean**: unknown format or DICOM pixel risk is not treated as clean.
-9. **Human escalation is scoped**: ASK grants are scoped and time-bound.
+9. **Human escalation is scoped**: ASK must not be surfaced as a permanent blanket
+   allow. Scoped/expiring grant objects, one-time use and enforcement are caller
+   responsibilities (the ASK-approval workflow is planned, not implemented).
 10. **Policy version is auditable**: every Decision carries policy profile and version.

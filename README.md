@@ -51,6 +51,7 @@ CLI:
 ```bash
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
+medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 ```
 
 Exit codes: `0` = ALLOW or verified SANITIZE, `2` = BLOCK, `3` = ASK,
@@ -60,24 +61,63 @@ Reported risk is the engineering risk of the **input before transformation**.
 A high/critical input may still receive SANITIZE when every direct identifier
 has a deterministic operation; only the verified output may be released.
 
-### Supported in v0.1
+### Implemented in v0.1 / v0.2
 
 - UTF-8 plain text;
-- deterministic detection of CN mobile numbers, email, CN ID candidates,
-  exact dates, labelled patient names and MRNs, HTTP(S) URLs, IPv4 addresses,
-  labelled precise addresses, and a baseline medical-content signal;
-- REMOVE, MASK, TOKENIZE, date/location GENERALIZE, and DATE_SHIFT;
-- metadata-only JSONL audit.
+- deterministic detection of CN mobile numbers and landlines, email,
+  social-media handles, CN ID candidates, exact dates, labelled patient names,
+  staff names (title or suffix form), relatives named in the history, medical
+  record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses,
+  labelled precise addresses, label-anchored postal codes, institution names,
+  department names, ward designations, bed numbers, ages, clinical-context sex
+  and a baseline medical-content signal;
+- mobile-number variants with 3-4-4 grouping and ASCII/full-width digits;
+  real calendar dates in 1900–2099, including non-zero-padded YMD/MDY forms,
+  retaining original source spans (see [scope](docs/scope.md));
+- REMOVE, MASK, TOKENIZE, GENERALIZE (dates to month, ages to bands,
+  location/institution/department/ward to type markers) and DATE_SHIFT;
+- metadata-only JSONL audit when configured;
+- an evaluation harness (`benchmark`) over a synthetic corpus of 175 Chinese
+  clinical notes — 140 with labelled identifiers (1474 spans, 24 types) and 35
+  identifier-free documents. The declared outcomes are **135 SANITIZE, 5 ASK,
+  and 35 ALLOW**, not 140 sanitized releases. False positives are measured on
+  both labelled and identifier-free notes. The hardened benchmark contract adds
+  per-document lifecycle checks, verification-failure and missing/corrupt-audit
+  gates, and strict one-to-one exact-span detection metrics; historical overlap
+  scores are not evidence that those stronger checks passed.
+  See [docs/evaluation.md](docs/evaluation.md) for the baseline and validation status.
 
-JSON-like payloads, FHIR, DICOM and arbitrary binary files are **not supported
-in v0.1 and fail closed**. Medical-content classification is a conservative
-rule baseline, not full medical NER or proof of anonymity.
+Only plain text is supported. Explicitly typed non-text API payloads return
+BLOCK. CLI admission checks reject known unsupported extensions, NUL and other
+unsupported control characters, and JSON-container content; they do not reliably
+identify every disguised format. Callers using `str` or `Payload(kind="text")`
+are responsible for supplying plain text, not serialized structured/binary data.
+Medical-content classification is a rule baseline, not full medical NER or
+proof of anonymity.
 
 Medical content without a direct identifier is still sensitive. Under the
 strict profile it may remain local/internal, but disclosure to an
 `EXTERNAL_UNKNOWN` recipient returns `ASK`; callers must not treat a declared
 purpose as consent. Use `EXTERNAL_APPROVED` only for endpoints approved by the
 deploying organization.
+
+### Not implemented yet
+
+- CSV / XLSX
+- JSON payload traversal
+- FHIR
+- DICOM
+- PDF / DOCX
+- MCP gateway
+- HTTP egress proxy
+- LLM SDK wrappers
+- Dataset-level re-identification risk metrics
+
+### Never claim
+
+This project does not certify HIPAA, GDPR, PIPL, or institutional
+compliance. It reduces accidental disclosure risk but cannot prove complete
+anonymization.
 
 ### Synthetic data only
 
@@ -96,18 +136,21 @@ This project is **engineering infrastructure**, not legal or compliance certific
 1. **Not legal advice or HIPAA/GDPR certification.** This tool helps reduce accidental disclosure risk; it does not replace legal review, institutional policy, or formal compliance audits.
 2. **Does not guarantee complete anonymization.** De-identification is risk reduction, not risk elimination. Residual quasi-identifiers may still allow re-identification under specific conditions.
 3. **Does not prevent malicious bypass by same-privilege actors.** A process that already has direct access to raw PHI can skip this guard. The tool protects against *accidental* or *unintentional* disclosure by agents and pipelines, not against intentional insider attacks.
-4. **Fail-closed by design.** When in doubt, it blocks or asks. This is a feature, not a bug.
+4. **Fail-closed for recognized failures.** Unsupported declared types, failed verification and configured audit failures withhold release; some CLI errors return a nonzero error exit rather than a policy verdict. Undetected identifiers can still pass. No detected facts is not proof of safety, and reusing the same detectors during verification does not eliminate shared blind spots.
 
 ---
 
 ## Status
 
-- **Phase 0** (skeleton + core types): ✅ Done
-- **Phase 1** (text MVP implementation): ✅ Done
-- **v0.1 release stabilization** (packaging + release-gate tests): ✅ Done; release pending CI/versioning
-- **Phase 1.2** (re-identification hardening): Not started
-- **Phase 2** (FHIR + MCP): Not started
-- **Phase 3** (DICOM): Not started
+Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](ROADMAP.md).
+
+- **v0.1 — Text core MVP**: implemented (baseline detectors, decision protocol, transformations, verification, metadata-only audit); release pending CI/versioning.
+- **v0.2 — Chinese medical text detection & evaluation**: implemented; release pending security-hardening validation and release checks. Historical benchmark results are not post-remediation or release-validation results.
+- **v0.3 — CSV / XLSX / JSON**: not started.
+- **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
+- **v0.5 — FHIR minimal resource set**: not started.
+- **v0.6 — DICOM metadata scanner**: not started.
+- **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---
 
