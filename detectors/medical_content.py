@@ -15,6 +15,7 @@ from .base import Detector
 
 _MEDICAL_SIGNAL_RE = re.compile(
     r"(?:诊断|疾病|病史|症状|检验|检查结果|用药|药物|治疗|手术|过敏史|"
+    r"入院|出院|住院|主诉|既往|病程|会诊|转科|急诊|服药|"
     r"diagnosis|disease|medication|treatment|laboratory|lab\s+result|"
     r"HIV|AIDS|Crohn(?:'s)?\s+disease)",
     re.IGNORECASE,

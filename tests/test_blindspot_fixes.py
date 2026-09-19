@@ -167,3 +167,141 @@ def test_recall_guard_does_not_fire_on_near_misses(text):
 def test_duration_is_not_read_as_month_age(text):
     """``头痛3个月`` is a duration; only age context counts as month age."""
     assert not any(f.source.startswith("recall_guard") for f in detect_all(text)), text
+
+
+# -- 2026-09-19 remaining blindspots ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("患者在宣武医院住院。", "宣武医院"),
+        ("患者2023年因胸痛在宣武医院住院。", "宣武医院"),
+        ("其女儿在北京协和医院工作。", "北京协和医院"),
+        ("患者既往在宣武医院就诊。", "宣武医院"),
+        ("患者既往就诊于宣武医院。", "宣武医院"),
+    ],
+)
+def test_hospital_name_after_function_words_is_not_released(text, secret):
+    """A function word used to make the whole match be discarded.
+
+    "患者曾在X医院住院" is one of the most natural clinical sentences, and the
+    institution name was released verbatim. The reject set now cuts the match
+    at the last reject character instead of dropping it entirely.
+    """
+    result = _release(text, recipient="external_unknown")
+    assert result.sanitized_payload is None or secret not in result.sanitized_payload.content, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "该院为三级甲等医院。",
+        "加强罕见病诊疗管理，该院为三级甲等医院。",
+        "转诊至上级医院进一步诊治。",
+        "上级医院",
+        "当地医院",
+        "三级甲等医院",
+    ],
+)
+def test_generic_institution_references_stay_clean(text):
+    """The reject set exists for these; cutting must not resurrect them."""
+    assert not any(f.type == "HOSPITAL_NAME" for f in detect_all(text)), text
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("患儿6个月", "6个月"),
+        ("年龄：3个月", "3个月"),
+        ("患儿6月龄", "6月龄"),
+        ("3个月大", "3个月大"),
+    ],
+)
+def test_month_age_is_generalized(text, secret):
+    """Month age is the primary infant age form and is more re-identifying
+    than a year band; 岁/周岁 never matched it."""
+    result = _release(text)
+    assert result.decision_before.verdict is Verdict.SANITIZE, text
+    assert result.verification is not None and result.verification.passed
+    assert secret not in result.sanitized_payload.content
+    # Replacing only the digits would leave a dangling 个月.
+    assert "个月岁" not in result.sanitized_payload.content
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "反复头痛3个月",
+        "随访3个月后复查",
+        "住院6天",
+    ],
+)
+def test_duration_is_not_month_age(text):
+    """A bare "3个月" is a duration far more often than an age."""
+    assert not any(f.source.endswith(".month") for f in detect_all(text)), text
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("户籍地：河北省保定市涞水县永阳镇东关村", "涞水县"),
+        ("工作单位：北京市西城区牛街12号院3号楼502", "牛街12号院"),
+        ("籍贯：河北省保定市", "保定市"),
+    ],
+)
+def test_address_labels_carrying_a_full_address_are_detected(text, secret):
+    """户籍地 / 工作单位 almost always contain a precise address."""
+    result = _release(text, recipient="external_unknown")
+    assert result.sanitized_payload is None or secret not in result.sanitized_payload.content, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "因脑梗死入院",
+        "既往高血压病史",
+        "主诉：胸痛3天",
+        "急诊入院",
+        "会诊意见：考虑脑梗死",
+    ],
+)
+def test_unlabelled_medical_narrative_asks_an_unknown_recipient(text):
+    """Medical content used to require a label word (诊断/疾病/病史…).
+
+    Free narration slipped past the ASK path and was released as-is to an
+    unknown endpoint. The signal list now includes encounter/action terms
+    (入院, 出院, 主诉, 既往, 会诊, 急诊, 病程, 转科, 服药, 住院), which covers
+    far more narration than before.
+    """
+    result = _release(text, recipient="external_unknown")
+    assert result.decision_before.verdict is Verdict.ASK, text
+
+
+def test_disease_names_without_an_action_term_are_still_missed():
+    """Known residual gap, pinned so it is not mistaken for a regression.
+
+    A bare diagnosis with no encounter or action word ("考虑脑梗死") produces
+    no MEDICAL_CONTENT fact, because the baseline is a term list rather than
+    medical NER. Closing this needs semantic detection, not more synonyms.
+    """
+    assert not any(f.type == "MEDICAL_CONTENT" for f in detect_all("考虑脑梗死"))
+    assert not any(f.type == "MEDICAL_CONTENT" for f in detect_all("患者因急性心肌梗死就诊"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "普通随访记录，无敏感信息",
+        "复查,按需",
+        "本病区",
+        "男病房",
+    ],
+)
+def test_medical_content_expansion_does_not_over_block(text):
+    """Ordinary follow-up wording must stay releasable.
+
+    Adding 随访 / 复查 to the signal list broke these, which is why they are
+    pinned: over-blocking silently strips clinical meaning.
+    """
+    assert not any(f.type == "MEDICAL_CONTENT" for f in detect_all(text)), text

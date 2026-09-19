@@ -269,22 +269,31 @@ class Verifier:
                 valid = bool(month and (int(month[1]), int(month[2])) ==
                              (original_date.year, original_date.month))
             elif kind in {"AGE", "AGE_90_PLUS"}:
-                age_match = re.fullmatch(r"(\d{1,3})\s*(?:岁|周岁)", raw)
-                if age_match:
-                    age = int(age_match[1])
-                    if kind == "AGE_90_PLUS" and age < 90:
-                        raise _CheckFailure("invalid age category in transformation evidence")
-                    if age == 0:
-                        valid = output == "不足1岁"
-                    elif age < 10:
-                        valid = output == "1-9岁"
-                    elif age < 90:
-                        band = re.fullmatch(r"(\d{2})-(\d{2})岁", output)
-                        valid = bool(band and int(band[1]) % 10 == 0 and
-                                     int(band[2]) == int(band[1]) + 9 and
-                                     int(band[1]) <= age <= int(band[2]))
-                    elif age <= 200:
-                        valid = output == "90岁及以上"
+                # A month-age fact carries its whole token ("6个月").
+                month_match = re.fullmatch(r"(\d{1,2})\s*个?月(?:龄|大)?", raw)
+                if month_match:
+                    valid = 1 <= int(month_match.group(1)) <= 36 and output in (
+                        "不足1岁", "1-9岁"
+                    )
+                else:
+                    age_match = re.fullmatch(r"(\d{1,3})\s*(?:岁|周岁)", raw)
+                    if age_match:
+                        age = int(age_match[1])
+                        if kind == "AGE_90_PLUS" and age < 90:
+                            raise _CheckFailure(
+                                "invalid age category in transformation evidence"
+                            )
+                        if age == 0:
+                            valid = output == "不足1岁"
+                        elif age < 10:
+                            valid = output == "1-9岁"
+                        elif age < 90:
+                            band = re.fullmatch(r"(\d{2})-(\d{2})岁", output)
+                            valid = bool(band and int(band[1]) % 10 == 0 and
+                                         int(band[2]) == int(band[1]) + 9 and
+                                         int(band[1]) <= age <= int(band[2]))
+                        elif age <= 200:
+                            valid = output == "90岁及以上"
         if not valid:
             raise _CheckFailure("transformation violates type-specific postcondition")
 

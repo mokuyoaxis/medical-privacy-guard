@@ -69,9 +69,10 @@ has a deterministic operation; only the verified output may be released.
   narrative ``姓名，性别`` openers,
   staff names (title or suffix form), relatives named in the history, medical
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses,
-  labelled precise addresses, label-anchored postal codes, institution names,
-  department names, ward designations, bed numbers, ages, clinical-context sex
-  and a baseline medical-content signal;
+  labelled precise addresses (including 户籍地 / 工作单位), label-anchored
+  postal codes, institution names (including after function words), department
+  names, ward designations, bed numbers, ages in years and months, clinical-context
+  sex and a baseline medical-content signal now covering encounter/action terms;
 - mobile-number variants with 3-4-4 grouping and ASCII/full-width digits;
   real calendar dates in 1900–2099, including non-zero-padded YMD/MDY forms,
   retaining original source spans (see [scope](docs/scope.md));

@@ -21,6 +21,14 @@ when they disagree, this file wins and the other two are updated.
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
   and day. Detection retains original source spans; these are bounded format
   families, not universal Unicode or OCR normalization;
+- ages in years and in months (1–36 months, the primary infant form), kept
+  distinct from a duration ("反复头痛3个月");
+- institution names even when preceded by function words ("患者在宣武医院住院");
+- address labels that carry a full street address, including 户籍地 and 工作单位;
+- medical-content signals beyond label words, including encounter/action terms
+  (入院, 出院, 主诉, 既往, 会诊, 急诊, 病程, 转科, 服药, 住院). A bare
+  diagnosis with no such term ("考虑脑梗死") is still not detected; the baseline
+  is a term list, not medical NER;
 - policy-driven decisions: ALLOW / SANITIZE / ASK / BLOCK;
 - transformations: REMOVE, MASK, TOKENIZE and GENERALIZE (dates to month, ages
   to bands, location/institution/department/ward to type markers), plus

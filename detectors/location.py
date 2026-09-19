@@ -10,7 +10,7 @@ from .base import Detector
 from .field_syntax import FIELD_SEP
 
 _ADDRESS_FIELD_RE = re.compile(
-    r"(?:家庭住址|联系地址|现住址|住址|地址)"
+    r"(?:家庭住址|联系地址|现住址|户籍所在地|户籍地|籍贯|工作单位|单位地址|住址|地址)"
     + FIELD_SEP
     + r"(?P<value>[^\n\r,，。；;]{4,100})(?=[\n\r,，。；;]|$)"
 )

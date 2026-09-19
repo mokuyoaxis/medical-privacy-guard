@@ -107,6 +107,29 @@ def _strip_hospital_verb_prefix(value: str, start: int) -> tuple[str, int]:
     return value, start
 
 
+def _strip_hospital_reject_chars(value: str, start: int) -> tuple[str, int]:
+    """Drop the sentence fragment preceding the real name.
+
+    A reject character means the match swallowed text that cannot belong to a
+    name — "患者在宣武医院" is a name preceded by ordinary narration. Dropping
+    the whole match (the previous behaviour) meant "患者曾在X医院住院", one of
+    the most natural clinical sentences, produced no fact at all and released
+    the institution name verbatim.
+
+    Cutting at the *last* reject character keeps the name while discarding the
+    fragment, so the generic cases the reject set exists for are still removed:
+    "该院为三级甲等医院" cuts at 为 and leaves "三级甲等医院", which the
+    generic-qualifier check then rejects.
+    """
+    cut = -1
+    for index, char in enumerate(value):
+        if char in _HOSPITAL_REJECT_CHARS:
+            cut = index
+    if cut >= 0:
+        return value[cut + 1 :], start + cut + 1
+    return value, start
+
+
 def _strip_hospital_suffix(value: str) -> str:
     for suffix in _HOSPITAL_SUFFIXES:
         if value.endswith(suffix):
@@ -142,6 +165,7 @@ class HospitalNameDetector(Detector):
         facts: list[DetectedFact] = []
         for m in _HOSPITAL_RE.finditer(text):
             value, start = _strip_hospital_verb_prefix(m.group(0), m.start())
+            value, start = _strip_hospital_reject_chars(value, start)
             name_part = _strip_hospital_suffix(value)
             # A generic reference ("上级医院") names no institution.
             if not name_part or name_part in _HOSPITAL_GENERIC_QUALIFIERS:

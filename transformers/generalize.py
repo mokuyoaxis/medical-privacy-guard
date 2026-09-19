@@ -96,6 +96,15 @@ class GeneralizeTransformer(Transformer):
     def _band(value: str) -> str:
         m = _AGE_RE.fullmatch(value)
         if not m:
+            # A month-age fact carries the whole token ("6个月" from
+            # "患儿6个月"), because replacing only the digits would leave a
+            # dangling "个月" and produce incoherent clinical text.
+            m_month = re.fullmatch(r"(\d{1,2})\s*个?月(?:龄|大)?", value)
+            if m_month:
+                months = int(m_month.group(1))
+                if not 1 <= months <= 36:
+                    raise TransformerError("month age out of supported range")
+                return "不足1岁" if months < 12 else "1-9岁"
             raise TransformerError("cannot generalize age value")
         age = int(m.group(1))
         for low, high, label in _AGE_BANDS:

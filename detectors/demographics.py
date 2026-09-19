@@ -47,6 +47,18 @@ _AGE_RE = re.compile(
     r"(?P<age>\d{1,3})\s*(?:岁|周岁)"
     r"(?!(?:及)?(?:以上|以下)|左右|上下)"
 )
+# Month-based age: the primary form for infants, and more re-identifying than a
+# year band because so few patients share a given month-age. 岁/周岁 never
+# matches it, so "患儿6个月" previously produced no AGE fact at all.
+#
+# An explicit age context is required. Bare "3个月" is far more often a duration
+# ("反复头痛3个月加重1周"), and the committed corpus contains that phrasing in
+# documents whose ALLOW path is pinned by the precision gate.
+_MONTH_AGE_RE = re.compile(
+    r"(?:月龄|患儿|出生后|婴儿|幼儿)\s*(?P<v1>\d{1,2}\s*个?月(?:龄|大)?)"
+    r"|(?:年龄|月龄)\s*[:：=]?\s*(?P<v2>\d{1,2}\s*个?月(?:龄|大)?)"
+    r"|(?P<v3>\d{1,2}\s*个月大)"
+)
 _AGE_GENERIC_BEFORE_RE = re.compile(
     r"(?:多见于|多发于|好发于|高发于|见于|纳入|选取|年龄在|超过|大于|小于|"
     r"至少|多为|大于等于|小于等于|一般在)$"
@@ -93,7 +105,30 @@ class AgeDetector(Detector):
                     value=m.group(0),
                 )
             )
+        facts.extend(self._month_ages(text))
         return tuple(facts)
+
+    def _month_ages(self, text: str) -> list[DetectedFact]:
+        facts: list[DetectedFact] = []
+        for m in _MONTH_AGE_RE.finditer(text):
+            group = next(g for g in ("v1", "v2", "v3") if m.group(g) is not None)
+            token = m.group(group)
+            months = int(re.match(r"\d{1,2}", token).group(0))
+            # A month-age is an infant's age; anything beyond the toddler years
+            # is a duration or a data error rather than a patient age.
+            if not 1 <= months <= 36:
+                continue
+            facts.append(
+                DetectedFact(
+                    type=self.fact_type,
+                    start=m.start(group),
+                    end=m.end(group),
+                    confidence=self.confidence,
+                    source=f"regex.{self.name}.month",
+                    value=token,
+                )
+            )
+        return facts
 
 
 class SexDetector(Detector):

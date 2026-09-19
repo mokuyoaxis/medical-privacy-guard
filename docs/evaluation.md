@@ -332,9 +332,29 @@ The guard is deliberately bounded: only patterns measured at **zero
 false-positive on the whole corpus** were admitted, because a recall guard that
 fires on ordinary prose would block the release path exactly as earlier false
 positives did. It is a safety net with a known mesh size, not a second complete
-detector set. Remaining known gaps after this fix include month-based infant age,
-`工作单位`/`户籍地` address labels, and hospital names preceded by function
-words (``患者在宣武医院住院``).
+detector set.
+
+Further gaps from the same probe were fixed in a follow-up:
+
+3. **Institution names after function words.** A reject character made the whole
+   match be discarded, so ``患者在宣武医院住院`` produced no fact and released
+   the hospital name. The match is now cut at the last reject character, which
+   keeps generic references (``该院为三级甲等医院``) rejected by the qualifier
+   check that follows.
+4. **Month-based infant age.** ``患儿6个月`` matched neither 岁 nor 周岁. Month
+   age (1–36 months) is now detected and banded, and kept distinct from a
+   duration (``反复头痛3个月``) which is ordinary prose, not a patient age.
+5. **Address labels carrying a full address.** ``户籍地`` and ``工作单位`` were
+   absent, so a complete street address was released as-is.
+6. **Unlabelled medical narrative.** `MEDICAL_CONTENT` required a label word, so
+   ``因脑梗死入院`` skipped the ASK path for an unknown recipient. The signal
+   list now also covers encounter/action terms (入院, 出院, 主诉, 既往, 会诊,
+   急诊, 病程, 转科, 服药, 住院).
+
+**Residual gap.** A bare diagnosis with no encounter or action word
+(``考虑脑梗死``) still produces no medical-content fact: the baseline is a term
+list, not medical NER, and closing this needs semantic detection rather than
+more synonyms. It is pinned by a test so it is not mistaken for a regression.
 
 Important limitations include:
 
