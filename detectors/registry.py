@@ -40,6 +40,7 @@ from .location import PreciseLocationDetector
 from .medical_content import MedicalContentDetector
 from .medical_record import MedicalRecordDetector
 from .person import PersonNameDetector
+from .recall_guard import NarrativeNameDetector
 from .regex import EmailDetector, IpAddressDetector, UrlDetector
 
 DEFAULT_DETECTORS: tuple[Detector, ...] = (
@@ -72,6 +73,10 @@ DEFAULT_DETECTORS: tuple[Detector, ...] = (
     RareContextDetector(),
     # Layer 4: document-level classification
     MedicalContentDetector(),
+    # Layer 5: independent recall guard. Registered last and with lower
+    # confidence than the labelled-field detectors, so it only ever adds
+    # coverage for forms the primary rules cannot see.
+    NarrativeNameDetector(),
 )
 
 

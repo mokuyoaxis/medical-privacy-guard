@@ -24,6 +24,7 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
+from .field_syntax import FIELD_SEP
 
 # An age must be a plausible human age and must not be part of a longer digit
 # run (IDs and phone numbers contain digit sequences that end in 岁-less text,
@@ -53,8 +54,8 @@ _AGE_GENERIC_BEFORE_RE = re.compile(
 _AGE_MIN = 1
 _AGE_MAX = 120
 
-# Explicit field label: 性别：男 / 性别 男 / 性别男
-_SEX_FIELD_RE = re.compile(r"性别\s*[:：]?\s*(?P<sex>男|女)")
+# Explicit field label: 性别：男 / 性别 男 / 性别男 / 性别=男
+_SEX_FIELD_RE = re.compile(r"性别" + FIELD_SEP + r"(?P<sex>男|女)")
 # Patient enumeration, the most common clinical form: 患者男，67岁 / 病人女,45岁
 _SEX_PATIENT_RE = re.compile(
     r"(?:患者|病人|患儿|伤者)\s*(?P<sex>男|女)(?=[，,、。；;\s)]|\d)"

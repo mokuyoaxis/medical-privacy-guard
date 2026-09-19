@@ -302,15 +302,53 @@ recall of 1.0 measures agreement with known templates, not generalisation,
 complete-span handling or the absence of all residual PHI. Even a strict score
 of 1.0 on this corpus would not estimate performance on real clinical text.
 
+### The corpus could not see its own blindspots
+
+A 2026-09-19 probe found that **the committed corpus structurally excludes two
+of the most common real-note forms**, so no gate could ever have caught them:
+
+- every one of the 175 documents contains a `MEDICAL_CONTENT` signal (0 without);
+- every name is written after an explicit `患者姓名：`/`患者：` label.
+
+Consequently a narrative opener like ``张伟，男，67岁，因脑梗死入院`` scored no
+facts at all, short-circuited to `ALLOW`, and was released **with the name
+intact** — while a partially transformed variant reported `verification=PASS`.
+Neither the safety gates nor the strict span metrics could observe this, because
+the corpus contains no such document.
+
+Two fixes followed (regression tests in `tests/test_blindspot_fixes.py`):
+
+1. **Shared field separator** (`detectors/field_syntax.py`). Label-anchored
+   detectors each spelled out their own ``\s*[:：]?\s*``, so a field matched with
+   a colon and was missed with `=`, SQL-style brackets, or no separator. The
+   kinship rules were the clearest defect: ``父亲张伟`` matched while
+   ``父亲：张伟`` did not.
+2. **Independent recall guard** (`detectors/recall_guard.py`). The verifier
+   re-runs the same detectors, so it cannot see first-pass misses. A second,
+   differently-anchored rule now covers the `姓名，性别` opener and references a
+   shared surname inventory.
+
+The guard is deliberately bounded: only patterns measured at **zero
+false-positive on the whole corpus** were admitted, because a recall guard that
+fires on ordinary prose would block the release path exactly as earlier false
+positives did. It is a safety net with a known mesh size, not a second complete
+detector set. Remaining known gaps after this fix include month-based infant age,
+`工作单位`/`户籍地` address labels, and hospital names preceded by function
+words (``患者在宣武医院住院``).
+
 Important limitations include:
 
-- **Names depend on markers and a surname inventory.** Labelled/adjacent patient
-  names and title/suffix staff names are supported; arbitrary narrative names
-  and uncommon surnames remain outside the documented baseline.
+- **Names depend on markers and a surname inventory.** Labelled patient names,
+  title/suffix staff names, and the narrative ``姓名，性别`` opener
+  (``张伟，男，67岁``) are supported; arbitrary narrative names, uncommon
+  surnames, and names carried only by surrounding prose remain outside the
+  documented baseline.
 - **Institution vocabulary is bounded.** Built-in department names do not cover
   every hospital's local unit names or abbreviations.
 - **Record identifiers depend on known labels.** Specimen/accession/bed numbers
-  in unfamiliar narrative contexts may be missed.
+  in unfamiliar narrative contexts may be missed. The label family itself
+  (`入院号`, `登记号`, `=`, bracketed values) is now shared across detectors, but
+  an unrecognised label still yields no fact.
 - **Format variation is not exhausted by the normal corpus.** Current phone
   detection supports contiguous or 3-4-4 grouped mobile numbers with ASCII or
   full-width digits. Date detection accepts real calendar dates in 1900–2099,
@@ -342,7 +380,7 @@ survive both initial detection and verification.
 | Per-document verification/release and audit-integrity gates | Hardened acceptance contract; fault-injection validation required |
 | Marked or adjacent patient names (`患者：张三`, `患者张三`) | Implemented |
 | Grouped/full-width mobile numbers and valid non-padded dates | Implemented; independent challenge results not asserted here |
-| Unlabelled narrative names and uncommon surnames | Outside documented baseline |
+| Unlabelled narrative names and uncommon surnames | Partly covered: the `姓名，性别` opener is detected by the recall guard; other narrative forms remain outside the baseline |
 | Department mentions outside labelled/movement context | Not detected by design |
 | Local institution dictionaries | Planned |
 | Dataset-level quasi-identifier combination risk | Planned |

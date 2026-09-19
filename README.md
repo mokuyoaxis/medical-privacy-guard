@@ -66,6 +66,7 @@ has a deterministic operation; only the verified output may be released.
 - UTF-8 plain text;
 - deterministic detection of CN mobile numbers and landlines, email,
   social-media handles, CN ID candidates, exact dates, labelled patient names,
+  narrative ``姓名，性别`` openers,
   staff names (title or suffix form), relatives named in the history, medical
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses,
   labelled precise addresses, label-anchored postal codes, institution names,

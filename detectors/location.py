@@ -7,10 +7,12 @@ import re
 from core.model import DetectedFact, is_placeholder
 
 from .base import Detector
+from .field_syntax import FIELD_SEP
 
 _ADDRESS_FIELD_RE = re.compile(
-    r"(?:家庭住址|联系地址|现住址|住址|地址)(?:\s*[:：]\s*|\s+)"
-    r"(?P<value>[^\n\r,，。；;]{4,100})(?=[\n\r,，。；;]|$)"
+    r"(?:家庭住址|联系地址|现住址|住址|地址)"
+    + FIELD_SEP
+    + r"(?P<value>[^\n\r,，。；;]{4,100})(?=[\n\r,，。；;]|$)"
 )
 
 

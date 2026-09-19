@@ -29,6 +29,7 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
+from .field_syntax import FIELD_SEP, label_with_value
 from .surnames import GIVEN_CLASS, SURNAME_CLASS
 
 # -- staff and family names -------------------------------------------------
@@ -49,12 +50,14 @@ _DOCTOR_SUFFIX_RE = re.compile(
 # verb ("责任护士王芳执行医嘱" must not capture 王芳执).
 _DOCTOR_TITLE_RE = re.compile(
     r"(?:主任医师|副主任医师|主治医师|住院医师|主管医师|经治医师|接诊医师|手术医师|会诊医师)"
-    rf"\s*[:：]?\s*(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
+    + FIELD_SEP
+    + rf"(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
 )
 _NURSE_RE = re.compile(
     rf"(?<!责)(?<!主)(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})护士"
-    r"|(?:责任护士|值班护士|接诊护士|主管护师|护士长)\s*[:：]?\s*"
-    rf"(?P<title_name>{SURNAME_CLASS}{GIVEN_CLASS})"
+    r"|(?:责任护士|值班护士|接诊护士|主管护师|护士长)"
+    + FIELD_SEP
+    + rf"(?P<title_name>{SURNAME_CLASS}{GIVEN_CLASS})"
 )
 
 _RELATIVE_KINDS = (
@@ -62,19 +65,25 @@ _RELATIVE_KINDS = (
     "父亲", "母亲", "儿子", "女儿", "丈夫", "妻子", "配偶", "家属",
     "哥哥", "姐姐", "弟弟", "妹妹", "祖父", "祖母", "外祖父", "外祖母",
 )
+# Kinship terms are written both adjacent ("其子张伟") and labelled
+# ("父亲：张伟"). Using FIELD_SEP rather than bare \s* keeps the two forms
+# consistent; a colon used to make the labelled form undetectable.
 _RELATIVE_RE = re.compile(
-    r"(?:" + "|".join(_RELATIVE_KINDS) + rf")\s*(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
+    r"(?:" + "|".join(_RELATIVE_KINDS) + r")" + FIELD_SEP
+    + rf"(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
 )
 
 # -- accession and specimen identifiers -------------------------------------
 
 _SPECIMEN_RE = re.compile(
-    r"(?:标本号|标本编号|样本号|样本编号)\s*[:：]?\s*"
-    r"(?P<value>[A-Za-z0-9][A-Za-z0-9_\-]{2,31})(?![A-Za-z0-9_\-])"
+    label_with_value(r"标本号|标本编号|样本号|样本编号", r"[A-Za-z0-9][A-Za-z0-9_\-]{1,31}")
+    + r"(?![A-Za-z0-9_\-])"
 )
 _ACCESSION_RE = re.compile(
-    r"(?:检查号|影像号|申请号|检查编号|影像编号|报告编号)\s*[:：]?\s*"
-    r"(?P<value>[A-Za-z0-9][A-Za-z0-9_\-]{2,31})(?![A-Za-z0-9_\-])"
+    label_with_value(
+        r"检查号|影像号|申请号|检查编号|影像编号|报告编号", r"[A-Za-z0-9][A-Za-z0-9_\-]{1,31}"
+    )
+    + r"(?![A-Za-z0-9_\-])"
 )
 
 # -- contact and geography --------------------------------------------------
@@ -85,12 +94,12 @@ _LANDLINE_RE = re.compile(r"(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)")
 # Postal code: only after an explicit label. A bare 6-digit run is far too
 # common in clinical text to be treated as a postal code.
 _POSTAL_RE = re.compile(
-    r"(?:邮政编码|邮编|postal\s*code)\s*[:：]?\s*(?P<value>\d{6})(?!\d)"
+    label_with_value(r"邮政编码|邮编|postal\s*code", r"\d{6}") + r"(?!\d)"
 )
 
 _SOCIAL_RE = re.compile(
-    r"(?:微信号|微信|QQ号|QQ|企鹅号)\s*[:：]?\s*"
-    r"(?P<value>[A-Za-z][A-Za-z0-9_\-]{4,31})(?![A-Za-z0-9_\-])"
+    label_with_value(r"微信号|微信|QQ号|QQ|企鹅号", r"[A-Za-z0-9][A-Za-z0-9_\-]{4,31}")
+    + r"(?![A-Za-z0-9_\-])"
 )
 
 # -- narrative re-identification signals ------------------------------------

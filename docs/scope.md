@@ -9,12 +9,14 @@ when they disagree, this file wins and the other two are updated.
 - UTF-8 plain text input (Python API and CLI);
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
   ID candidates (GB 11643-1999 check digit), email, social-media handles,
-  exact dates, labelled patient names, staff names (title or suffix form),
-  relatives named in the history, medical record / specimen / accession
-  numbers, HTTP(S) URLs, IPv4 addresses, labelled precise addresses, postal
-  codes (label-required), institution names, department names, ward
-  designations, bed numbers, ages, sex (clinical-context only) and a baseline
-  medical-content signal;
+  exact dates, labelled patient names, narrative ``姓名，性别`` openers,
+  staff names (title or suffix form), relatives named in the history, medical
+  record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
+  precise addresses, postal codes (label-required), institution names,
+  department names, ward designations, bed numbers, ages, sex
+  (clinical-context only) and a baseline medical-content signal. Label/value
+  separators — colon, equals, whitespace, none, or a bracketed value — are
+  shared across detectors (``detectors/field_syntax.py``);
 - mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
   and day. Detection retains original source spans; these are bounded format
@@ -39,9 +41,16 @@ when they disagree, this file wins and the other two are updated.
 
 The normal corpus is generated to match detector capabilities. Its historical
 1.0 **overlap** recall shows agreement with those templates, not strict full-span
-coverage or real-world generalisation. Unlabelled narrative names, uncommon
-surnames, local institution vocabulary and quasi-identifier combination risk
-are not comprehensively evaluated by it.
+coverage or real-world generalisation. Narrative names, uncommon surnames, local
+institution vocabulary and quasi-identifier combination risk are not
+comprehensively evaluated by it.
+
+The corpus also cannot see forms its templates never produce: every document
+carries a medical-content label and writes names after an explicit field label,
+so a narrative opener (``张伟，男，67岁``) was invisible to every gate until an
+independent probe found it reaching release with the name intact. The
+`姓名，性别` opener is now covered; other narrative forms remain outside the
+baseline. See [evaluation.md](evaluation.md).
 
 The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
 the five annotated rare-context notes correctly returned ASK. That run did not
