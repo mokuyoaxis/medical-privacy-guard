@@ -16,8 +16,26 @@ from typing import Iterable, Sequence
 from core.model import DetectedFact
 
 from .base import Detector
+from .clinical_context import (
+    AccessionNumberDetector,
+    DoctorNameDetector,
+    LandlineDetector,
+    NurseNameDetector,
+    PostalCodeDetector,
+    RareContextDetector,
+    RelativeNameDetector,
+    SocialMediaIdDetector,
+    SpecimenIdDetector,
+)
 from .cn_identifiers import CnIdDetector, CnPhoneDetector
 from .dates import DateDetector
+from .demographics import AgeDetector, SexDetector
+from .institution import (
+    BedNumberDetector,
+    DepartmentDetector,
+    HospitalNameDetector,
+    WardDetector,
+)
 from .location import PreciseLocationDetector
 from .medical_content import MedicalContentDetector
 from .medical_record import MedicalRecordDetector
@@ -25,15 +43,34 @@ from .person import PersonNameDetector
 from .regex import EmailDetector, IpAddressDetector, UrlDetector
 
 DEFAULT_DETECTORS: tuple[Detector, ...] = (
+    # Layer 1: unambiguous machine formats
     CnPhoneDetector(),
     CnIdDetector(),
     EmailDetector(),
     UrlDetector(),
     IpAddressDetector(),
     DateDetector(),
+    LandlineDetector(),
+    # Layer 2: labelled fields
     PersonNameDetector(),
     MedicalRecordDetector(),
     PreciseLocationDetector(),
+    SpecimenIdDetector(),
+    AccessionNumberDetector(),
+    PostalCodeDetector(),
+    SocialMediaIdDetector(),
+    # Layer 3: clinical narrative and institution context
+    HospitalNameDetector(),
+    DepartmentDetector(),
+    WardDetector(),
+    BedNumberDetector(),
+    DoctorNameDetector(),
+    NurseNameDetector(),
+    RelativeNameDetector(),
+    AgeDetector(),
+    SexDetector(),
+    RareContextDetector(),
+    # Layer 4: document-level classification
     MedicalContentDetector(),
 )
 
@@ -46,6 +83,22 @@ def detect_all(text: str, detectors: Sequence[Detector] | None = None) -> tuple[
     for detector in detectors:
         raw.extend(detector.detect(text))
     return _merge(raw)
+
+
+#: Document-level classifications describe the payload as a whole rather than
+#: one span. They must never displace a span-level fact: a rare-context signal
+#: overlapping a generic "疾病" match is the more specific claim, and dropping
+#: it would silently skip the ASK path for a patient-attributed rare disease.
+_DOCUMENT_LEVEL_TYPES = frozenset({"MEDICAL_CONTENT", "PARSER_FAILURE", "UNSUPPORTED_FORMAT"})
+
+
+def _rank(fact: DetectedFact) -> tuple[int, float, int]:
+    """Overlap priority: span-level first, then confidence, then length."""
+    return (
+        0 if fact.type in _DOCUMENT_LEVEL_TYPES else 1,
+        fact.confidence,
+        fact.end - fact.start,
+    )
 
 
 def _merge(facts: Iterable[DetectedFact]) -> tuple[DetectedFact, ...]:
@@ -62,10 +115,7 @@ def _merge(facts: Iterable[DetectedFact]) -> tuple[DetectedFact, ...]:
         if fact.start >= last.end:
             merged.append(fact)
             continue
-        # Overlap: keep the higher-confidence fact, then the longer one.
-        if fact.confidence > last.confidence:
+        # Overlap: keep the span-level fact, then the higher-confidence, longer one.
+        if _rank(fact) > _rank(last):
             merged[-1] = fact
-        elif fact.confidence == last.confidence and (fact.end - fact.start) > (last.end - last.start):
-            merged[-1] = fact
-        # Otherwise keep the existing one.
     return tuple(merged)

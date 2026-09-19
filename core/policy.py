@@ -1,6 +1,6 @@
 """Policy engine: loads policy profiles and evaluates facts into a Decision.
 
-Design (see plan.md §13):
+Design:
 - PolicyProfile loads and validates a YAML/JSON profile (invalid config → PolicyError, fail closed).
 - PolicyEvaluator turns DetectedFacts + Recipient + Purpose into a stable Decision.
 - Hard rules always win over risk scores (hard constraints > score).
@@ -34,18 +34,33 @@ from .model import (
 # Fact type → ReasonCode (stable, machine-readable)
 _FACT_REASON_CODES: Mapping[str, ReasonCode] = {
     "PHONE": ReasonCode.CONTACT_IDENTIFIER_PRESENT,
+    "LANDLINE": ReasonCode.CONTACT_IDENTIFIER_PRESENT,
     "EMAIL": ReasonCode.CONTACT_IDENTIFIER_PRESENT,
+    "SOCIAL_MEDIA_ID": ReasonCode.CONTACT_IDENTIFIER_PRESENT,
     "URL": ReasonCode.NETWORK_IDENTIFIER_PRESENT,
     "IP_ADDRESS": ReasonCode.NETWORK_IDENTIFIER_PRESENT,
     "PERSON_NAME": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "DOCTOR_NAME": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "NURSE_NAME": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "RELATIVE_NAME": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "HOSPITAL_NAME": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "DEPARTMENT": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "WARD": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
+    "BED_NUMBER": ReasonCode.DIRECT_IDENTIFIER_PRESENT,
     "GOVERNMENT_ID": ReasonCode.GOVERNMENT_ID_PRESENT,
     "MEDICAL_RECORD_NUMBER": ReasonCode.MEDICAL_RECORD_IDENTIFIER_PRESENT,
+    "SPECIMEN_ID": ReasonCode.MEDICAL_RECORD_IDENTIFIER_PRESENT,
+    "ACCESSION_NUMBER": ReasonCode.MEDICAL_RECORD_IDENTIFIER_PRESENT,
     "EXACT_DATE": ReasonCode.EXACT_DATE_PRESENT,
     "PRECISE_LOCATION": ReasonCode.PRECISE_LOCATION_PRESENT,
+    "POSTAL_CODE": ReasonCode.PRECISE_LOCATION_PRESENT,
+    "AGE": ReasonCode.QUASI_IDENTIFIER_COMBINATION,
+    "SEX": ReasonCode.QUASI_IDENTIFIER_COMBINATION,
     "BIOMETRIC": ReasonCode.BIOMETRIC_DATA_PRESENT,
     "GENETIC": ReasonCode.GENETIC_DATA_PRESENT,
     "MEDICAL_CONTENT": ReasonCode.MEDICAL_CONTENT_PRESENT,
     "RARE_CONDITION": ReasonCode.RARE_CONDITION_REIDENTIFICATION_RISK,
+    "RARE_CONTEXT": ReasonCode.RARE_CONDITION_REIDENTIFICATION_RISK,
     "PARSER_FAILURE": ReasonCode.PARSER_FAILURE,
     "UNSUPPORTED_FORMAT": ReasonCode.UNSUPPORTED_FORMAT,
 }
@@ -53,21 +68,46 @@ _FACT_REASON_CODES: Mapping[str, ReasonCode] = {
 # Fact type → human-readable description used in explanations (no raw PHI)
 _FACT_LABELS: Mapping[str, str] = {
     "PHONE": "phone number",
+    "LANDLINE": "landline number",
     "EMAIL": "email address",
+    "SOCIAL_MEDIA_ID": "social media handle",
     "URL": "URL",
     "IP_ADDRESS": "IP address",
     "PERSON_NAME": "person name",
+    "DOCTOR_NAME": "physician name",
+    "NURSE_NAME": "nurse name",
+    "RELATIVE_NAME": "relative name",
+    "HOSPITAL_NAME": "institution name",
+    "DEPARTMENT": "department name",
+    "WARD": "ward designation",
+    "BED_NUMBER": "bed number",
     "GOVERNMENT_ID": "government ID",
     "MEDICAL_RECORD_NUMBER": "medical record number",
+    "SPECIMEN_ID": "specimen identifier",
+    "ACCESSION_NUMBER": "accession number",
     "EXACT_DATE": "exact date",
     "PRECISE_LOCATION": "precise location",
+    "POSTAL_CODE": "postal code",
+    "AGE": "age",
+    "SEX": "sex",
     "BIOMETRIC": "biometric data",
     "GENETIC": "genetic data",
     "MEDICAL_CONTENT": "medical content",
     "RARE_CONDITION": "rare condition signal",
+    "RARE_CONTEXT": "rare-context signal",
     "PARSER_FAILURE": "unparseable input",
     "UNSUPPORTED_FORMAT": "unsupported format",
 }
+
+# Context types inform risk but have no span-level transformation. A payload
+# containing only these cannot be made "safer" by rewriting text, so policy
+# must not demand a transformation plan for them. This is an explicit
+# allow-list: any type *not* listed here and not declared in the profile still
+# fails closed (undeclared → BLOCK). Verification imports this set so that a
+# released payload is judged by the same rule policy used to allow it.
+CONTEXT_ONLY_TYPES: frozenset[str] = frozenset(
+    {"MEDICAL_CONTENT", "SEX", "RARE_CONTEXT"}
+)
 
 # Fallback risk for fact types not declared in a profile (fail-closed).
 _UNKNOWN_FACT_RISK = 25
@@ -394,6 +434,7 @@ class PolicyEvaluator:
         """
         del environment  # reserved for future context inputs
         fact_types = tuple(f.type for f in facts)
+        fact_types_set = set(fact_types)
 
         risk = self._compute_risk(facts, recipient, purpose)
 
@@ -411,8 +452,8 @@ class PolicyEvaluator:
         # No sensitive content: recipient/purpose risk is a *scenario* risk
         # that transformations cannot fix, so it must not turn an empty
         # payload into SANITIZE (which would have nothing to transform).
-        # Absence of detected facts is provably safe content-wise; hard rules
-        # above already handled blocked recipients.
+        # No facts means no supported pattern matched, not proof of anonymity.
+        # Hard rules above already handled blocked recipients.
         if not fact_types:
             return self._decision(
                 verdict=Verdict.ALLOW,
@@ -468,10 +509,11 @@ class PolicyEvaluator:
                 explanation="Sensitive content was detected but the disclosure purpose is unknown; human context is required.",
             )
 
-        # Rare-condition signals are not safely fixed by span replacement.
+        # Rare-condition / rare-context signals are not safely fixed by span
+        # replacement: "本县唯一一名103岁患者" identifies by narrative alone.
         # External disclosure therefore needs scoped human review.
         if (
-            "RARE_CONDITION" in fact_types
+            fact_types_set & {"RARE_CONDITION", "RARE_CONTEXT"}
             and recipient.trust_level
             in (TrustLevel.EXTERNAL_UNKNOWN, TrustLevel.EXTERNAL_APPROVED)
         ):
@@ -491,7 +533,7 @@ class PolicyEvaluator:
         # an unknown external endpoint; require scoped human approval or an
         # explicitly approved recipient.
         if (
-            "MEDICAL_CONTENT" in fact_types
+            "MEDICAL_CONTENT" in fact_types_set
             and recipient.trust_level is TrustLevel.EXTERNAL_UNKNOWN
         ):
             return self._decision(
@@ -528,13 +570,26 @@ class PolicyEvaluator:
         # MEDICAL_CONTENT is a contextual classification, not a span to erase:
         # under a declared purpose it may remain after direct identifiers have
         # been removed.  It is still surfaced in the decision and audit.
-        if set(fact_types) == {"MEDICAL_CONTENT"}:
+        # Context-only types (medical content, sex, rare-context signals) have
+        # no span transformation: rewriting the text cannot make them safer.
+        # A payload of nothing but these is allowed under a declared purpose,
+        # with the risk recorded. Any other untransformed type falls through
+        # to BLOCK below.
+        if fact_types_set <= CONTEXT_ONLY_TYPES:
+            codes = tuple(
+                dict.fromkeys(
+                    _FACT_REASON_CODES[ft] for ft in fact_types if ft in _FACT_REASON_CODES
+                )
+            )
             return self._decision(
                 verdict=Verdict.ALLOW,
-                reason_codes=(ReasonCode.MEDICAL_CONTENT_PRESENT,),
+                reason_codes=codes or (ReasonCode.MEDICAL_CONTENT_PRESENT,),
                 risk=risk,
                 plan=None,
-                explanation="Medical content is present, but no configured direct identifier remains under the declared purpose.",
+                explanation=(
+                    "Only non-transformable context signals remain "
+                    f"({', '.join(sorted(fact_types_set))}); no direct identifier to remove."
+                ),
             )
 
         return self._decision(

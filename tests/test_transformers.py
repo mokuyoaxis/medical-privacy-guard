@@ -8,7 +8,7 @@ Coverage:
 - payload-derived DATE_SHIFT seed determinism
 - end-to-end: detector → policy plan → transform
 - failure modes: unknown op, TOKENIZE without raw value
-- outcome never contains raw values
+- outcome and evidence repr do not expose payload values
 """
 
 import pytest
@@ -248,3 +248,129 @@ class TestEndToEnd:
 
         outcome = apply_plan(text, facts, decision.plan)
         assert outcome.text == "电话[REDACTED]"
+
+
+# -- idempotency -------------------------------------------------------------
+#
+# Verification re-detects the sanitized output. If a transformation's own
+# output looks like fresh input, the pipeline never reaches a fixed point: the
+# policy re-run keeps demanding work and nothing is ever released. Both the age
+# bands and the type markers violated this.
+
+
+class TestIdempotency:
+    def test_age_bands_are_not_re_detected_as_ages(self):
+        from transformers.generalize import _AGE_BANDS
+
+        for _, _, label in _AGE_BANDS:
+            text = f"年龄：{label}"
+            found = [f.type for f in detect_all(text) if f.type == "AGE"]
+            assert found == [], (label, found)
+
+    def test_type_markers_do_not_re_detect_their_own_type(self):
+        from transformers.generalize import _TYPE_MARKERS
+
+        for fact_type, marker in sorted(_TYPE_MARKERS.items()):
+            text = f"字段：{marker}"
+            found = [f.type for f in detect_all(text)]
+            assert fact_type not in found, (fact_type, marker, found)
+
+    def test_sanitized_output_needs_no_further_transformation(self):
+        text = (
+            "患者：测试患者甲，性别：男，年龄：67岁\n"
+            "联系地址：北京市朝阳区建国路88号院2号楼\n"
+            "住院号：SYNTH-MRN-0001\n"
+            "就诊日期：2026-08-21\n"
+            "诊断：脑梗死\n"
+        )
+        evaluator = PolicyEvaluator(load_builtin_profile("external-ai-strict"))
+        recipient = Recipient(kind="llm", trust_level=TrustLevel.EXTERNAL_APPROVED)
+
+        facts = detect_all(text)
+        decision = evaluator.evaluate(facts, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        once = apply_plan(text, facts, decision.plan).text
+
+        residual = detect_all(once)
+        second = evaluator.evaluate(residual, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        if second.plan is not None:
+            twice = apply_plan(once, residual, second.plan).text
+            assert twice == once, (once, twice)
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("2026-8-9", "2026-08"), ("2026/8/9", "2026/08"),
+    ("2026.8.9", "2026.08"), ("8/9/2026", "2026-08"),
+    ("２０２６-８-９", "2026-08"), ("２０２６/０８/９", "2026/08"),
+    ("20２６.8.０９", "2026.08"), ("８/9/20２６", "2026-08"),
+    ("２０２６年８月９日", "2026年8月"),
+])
+def test_unpadded_numeric_dates_generalize(value, expected):
+    outcome = apply_plan(value, (fact("EXACT_DATE", 0, len(value), value),), plan(
+        TransformationOp(op="GENERALIZE", target="EXACT_DATE")
+    ))
+    assert outcome.text == expected
+
+
+@pytest.mark.parametrize("value,action,parameters", [
+    ("2026-02-30", "GENERALIZE", {}),
+    ("2026年2月30日", "DATE_SHIFT", {"shift_days": 1}),
+    ("9999-12-31", "DATE_SHIFT", {"shift_days": 1}),
+    ("0001-01-01", "DATE_SHIFT", {"shift_days": -1}),
+    ("2026-08-21", "DATE_SHIFT", {"shift_days": 0}),
+    ("2026-08-21", "DATE_SHIFT", {"shift_days": "secret-offset"}),
+    ("2026-08-21", "DATE_SHIFT", {"shift_days": True}),
+    ("2026-08-21", "DATE_SHIFT", {"shift_days": 1.5}),
+])
+def test_invalid_dates_and_offsets_fail_without_raw_values(value, action, parameters):
+    with pytest.raises(TransformerError) as error:
+        apply_plan(value, (fact("EXACT_DATE", 0, len(value), value),), plan(
+            TransformationOp(op=action, target="EXACT_DATE", parameters=parameters)
+        ))
+    assert value not in str(error.value)
+    assert "secret-offset" not in str(error.value)
+
+
+@pytest.mark.parametrize("value", ["secret-age", "999岁", "1234岁"])
+def test_age_errors_do_not_echo_raw_value(value):
+    with pytest.raises(TransformerError) as error:
+        apply_plan(value, (fact("AGE", 0, len(value), value),), plan(
+            TransformationOp(op="GENERALIZE", target="AGE")
+        ))
+    assert value not in str(error.value)
+
+
+def test_zero_hash_offset_is_replaced_by_nonzero_shift(monkeypatch):
+    class ZeroOffsetHash:
+        def hexdigest(self):
+            return f"{365:08x}" + "0" * 56
+
+    monkeypatch.setattr("transformers.registry.hashlib.sha256", lambda value: ZeroOffsetHash())
+    outcome = apply_plan("2026-01-01", (fact("EXACT_DATE", 0, 10, "2026-01-01"),), plan(
+        TransformationOp(op="DATE_SHIFT", target="EXACT_DATE")
+    ))
+    assert outcome.text == "2027-01-01"
+    assert outcome.applied[0].parameters["_seed"] == 365
+
+
+def test_execution_evidence_spans_and_repr():
+    text = "张伟 2026-08-21"
+    outcome = apply_plan(text, (
+        fact("PERSON_NAME", 0, 2, "张伟"), fact("EXACT_DATE", 3, 13, "2026-08-21"),
+    ), plan(
+        TransformationOp(op="TOKENIZE", target="PERSON_NAME"),
+        TransformationOp(op="DATE_SHIFT", target="EXACT_DATE", parameters={"shift_days": 1}),
+    ))
+    for record in outcome._evidence:
+        assert outcome.text[record.output_start:record.output_end] == record.replacement
+        assert record.replacement not in repr(record)
+    assert outcome.text not in repr(outcome)
+    assert "2026-08-22" not in repr(outcome)
+
+
+def test_explicit_empty_token_registry_retains_distinct_entities_across_calls():
+    tokens = TokenRegistry()
+    operation = TransformationOp(op="TOKENIZE", target="PERSON_NAME")
+    for value, expected in [("张伟", "001"), ("李四", "002"), ("张伟", "001")]:
+        outcome = apply_plan(value, (fact("PERSON_NAME", 0, 2, value),), plan(operation), tokens)
+        assert outcome.text == f"[PERSON_NAME_{expected}]"
+    assert len(tokens) == 2

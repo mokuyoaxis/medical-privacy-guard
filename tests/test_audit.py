@@ -53,6 +53,16 @@ def sample_event() -> AuditEvent:
     )
 
 
+def _write_concurrent_events(directory, worker):
+    from dataclasses import replace
+
+    writer = AuditWriter(directory)
+    for index in range(12):
+        event = replace(sample_event(), event_id=f"{worker}-{index}",
+                        reason_codes=("合成元数据" * 2048,))
+        assert writer.record(event) == event.event_id
+
+
 # -- writing / reading -------------------------------------------------------
 
 
@@ -99,6 +109,101 @@ class TestWriter:
 
         mode = stat.S_IMODE(writer.filename.stat().st_mode)
         assert mode & 0o077 == 0  # no group/other permissions
+
+
+class TestWriteIntegrity:
+    @pytest.mark.parametrize("strict", [True, False])
+    @pytest.mark.parametrize("failure", ["short", "zero", "write", "fsync"])
+    def test_incomplete_write_never_succeeds(self, tmp_path, monkeypatch, strict, failure):
+        import os
+        from dataclasses import replace
+
+        writer = AuditWriter(tmp_path, strict=strict)
+        event = replace(sample_event(), reason_codes=("合成元数据",))
+        data = (event.to_json_line() + "\n").encode("utf-8")
+        original_write = os.write
+        original_close = os.close
+        writes = []
+        synced = []
+        closed = []
+
+        def write(fd, content):
+            writes.append(bytes(content))
+            if failure == "write":
+                raise OSError("synthetic write failure")
+            if failure == "zero":
+                return 0
+            return original_write(fd, content[:1] if failure == "short" else content)
+
+        def fsync(fd):
+            synced.append(fd)
+            if failure == "fsync":
+                raise OSError("synthetic fsync failure")
+
+        def close(fd):
+            closed.append(fd)
+            original_close(fd)
+
+        monkeypatch.setattr(os, "write", write)
+        monkeypatch.setattr(os, "fsync", fsync)
+        monkeypatch.setattr(os, "close", close)
+        if strict:
+            with pytest.raises(AuditError):
+                writer.record(event)
+        else:
+            assert writer.record(event) == ""
+        assert writes == [data]
+        assert len(closed) == 1
+        assert len(synced) == (1 if failure == "fsync" else 0)
+        expected = data if failure == "fsync" else data[:1] if failure == "short" else b""
+        assert writer.filename.read_bytes() == expected
+
+    def test_utf8_bytes_written_once_before_fsync(self, tmp_path, monkeypatch):
+        import os
+        from dataclasses import replace
+
+        writer = AuditWriter(tmp_path)
+        event = replace(sample_event(), reason_codes=("合成元数据",))
+        original_write = os.write
+        original_fsync = os.fsync
+        calls = []
+
+        def write(fd, data):
+            calls.append(("write", data))
+            return original_write(fd, data)
+
+        def fsync(fd):
+            calls.append(("fsync", None))
+            return original_fsync(fd)
+
+        monkeypatch.setattr(os, "write", write)
+        monkeypatch.setattr(os, "fsync", fsync)
+        assert writer.record(event) == event.event_id
+        assert calls == [("write", (event.to_json_line() + "\n").encode("utf-8")),
+                         ("fsync", None)]
+        assert writer.read_all() == (event,)
+
+    @pytest.mark.parametrize("executor_kind", ["threads", "processes"])
+    def test_concurrent_append_keeps_complete_events(self, tmp_path, executor_kind):
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+
+        if executor_kind == "processes":
+            executor = ProcessPoolExecutor(max_workers=4,
+                                           mp_context=multiprocessing.get_context("spawn"))
+        else:
+            executor = ThreadPoolExecutor(max_workers=4)
+        with executor:
+            futures = [executor.submit(_write_concurrent_events, str(tmp_path), worker)
+                       for worker in range(4)]
+            for future in futures:
+                future.result(timeout=30)
+        events = AuditWriter(tmp_path).read_all()
+        assert len(events) == 48
+        assert {event.event_id for event in events} == {
+            f"{worker}-{index}" for worker in range(4) for index in range(12)
+        }
+        assert all(event.reason_codes == ("合成元数据" * 2048,) for event in events)
 
 
 # -- no raw PHI (canary) -----------------------------------------------------

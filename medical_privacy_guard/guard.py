@@ -181,6 +181,9 @@ class Guard:
 
         if request_payload.kind != "text" or not isinstance(text, str):
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
+            self._maybe_audit(
+                audit_dir or self.audit_dir, decision, (), recipient_obj, purpose_obj, None
+            )
             return SanitizationResult(
                 decision_before=decision,
                 sanitized_payload=None,
@@ -204,6 +207,9 @@ class Guard:
                 original_facts=facts,
                 recipient=recipient_obj,
                 purpose=purpose_obj,
+                original_text=text,
+                plan=decision.plan,
+                outcome=outcome,
             )
             if verification.passed:
                 sanitized = Payload(

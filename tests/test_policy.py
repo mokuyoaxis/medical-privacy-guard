@@ -230,6 +230,24 @@ class TestDecisionBehavior:
         assert decision.verdict is Verdict.BLOCK
         assert ReasonCode.TRANSFORMATION_INCOMPLETE in decision.reason_codes
 
+    def test_unknown_fact_type_fails_closed_in_research_profile(self, research):
+        decision = research.evaluate(
+            (fact("SOME_WEIRD_ENTITY"),),
+            external_unknown_recipient(),
+            Purpose.RESEARCH,
+        )
+        assert decision.verdict is Verdict.BLOCK
+        assert ReasonCode.TRANSFORMATION_INCOMPLETE in decision.reason_codes
+
+    def test_unknown_fact_type_blocks_even_when_mixed_with_transformable(self, strict):
+        decision = strict.evaluate(
+            (fact("PERSON_NAME"), fact("SOME_WEIRD_ENTITY")),
+            external_unknown_recipient(),
+            Purpose.EXTERNAL_AI_ASSISTANCE,
+        )
+        assert decision.verdict is Verdict.BLOCK
+        assert ReasonCode.TRANSFORMATION_INCOMPLETE in decision.reason_codes
+
     def test_medical_content_alone_allows_for_declared_local_treatment(self, strict):
         decision = strict.evaluate(
             (fact("MEDICAL_CONTENT"),),

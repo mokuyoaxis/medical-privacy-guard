@@ -1,6 +1,6 @@
 """Transformer base classes and shared state.
 
-Design (plan.md §10): a transformer turns one matched span (DetectedFact)
+Design: a transformer turns one matched span (DetectedFact)
 into a replacement string. `apply_plan` in registry.py drives the whole
 DisclosurePlan, applying operations right-to-left so earlier replacements do
 not shift later spans.
@@ -13,7 +13,7 @@ it appears) and the map is never written to audit.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.model import DetectedFact, TransformationOp
 
@@ -38,16 +38,30 @@ class TokenRegistry:
         return len(self._map)
 
 
+@dataclass(frozen=True, repr=False)
+class _SpanEvidence:
+    """Private in-memory execution record; never serialize to audit."""
+
+    start: int
+    end: int
+    output_start: int
+    output_end: int
+    operation: TransformationOp
+    replacement: str
+
+
 @dataclass(frozen=True)
 class TransformOutcome:
-    """Result of applying a DisclosurePlan to text.
+    """Internal result: text and evidence may contain sensitive values.
 
-    `applied` lists the operations that actually replaced at least one span.
-    The outcome never contains raw sensitive values.
+    `applied` lists unique operations in right-to-left replacement order;
+    `_evidence` lists spans in input order with their final output offsets.
+    Neither this object nor its evidence is an audit or public-facts representation.
     """
 
-    text: str
-    applied: tuple[TransformationOp, ...] = ()
+    text: str = field(repr=False)
+    applied: tuple[TransformationOp, ...] = field(default=(), repr=False)
+    _evidence: tuple[_SpanEvidence, ...] = field(default=(), repr=False)
 
 
 class Transformer(ABC):

@@ -14,9 +14,14 @@ from core.model import DetectedFact
 
 from .base import Detector
 
-# Mainland mobile: 1[3-9] followed by 9 digits. Word boundaries keep partial
-# numbers (e.g. 13800000000 in a longer digit run) from matching.
-_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+_PHONE_DIGIT = r"[0-9０-９]"
+_PHONE_PREFIX = rf"[1１][3-9３-９]{_PHONE_DIGIT}"
+_PHONE_SEPARATOR = r"(?:[ \u00a0\u3000]+|[-－])"
+_PHONE_RE = re.compile(
+    rf"(?<!\d){_PHONE_PREFIX}"
+    rf"(?:{_PHONE_DIGIT}{{8}}|{_PHONE_SEPARATOR}{_PHONE_DIGIT}{{4}}"
+    rf"{_PHONE_SEPARATOR}{_PHONE_DIGIT}{{4}})(?!\d)"
+)
 
 # Candidate 18-digit ID. The check digit X may be upper or lower case.
 _ID18_CANDIDATE_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
@@ -72,7 +77,7 @@ class CnIdDetector(Detector):
     A candidate that fails validation is reported as a LOW-confidence
     GOVERNMENT_ID fact rather than dropped silently: an invalid check digit
     could still be a genuine ID in a legacy or malformed record, and
-    fail-closed is preferred over silent discard (plan.md §9.3).
+    fail-closed is preferred over silent discard.
     """
 
     name = "cn_id18"

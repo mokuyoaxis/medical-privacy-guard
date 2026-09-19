@@ -7,9 +7,22 @@ to audit logs or serialised to persistent storage without explicit handling.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
+
+#: Markers the transformation layer writes in place of a sensitive value
+#: (`[REDACTED]`, `[PERSON_NAME_001]`, `[LOCATION_GENERALIZED]`). They must
+#: stay inert. The guard re-detects a sanitized payload during verification,
+#: and a detector that reads our own marker as a fresh identifier makes the
+#: policy re-run report SANITIZE forever — so no note could ever be released.
+PLACEHOLDER_RE = re.compile(r"\[[A-Z][A-Z0-9_]*\]")
+
+
+def is_placeholder(value: str) -> bool:
+    """True when *value* is exactly a marker emitted by the transformer layer."""
+    return bool(PLACEHOLDER_RE.fullmatch(value.strip()))
 
 
 class Verdict(str, Enum):

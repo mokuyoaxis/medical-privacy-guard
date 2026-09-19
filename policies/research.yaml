@@ -69,12 +69,57 @@ rules:
     GENETIC:
       action: BLOCK
       risk_score: 50
+    # v0.2 clinical-narrative and institution types
+    AGE:
+      action: GENERALIZE
+      risk_score: 8
+    HOSPITAL_NAME:
+      action: GENERALIZE
+      risk_score: 15
+    DEPARTMENT:
+      action: GENERALIZE
+      risk_score: 12
+    WARD:
+      action: GENERALIZE
+      risk_score: 15
+    BED_NUMBER:
+      action: REMOVE
+      risk_score: 15
+    DOCTOR_NAME:
+      action: TOKENIZE
+      risk_score: 15
+    NURSE_NAME:
+      action: TOKENIZE
+      risk_score: 15
+    RELATIVE_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    SPECIMEN_ID:
+      action: TOKENIZE
+      risk_score: 20
+    ACCESSION_NUMBER:
+      action: TOKENIZE
+      risk_score: 20
+    LANDLINE:
+      action: REMOVE
+      risk_score: 15
+    POSTAL_CODE:
+      action: REMOVE
+      risk_score: 15
+    SOCIAL_MEDIA_ID:
+      action: REMOVE
+      risk_score: 20
 
   medical:
     MEDICAL_CONTENT:
       risk_score: 5
     RARE_CONDITION:
       risk_score: 30
+    # Non-transformable context signals (see external-ai-strict).
+    RARE_CONTEXT:
+      risk_score: 35
+    SEX:
+      risk_score: 5
 
 recipient_risk:
   LOCAL: 0

@@ -71,6 +71,46 @@ rules:
     GENETIC:
       action: BLOCK
       risk_score: 50
+    # v0.2 clinical-narrative and institution types
+    AGE:
+      action: GENERALIZE
+      risk_score: 10
+    HOSPITAL_NAME:
+      action: GENERALIZE
+      risk_score: 20
+    DEPARTMENT:
+      action: GENERALIZE
+      risk_score: 15
+    WARD:
+      action: GENERALIZE
+      risk_score: 20
+    BED_NUMBER:
+      action: REMOVE
+      risk_score: 20
+    DOCTOR_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    NURSE_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    RELATIVE_NAME:
+      action: TOKENIZE
+      risk_score: 25
+    SPECIMEN_ID:
+      action: REMOVE
+      risk_score: 25
+    ACCESSION_NUMBER:
+      action: REMOVE
+      risk_score: 25
+    LANDLINE:
+      action: REMOVE
+      risk_score: 20
+    POSTAL_CODE:
+      action: REMOVE
+      risk_score: 20
+    SOCIAL_MEDIA_ID:
+      action: REMOVE
+      risk_score: 25
 
   # Medical content risk (quasi-identifiers)
   medical:
@@ -78,6 +118,12 @@ rules:
       risk_score: 10
     RARE_CONDITION:
       risk_score: 20
+    # Non-transformable context signals: they contribute risk and can trigger
+    # ASK, but there is no span to rewrite.
+    RARE_CONTEXT:
+      risk_score: 30
+    SEX:
+      risk_score: 5
 
 # Recipient risk modifiers
 recipient_risk:

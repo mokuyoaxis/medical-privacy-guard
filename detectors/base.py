@@ -1,6 +1,6 @@
 """Detector base classes.
 
-Design: classifiers produce facts, not policy (see plan.md §9). A Detector
+Design: classifiers produce facts, not policy. A Detector
 turns raw text into a tuple of immutable DetectedFact objects. Detectors never
 decide the verdict — that is the policy engine's job.
 """

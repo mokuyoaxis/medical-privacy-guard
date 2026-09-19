@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from core.model import DetectedFact
+from core.model import DetectedFact, is_placeholder
 
 from .base import Detector
 
@@ -25,6 +25,10 @@ class PreciseLocationDetector(Detector):
         facts: list[DetectedFact] = []
         for match in _ADDRESS_FIELD_RE.finditer(text):
             value = match.group("value").strip()
+            # 联系地址：[LOCATION_GENERALIZED] is the guard's own output, not a
+            # fresh address; re-detecting it would block every release.
+            if is_placeholder(value):
+                continue
             start = match.start("value")
             facts.append(
                 DetectedFact(

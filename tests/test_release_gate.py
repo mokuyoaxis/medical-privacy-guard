@@ -108,3 +108,88 @@ def test_cli_audit_failure_releases_no_output(tmp_path, capsys, monkeypatch):
     assert not output.exists()
     assert captured.out == ""
     assert "audit failure" in captured.err
+
+
+# -- the release path on a full clinical note -------------------------------
+#
+# Every other test here sanitizes a payload with no clinical content, which is
+# a shape no real note has. A note that mentions history, sex and an age
+# exercises a different branch of verification, and that branch was broken:
+# nothing was ever released, and the benchmark reported zero residual PHI
+# because it never had a payload to inspect.
+
+NOTE = """患者：测试患者甲，性别：男，年龄：67岁
+联系地址：北京市朝阳区建国路88号院2号楼
+住院号：SYNTH-MRN-0001
+就诊日期：2026-08-21
+主诉：突发右侧肢体无力3小时。
+既往史：高血压病史10年。
+诊断：脑梗死
+"""
+
+RAW_VALUES = (
+    "测试患者甲",
+    "67岁",
+    "建国路88号院2号楼",
+    "SYNTH-MRN-0001",
+    "2026-08-21",
+)
+
+
+def test_clinical_note_is_released_and_verified():
+    result = Guard().sanitize(NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_before.verdict is Verdict.SANITIZE
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None, "a verified note must be released"
+    output = result.sanitized_payload.content
+    for raw in RAW_VALUES:
+        assert raw not in output, raw
+
+
+def test_clinical_note_output_converges_to_allow():
+    """Re-running policy on the released note must not still demand work.
+
+    If it does, the guard is telling itself the output is unsafe, which is how
+    the release path silently produced nothing.
+    """
+    result = Guard().sanitize(NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_after is not None
+    assert result.decision_after.verdict is Verdict.ALLOW
+
+
+def test_clinical_note_keeps_clinical_meaning():
+    """De-identification must not strip the clinical content itself."""
+    output = Guard().sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    ).sanitized_payload.content
+    for kept in ("脑梗死", "高血压", "突发右侧肢体无力"):
+        assert kept in output, kept
+
+
+def test_clinical_note_generalizes_rather_than_erases_age():
+    output = Guard().sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    ).sanitized_payload.content
+    assert "60-69岁" in output
+
+
+def test_clinical_note_to_unknown_recipient_never_releases():
+    """Medical content to an unknown endpoint needs consent, so nothing ships."""
+    result = Guard().sanitize(NOTE, "external_unknown", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_before.verdict is Verdict.ASK
+    assert result.sanitized_payload is None
+
+
+def test_date_shift_profile_releases_with_residual_dates():
+    """Under DATE_SHIFT a shifted date is still a date, so the policy re-run
+    returns SANITIZE rather than ALLOW. The note must still be released."""
+    result = Guard(profile="research").sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    )
+    assert result.decision_before.verdict is Verdict.SANITIZE
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None
+    output = result.sanitized_payload.content
+    assert "2026-08-21" not in output
+    for raw in ("测试患者甲", "67岁", "SYNTH-MRN-0001"):
+        assert raw not in output, raw

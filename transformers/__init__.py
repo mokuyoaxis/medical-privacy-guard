@@ -1,6 +1,6 @@
 """Transformers for the text MVP.
 
-Transformers are explicit, verifiable operation sets (plan.md §10): they turn
+Transformers are explicit, verifiable operation sets: they turn
 matched spans into replacements. Policy decides what to do; transformers only
 execute. The registry applies a whole DisclosurePlan right-to-left so span
 offsets stay valid.

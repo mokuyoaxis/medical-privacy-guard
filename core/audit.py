@@ -1,4 +1,4 @@
-"""Privacy-safe append-only audit (plan.md §18).
+"""Privacy-safe append-only audit.
 
 Every decision is auditable without the audit log becoming a new privacy
 leak: events carry metadata only — verdict, reason codes, entity type counts,
@@ -133,9 +133,12 @@ def _transform_labels(ops: Sequence[TransformationOp]) -> tuple[str, ...]:
 class AuditWriter:
     """Appends AuditEvents to an append-only JSONL file.
 
-    Every record() call opens the file in append mode and fsyncs the write, so
-    the log is durable and immutable-by-convention. `strict=True` (default)
-    raises AuditError on any write failure so callers can BLOCK.
+    Each event uses one O_APPEND write followed by fsync. Short writes fail
+    without retrying: retries could interleave concurrent events. A failed
+    write may leave a partial record; it is never reported as success.
+    Concurrent integrity relies on the filesystem's atomic append semantics,
+    not a cross-platform or network-filesystem locking guarantee.
+    `strict=True` (default) raises AuditError on any write failure.
     """
 
     def __init__(self, directory: str | Path, strict: bool = True) -> None:
@@ -162,7 +165,7 @@ class AuditWriter:
 
     def record(self, event: AuditEvent) -> str:
         """Append one event; returns its event_id."""
-        line = event.to_json_line() + "\n"
+        data = (event.to_json_line() + "\n").encode("utf-8")
         try:
             fd = os.open(
                 self.filename,
@@ -170,14 +173,14 @@ class AuditWriter:
                 0o600,
             )
             try:
-                os.write(fd, line.encode("utf-8"))
+                if os.write(fd, data) != len(data):
+                    raise OSError("incomplete audit event write")
                 os.fsync(fd)
             finally:
                 os.close(fd)
         except OSError as exc:
             if self.strict:
                 raise AuditError(f"audit write failed: {exc}") from exc
-            # Non-strict mode: degrade silently, but never partially succeed.
             return ""
         return event.event_id
 

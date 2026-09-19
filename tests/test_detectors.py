@@ -61,6 +61,40 @@ class TestCnPhone:
     def test_adjacent_digits_not_matched(self, detector):
         assert detector.detect("12313800000000") == ()
 
+    @pytest.mark.parametrize("value", [
+        "138 0000 0000", "138-0000-0000", "138  0000  0000",
+        "138\u00a00000\u00a00000", "１３８００００００００", "１３８　００００　００００",
+        "１３８－００００－００００", "1３8-０00０-000０",
+    ])
+    def test_formatted_mobile_preserves_original_span(self, detector, value):
+        text = f"联系：{value}；继续随访"
+        facts = detector.detect(text)
+        assert len(facts) == 1
+        assert facts[0].value == value
+        assert (facts[0].start, facts[0].end) == (3, 3 + len(value))
+        assert text[facts[0].start : facts[0].end] == value
+
+    @pytest.mark.parametrize("text", [
+        "128 0000 0000", "１２８００００００００", "138 000 0000", "138 00000 0000",
+        "138 0000 00000", "0138-0000-0000", "138-0000-00000",
+        "138\n0000\n0000", "138\t0000\t0000",
+        "١٣٨٠٠٠٠٠٠٠٠", "138 0000 000٠",
+        "剂量 138 mg，流速 0000 mL/h，累计 0000 mL", "血压 138-140 mmHg",
+    ])
+    def test_formatted_mobile_near_misses(self, detector, text):
+        assert detector.detect(text) == ()
+
+    def test_adjacent_formatted_mobiles_remain_separate(self, detector):
+        text = "138 0000 0000 139-1111-2222"
+        assert [f.value for f in detector.detect(text)] == [
+            "138 0000 0000", "139-1111-2222",
+        ]
+
+    def test_country_prefix_does_not_hide_mobile(self, detector):
+        assert [f.value for f in detector.detect("+86-138-0000-0000")] == [
+            "138-0000-0000",
+        ]
+
 
 # -- CN ID-18 ---------------------------------------------------------------
 
@@ -156,6 +190,35 @@ class TestDates:
     def test_old_date_19xx_accepted(self, detector):
         facts = detector.detect("1999-12-31")
         assert len(facts) == 1
+
+    @pytest.mark.parametrize("value", [
+        "2026-8-9", "2026-08-9", "2026-8-09", "2026/8/9", "2026.8.9",
+        "8/9/2026", "08/9/2026", "2026年08月09日", "2024-2-29",
+        "２０２６-８-９", "２０２６/０８/９", "２０２６.８.０９", "８/９/２０２６",
+        "２０２６年０８月９日", "20２６-8-９",
+    ])
+    def test_numeric_variants_preserve_original_span(self, detector, value):
+        text = f"入院：{value}；继续随访"
+        facts = detector.detect(text)
+        assert len(facts) == 1
+        assert facts[0].value == value
+        assert (facts[0].start, facts[0].end) == (3, 3 + len(value))
+        assert text[facts[0].start : facts[0].end] == value
+
+    @pytest.mark.parametrize("text", [
+        "2026-2-29", "2026-4-31", "2026-0-9", "2026-8-0", "2026-008-9",
+        "2026-8-009", "2026年02月30日", "２０２６-２-２９", "2026-8/9",
+        "12026-8-9", "2026-8-9123", "２０２６-８-９１２３", "8/9/20261",
+        "范围 2026-8-9-10", "范围 1-2026-8-9", "版本 2026.8.9.1",
+        "剂量 2-4 mg，频率 1/2/3 次，疗程 8-9 天", "剂量 2026.8 mg",
+        "血压 138/80 mmHg", "２０２６年８月", "20260809",
+    ])
+    def test_numeric_near_misses(self, detector, text):
+        assert detector.detect(text) == ()
+
+    def test_dates_either_side_of_range_marker(self, detector):
+        text = "住院 2026-8-9 至 2026-8-12"
+        assert [f.value for f in detector.detect(text)] == ["2026-8-9", "2026-8-12"]
 
 
 # -- person name ------------------------------------------------------------
