@@ -9,8 +9,8 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 
 | Version | Theme | Status |
 |---|---|---|
-| v0.1 | Text core MVP | Implemented; release pending CI/versioning |
-| v0.2 | Chinese medical text detection & evaluation | Implemented; security-hardening validation and release checks pending |
+| v0.1 | Text core MVP | Released (`v0.1.0`) |
+| v0.2 | Chinese medical text detection & evaluation | Released (`v0.2.0`) |
 | v0.3 | CSV / XLSX / JSON | Not started |
 | v0.4 | LLM SDK wrapper + MCP gateway | Not started |
 | v0.5 | FHIR minimal resource set | Not started |

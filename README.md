@@ -146,8 +146,8 @@ This project is **engineering infrastructure**, not legal or compliance certific
 
 Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](ROADMAP.md).
 
-- **v0.1 — Text core MVP**: implemented (baseline detectors, decision protocol, transformations, verification, metadata-only audit); release pending CI/versioning.
-- **v0.2 — Chinese medical text detection & evaluation**: implemented; release pending security-hardening validation and release checks. Historical benchmark results are not post-remediation or release-validation results.
+- **v0.1 — Text core MVP**: released as `v0.1.0` (baseline detectors, decision protocol, transformations, verification, metadata-only audit).
+- **v0.2 — Chinese medical text detection & evaluation**: released as `v0.2.0`. Strict evaluation results and fault-injection evidence are recorded in [docs/evaluation.md](docs/evaluation.md); the corpus is template-generated, so a strict 1.0 measures internal consistency, not real-world generalisation.
 - **v0.3 — CSV / XLSX / JSON**: not started.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.

@@ -221,14 +221,55 @@ rare-context pattern now covers the full phrase and document-level
 classifications no longer displace span-level facts — so the ASK path is not
 silently skipped for a patient-attributed rare disease.
 
+### Fresh validation (2026-09-21)
+
+The hardened contract was re-validated on a clean checkout rather than carried
+forward from the 2026-09-19 scores. Re-running the suite and the benchmark
+reproduced the strict table above exactly, and an independent probe then found a
+defect the corpus structurally cannot produce.
+
+**Adjacent person-field over-capture.** The adjacent form (`患者张三`) shared one
+pattern with the separated form (`患者：张三`), and only the separated form has a
+delimiter to bound its value. With no delimiter the lazy capture ran to end of
+line, so any sentence ending in a clinical verb lost that verb to the name:
+
+| Input | Reported `PERSON_NAME` | Effect after sanitize |
+|---|---|---|
+| `患者张三入院` | `张三入院` | `入院` deleted |
+| `患者李四因胸痛入院` | `李四因胸痛入院` | complaint and encounter deleted |
+| `患者于协和医院住院治疗` | `于协和医院住院` | hospital and encounter deleted; `HOSPITAL_NAME` never emitted |
+
+`于` is a real surname, so `患者于协和医院…` entered this branch and released
+`患者[PERSON_NAME_001]治疗` with exit `0` — clinical meaning removed by the
+sanitizer, the failure mode the precision gate exists to catch.
+
+The pattern is now split by field shape. The separated form keeps its
+twenty-character allowance. The adjacent form is capped at four characters,
+excludes institution words, and stops at clinical verbs and connectives. The
+connective list is load-bearing: with verbs alone, `患者李四因胸痛入院` fails to
+match at all and the name is lost rather than over-captured.
+`患者于协和医院住院治疗` now yields `HOSPITAL_NAME` `协和医院` and no person fact.
+
+**Why the corpus could not see it.** Every committed name is followed by a field
+label or punctuation, and the observed `person_field` name lengths are only 2
+(89 occurrences) and 3 (51). No template produces a name directly followed by a
+clinical verb at end of line. This is the same structural blind spot recorded
+above: a strict 1.0 measures agreement with the templates, not coverage of the
+forms clinical text actually takes.
+
 ## Test and packaging status
 
-Verified on 2026-09-19: 619 tests pass on Python 3.10, 3.11 and 3.12; `ruff`
-and `bandit` are clean; `pip-audit` reports no known vulnerabilities in the
-dependency set; `python -m build` produces an sdist and wheel; and the installed
-wheel passes both the `Guard.sanitize` smoke test and the `medical-privacy-guard`
-console entry point from outside the source tree. The benchmark CLI exits `2`
-on a failed gate.
+Verified on 2026-09-21: 705 tests pass on Python 3.10, 3.11 and 3.12, including
+the 14 regressions added by the adjacent person-field fix above. The CI quality
+job runs `ruff`, `bandit`, `pip-audit`, `python -m build` and an isolated wheel
+smoke test against the same commit, and all pass. The benchmark CLI exits `2` on
+a failed gate.
+
+Previously verified on 2026-09-19: 619 tests passed on the same three
+interpreters; `ruff` and `bandit` were clean; `pip-audit` reported no known
+vulnerabilities in the dependency set; `python -m build` produced an sdist and
+wheel; and the installed wheel passed both the `Guard.sanitize` smoke test and
+the `medical-privacy-guard` console entry point from outside the source tree.
 
 Passing these checks means the regressions above are pinned, not that detection
 generalises. The corpus remains template-generated and the recall of 1.0 is
