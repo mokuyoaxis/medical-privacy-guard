@@ -305,3 +305,55 @@ def test_medical_content_expansion_does_not_over_block(text):
     pinned: over-blocking silently strips clinical meaning.
     """
     assert not any(f.type == "MEDICAL_CONTENT" for f in detect_all(text)), text
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-21: adjacent person-field over-capture.
+#
+# The adjacent form ("患者张三") has no delimiter to bound the value, and the
+# shared pattern let the lazy name capture run to the end of the line. Any
+# sentence ending in a clinical verb therefore lost that verb to the name:
+# "患者张三入院" reported PERSON_NAME "张三入院", and "患者于协和医院住院治疗"
+# reported PERSON_NAME "于协和医院住院" while never reporting the hospital at
+# all — clinical meaning deleted by the sanitizer. The corpus could not see it
+# because every committed name is followed by a label or punctuation.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_name"),
+    [
+        ("患者张三入院", "张三"),
+        ("患者张三，男，67岁", "张三"),
+        ("患者张三电话13800000000", "张三"),
+        ("患者欧阳娜娜入院", "欧阳娜娜"),
+        ("患者于谦入院", "于谦"),
+        # The boundary list must also stop at clinical connectives, otherwise
+        # "患者李四因胸痛入院" loses the name entirely instead of over-capturing.
+        ("患者李四因胸痛入院", "李四"),
+        ("患者张三于2023年入院", "张三"),
+        ("患者张三诉头痛", "张三"),
+        ("患者张三在协和就诊", "张三"),
+        ("患者张三自诉头晕", "张三"),
+        ("患者张三伴发热", "张三"),
+        ("患者张三拟行手术", "张三"),
+    ],
+)
+def test_adjacent_person_name_stops_at_the_given_name(text, expected_name):
+    """The adjacent form must capture the name, not the following clinical verb."""
+    names = [f.value for f in detect_all(text) if f.type == "PERSON_NAME"]
+    assert names == [expected_name], text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "患者于协和医院住院治疗",
+        "患者于北京医院住院治疗",
+    ],
+)
+def test_adjacent_form_does_not_absorb_a_hospital_into_a_name(text):
+    """A surname character opening a hospital name must not start a person fact."""
+    facts = detect_all(text)
+    assert not any(f.type == "PERSON_NAME" for f in facts), text
+    assert any(f.type == "HOSPITAL_NAME" for f in facts), text
