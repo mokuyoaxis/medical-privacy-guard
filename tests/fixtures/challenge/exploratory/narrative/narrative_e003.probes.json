@@ -1,0 +1,16 @@
+{
+  "doc_id": "narrative_e003",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "欧阳修远"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "bare compound-surname name",
+  "current_status": "not_detected_today"
+}

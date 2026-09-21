@@ -327,7 +327,12 @@ def test_medical_content_expansion_does_not_over_block(text):
         ("患者张三，男，67岁", "张三"),
         ("患者张三电话13800000000", "张三"),
         ("患者欧阳娜娜入院", "欧阳娜娜"),
-        ("患者于谦入院", "于谦"),
+        # The adjacent form now requires the given name to come from the
+        # name-character inventory (detectors/surnames.py). 于谦 is a real name
+        # whose given character is absent from that inventory, so it is
+        # deliberately not detected; 于伟 exercises the same surname-plus-verb
+        # shape with an in-inventory given name.
+        ("患者于伟入院", "于伟"),
         # The boundary list must also stop at clinical connectives, otherwise
         # "患者李四因胸痛入院" loses the name entirely instead of over-capturing.
         ("患者李四因胸痛入院", "李四"),

@@ -24,7 +24,12 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
-from .surnames import SURNAME_CLASS
+from .surnames import (
+    COMPOUND_SURNAME_CLASS,
+    GIVEN_NAME_CLASS,
+    NUMERAL_GIVEN_CLASS,
+    SURNAME_CLASS,
+)
 
 # Chinese: a field label followed by either an explicit delimiter or a known
 # surname. Capture the whole field value up to punctuation/newline instead of
@@ -44,8 +49,11 @@ _CN_SEPARATED_RE = re.compile(
 # otherwise swallows clinical phrases such as "于协和医院住院".
 _CN_ADJACENT_RE = re.compile(
     r"(?:患者姓名|病人姓名|患者名字|患者|病人|姓名|名字)"
-    r"(?=" + SURNAME_CLASS + r")"
-    r"(?P<name>(?:(?!医院|诊所|卫生院|病区|科室|病房)[\u3400-\u9fff·]){2,4}?)"
+    r"(?P<name>"
+    r"(?:" + COMPOUND_SURNAME_CLASS + r")" + GIVEN_NAME_CLASS +
+    r"|" + SURNAME_CLASS + GIVEN_NAME_CLASS +
+    r"|" + SURNAME_CLASS + NUMERAL_GIVEN_CLASS +
+    r")"
     r"(?=[,，。；;、\s]|$|"
     r"(?:入院|出院|就诊|住院|治疗|复查|随访|主诉|既往|收入|转入|转科|查房|病情|"
     r"因|于|诉|在|自|伴|拟|"

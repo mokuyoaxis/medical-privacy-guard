@@ -60,6 +60,17 @@ independent probe found it reaching release with the name intact. The
 `姓名，性别` opener is now covered; other narrative forms remain outside the
 baseline. See [evaluation.md](evaluation.md).
 
+The challenge corpus under `tests/fixtures/challenge/` holds independent probes
+for these forms. Its `regression/` half runs in CI; its `exploratory/` half
+records forms that are outside the baseline and is expected to fail.
+
+Adjacent person fields (`患者张三`) require the given name to come from the
+name-character inventory in `detectors/surnames.py`. An ordinary word following
+a surname is therefore not read as a name — `患者周转正常` does not yield a person
+called 周转正常 — at the cost of missing a real name whose given character is
+outside that inventory. A bare name token with no field label is not detected at
+all.
+
 The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
 the five annotated rare-context notes correctly returned ASK. That run did not
 prove the gates reject failures: verification failures and missing audit records

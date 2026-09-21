@@ -43,3 +43,23 @@ GIVEN_CHARS: str = (
 
 #: Zero to two given-name characters drawn from the name inventory.
 GIVEN_CLASS: str = f"[{GIVEN_CHARS}]{{0,2}}"
+
+#: One or two given-name characters drawn from the name inventory.
+#:
+#: ``GIVEN_CLASS`` above allows zero characters, which is right for titled forms
+#: ("王医生") but too loose for the adjacent person-field form: a zero-length
+#: given name lets an ordinary word be read as a name ("患者周转正常" -> 周 +
+#: 转正常).
+GIVEN_NAME_CLASS: str = f"[{GIVEN_CHARS}]{{1,2}}"
+
+#: Common two-character (compound) surnames. Matched before the single-character
+#: class so 欧阳娜娜 reads as 欧阳 + 娜娜 rather than 欧 + 阳娜娜.
+COMPOUND_SURNAME_CLASS: str = (
+    "(?:欧阳|司马|上官|诸葛|东方|独孤|南宫|西门|夏侯|皇甫|尉迟|公孙|"
+    "慕容|司徒|令狐|宇文|长孙|轩辕|赫连|澹台|公冶|宗政|濮阳|淳于|"
+    "太叔|申屠|仲孙|钟离|鲜于|闾丘|司空|端木|巫马|公西|漆雕|乐正|"
+    "拓跋|百里|东郭|南门|呼延|羊舌|微生|梁丘|左丘|第五)"
+)
+
+#: Digits used as placeholder given names in notes and tests (张三, 李四).
+NUMERAL_GIVEN_CLASS: str = "[一二三四五六七八九十]"

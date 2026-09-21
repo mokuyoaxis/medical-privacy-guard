@@ -1,0 +1,13 @@
+{
+  "doc_id": "narrative_009",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "本病区",
+    "周转正常"
+  ],
+  "probe_note": "over-redaction: 周转 must not be read as a surname plus given name"
+}
