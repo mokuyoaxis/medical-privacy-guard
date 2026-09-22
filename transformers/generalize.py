@@ -22,8 +22,8 @@ from __future__ import annotations
 import re
 
 from core.errors import TransformerError
-from detectors.demographics import parse_cn_numeral
 from core.model import DetectedFact, TransformationOp
+from detectors.demographics import parse_cn_numeral
 
 from .base import TokenRegistry, Transformer
 from .dates import _parse_full_date
