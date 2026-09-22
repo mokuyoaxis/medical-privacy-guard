@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-22
+
+### Fixed
+
+- **The audit leak gate reported raw leaks on logs that leaked nothing.** The
+  gate scans the whole audit stream for corpus values with a naive substring
+  test, and the stream carries random hex: ``event_id`` (a UUID, 32 characters)
+  and, since v0.2.2, ``prev_hash`` / ``event_hash`` (64 characters each). A
+  six-digit postal code such as ``730908`` occurs inside a 64-character hash by
+  chance, and because the gate is absolute (must be 0) a single chance hit
+  failed the whole run. The three random fields are now stripped before
+  scanning; they carry no payload, so a genuine leak in a semantic field is
+  still caught. Eight regression tests pin both directions.
+
+### Notes
+
+- This is the intermittent benchmark failure recorded in
+  ``.internal/ci-flaky-investigation-2026-09-21.md``, previously attributed to
+  runner resource timing. That conclusion was wrong: the failing gate was
+  ``audit_raw_leak``, not one of the three counters the note suggested checking.
+  The defect predates v0.2.2 — the chain hashes raised the random hex from 32 to
+  160 characters per record, which made the existing flake reproducible rather
+  than causing it.
+
 ## [0.2.2] - 2026-09-22
 
 ### Added
@@ -169,7 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mokuyoaxis/medical-privacy-guard/releases/tag/v0.2.0

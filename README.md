@@ -162,6 +162,9 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
 - **v0.2.2 — Chained audit integrity**: released as `v0.2.2`. Audit events carry
   the previous event's hash so deletion, reordering and edits are detectable,
   with an optional HMAC key and an `audit-verify` command.
+- **v0.2.3 — Audit leak gate false positive**: released as `v0.2.3`. The audit
+  leak gate scanned random hex fields, so a short labelled value could occur
+  inside a hash by chance and fail an otherwise clean run.
 - **v0.3 — CSV / XLSX / JSON**: not started.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import tempfile
 import time
 from collections import Counter
@@ -738,6 +739,16 @@ def _aggregate(
     )
 
 
+#: Audit fields whose values are random hex rather than payload-derived.
+#: ``event_id`` is a UUID and the chain hashes are SHA-256 digests, so a short
+#: labelled value can occur inside one by chance: the postal code 730908 was
+#: found inside a 64-character event_hash. This gate is absolute (must be 0), so
+#: a spurious hit failed the whole run intermittently. The fields carry no
+#: payload, so removing them removes the false positive without weakening the
+#: check — a real leak lives in a semantic field and is still caught.
+_RANDOM_AUDIT_FIELD_RE = re.compile(r'"(?:event_id|prev_hash|event_hash)"\s*:\s*"[^"]*"')
+
+
 def _count_audit_leaks(
     documents: Sequence[CorpusDocument], audit_text: str
 ) -> int:
@@ -745,10 +756,12 @@ def _count_audit_leaks(
 
     The audit must never become a disclosure source, so this is an absolute
     gate (must be 0) rather than a rate. Values are read from the corpus on
-    the fly and never stored in the report.
+    the fly and never stored in the report. Random identifier fields are
+    stripped first; see ``_RANDOM_AUDIT_FIELD_RE``.
     """
     if not audit_text:
         return 0
+    scan_text = _RANDOM_AUDIT_FIELD_RE.sub("", audit_text)
     leaks = 0
     seen: set[str] = set()
     for doc in documents:
@@ -757,7 +770,7 @@ def _count_audit_leaks(
             if len(value) < 2 or value in seen:
                 continue
             seen.add(value)
-            if value in audit_text:
+            if value in scan_text:
                 leaks += 1
     return leaks
 

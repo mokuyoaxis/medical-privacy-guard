@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from core.benchmark import (
+    CorpusDocument,
+    _count_audit_leaks,
     _survives_as_token,
     align_document,
     load_corpus,
@@ -578,3 +580,47 @@ with patch(target, replacement):
                 assert outcome.allowed_original and outcome.released
             else:
                 assert not outcome.released
+
+
+# -- the audit leak gate and random identifiers ------------------------------
+
+
+class TestAuditLeakGateIgnoresRandomIdentifiers:
+    """The leak gate is absolute, so a chance substring in a hash fails a run.
+
+    Found while investigating an intermittent CI failure: the six-digit postal
+    code 730908 occurs inside a 64-character ``event_hash``, and the gate
+    reported a raw leak on a log that leaked nothing. ``event_id`` is a UUID and
+    the chain hashes are digests, so neither carries payload; stripping them
+    removes the false positive while a value in a semantic field is still
+    caught.
+    """
+
+    @staticmethod
+    def _document() -> CorpusDocument:
+        return CorpusDocument(
+            doc_id="probe",
+            document_type="outpatient_note",
+            department="general",
+            text="邮编730908。",
+            spans=({"type": "POSTAL_CODE", "start": 2, "end": 8},),
+            expected_verdict="SANITIZE",
+        )
+
+    @pytest.mark.parametrize("field", ["event_id", "prev_hash", "event_hash"])
+    def test_a_value_inside_a_random_field_is_not_a_leak(self, field: str) -> None:
+        audit = json.dumps({field: "aa730908bb", "decision": "SANITIZE"})
+        assert _count_audit_leaks([self._document()], audit) == 0
+
+    @pytest.mark.parametrize("field", ["reason_codes", "transformations", "policy_version"])
+    def test_a_value_in_a_semantic_field_is_still_a_leak(self, field: str) -> None:
+        audit = json.dumps({field: "730908", "event_hash": "aabb"})
+        assert _count_audit_leaks([self._document()], audit) == 1
+
+    def test_a_value_beside_a_random_field_is_still_a_leak(self) -> None:
+        """Stripping must not swallow the surrounding record."""
+        audit = '{"event_hash": "aabb", "raw": "邮编730908"}'
+        assert _count_audit_leaks([self._document()], audit) == 1
+
+    def test_empty_audit_text_has_no_leaks(self) -> None:
+        assert _count_audit_leaks([self._document()], "") == 0

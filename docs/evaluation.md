@@ -300,9 +300,10 @@ given character is outside the inventory is still missed in the adjacent form.
 
 ## Test and packaging status
 
-Verified locally on 2026-09-22 (v0.2.2): 795 tests pass on Python 3.13, including
+Verified locally on 2026-09-22 (v0.2.3): 803 tests pass on Python 3.13, including
 the 55 cases in `tests/test_name_span_completeness.py`, the six challenge-corpus
-regression probes and 18 cases covering the audit chain; the benchmark reports
+regression probes 18 cases covering the audit chain and eight covering the audit leak gate; the
+benchmark reports
 strict recall and precision 1.0000 (1474/1474), 135 SANITIZE / 35 ALLOW / 5 ASK
 and zero on every safety gate. The CI matrix (3.10–3.12) is the authority for
 those interpreters; these changes were not re-run on them locally.
