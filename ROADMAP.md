@@ -11,6 +11,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 |---|---|---|
 | v0.1 | Text core MVP | Released (`v0.1.0`) |
 | v0.2 | Chinese medical text detection & evaluation | Released (`v0.2.0`) |
+| v0.2.1 | Name-span completeness hotfix | Released (`v0.2.1`) |
 | v0.3 | CSV / XLSX / JSON | Not started |
 | v0.4 | LLM SDK wrapper + MCP gateway | Not started |
 | v0.5 | FHIR minimal resource set | Not started |

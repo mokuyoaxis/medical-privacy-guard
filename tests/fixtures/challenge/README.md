@@ -59,7 +59,7 @@ dimension that fails entirely behind one that passes.
 
 | Dimension | Probes | Status |
 |---|---|---|
-| narrative | 10 regression / 4 exploratory | names in varied syntactic positions |
+| narrative | 16 regression / 4 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls |
 
 ### narrative
 

@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_012",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "RELATIVE_NAME",
+      "text": "郑爽"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "adjacent relative name outside the inventory"
+}

@@ -148,6 +148,10 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
 
 - **v0.1 — Text core MVP**: released as `v0.1.0` (baseline detectors, decision protocol, transformations, verification, metadata-only audit).
 - **v0.2 — Chinese medical text detection & evaluation**: released as `v0.2.0`. Strict evaluation results and fault-injection evidence are recorded in [docs/evaluation.md](docs/evaluation.md); the corpus is template-generated, so a strict 1.0 measures internal consistency, not real-world generalisation.
+- **v0.2.1 — Name-span completeness hotfix**: released as `v0.2.1`. Staff and
+  relative names bounded by the given-name inventory were released partially
+  redacted; a labelled value is now bounded by its separator instead, and
+  verification withholds release when a name span stops inside a name.
 - **v0.3 — CSV / XLSX / JSON**: not started.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.

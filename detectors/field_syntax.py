@@ -27,6 +27,13 @@ from __future__ import annotations
 #: transformer marker without being read as a separator.
 FIELD_SEP = r"[ \t\u3000]*[:：=]?[ \t\u3000]*"
 
+#: A mandatory label/value separator: an explicit colon/equals, or at least one
+#: space. ``FIELD_SEP`` also matches the empty string, which is what makes the
+#: adjacent forms ("住院号123") work; a value that needs a real end boundary
+#: uses this one, so the two shapes can be handled by different rules instead
+#: of one permissive rule that has to guess.
+FIELD_SEP_REQUIRED = r"(?:[ \t\u3000]*[:：=][ \t\u3000]*|[ \t\u3000]+)"
+
 #: An optional opening bracket before the value itself.
 VALUE_OPEN = r"[（(]?"
 

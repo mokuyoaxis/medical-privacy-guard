@@ -61,6 +61,14 @@ _ERASE_ACTIONS = frozenset({"REMOVE", "MASK", "TOKENIZE"})
 #: Only verified DATE_SHIFT output spans may remain as full-date residuals.
 _TRANSFORM_ACTIONS = frozenset({"GENERALIZE", "DATE_SHIFT"})
 
+#: Fact types whose span must cover a whole personal name. A span that stops
+#: before a name character releases the remainder of the name, and re-detection
+#: cannot see it: the orphaned character no longer matches a name pattern, so
+#: verification used to report success on a partially redacted name.
+_NAME_FACT_TYPES = frozenset(
+    {"PERSON_NAME", "DOCTOR_NAME", "NURSE_NAME", "RELATIVE_NAME"}
+)
+
 
 class Verifier:
     """Verifies that a sanitized payload is safe to release under a profile."""
@@ -78,6 +86,12 @@ class Verifier:
         self._detectors = detectors if detectors is not None else DEFAULT_DETECTORS
         self._detect_all = detect_all
         self._evaluator = PolicyEvaluator(profile)
+        # Characters that continue a personal name. Kept here rather than at
+        # module import so core/ keeps no hard detectors dependency.
+        from detectors.surnames import GIVEN_CHARS, NAME_FOLLOW_BOUNDARY
+
+        self._name_continuation = frozenset(GIVEN_CHARS + "一二三四五六七八九十")
+        self._name_boundary = re.compile(NAME_FOLLOW_BOUNDARY)
 
     # -- public API ---------------------------------------------------------
 
@@ -202,6 +216,7 @@ class Verifier:
             if sanitized[start:end] != record.replacement:
                 raise _CheckFailure("execution replacement does not match output span")
             self._check_postcondition(fact.type, raw, record.replacement, op)
+            self._check_name_span_boundary(fact.type, raw, original, fact.end)
             if op.op == "TOKENIZE":
                 key = (fact.type, raw)
                 token = record.replacement
@@ -217,6 +232,39 @@ class Verifier:
             cursor, output_cursor = fact.end, end
         if sanitized[output_cursor:] != original[cursor:]:
             raise _CheckFailure("transformation changed untargeted context")
+
+    def _check_name_span_boundary(
+        self, kind: str, raw: str, original: str, end: int
+    ) -> None:
+        """A name span must not stop inside the name.
+
+        The detectors bound a name with a character inventory or a boundary
+        word, and neither can be complete. When the bound is wrong the capture
+        stops at the surname and the rest of the name survives into the
+        released text ("责任护士：郑爽" released "爽"). Re-detection cannot see
+        this — the orphaned character no longer matches a name pattern — so the
+        check reads the original text instead.
+
+        A name may be followed by punctuation, the end of the text, or a word
+        that legitimately follows a name (a clinical verb, a connective, the
+        next field's label). Anything else is text the detector never
+        explained, and part of the name may be hiding in it, so release is
+        withheld rather than silently truncated.
+        """
+        if kind not in _NAME_FACT_TYPES or not raw or end >= len(original):
+            return
+        following = original[end]
+        if not ("\u4e00" <= following <= "\u9fff"):
+            return
+        if following in self._name_continuation:
+            raise _CheckFailure(
+                f"{kind} span ends inside a name; the remainder would be released"
+            )
+        if not self._name_boundary.match(original, end):
+            raise _CheckFailure(
+                f"{kind} span is followed by unexplained text "
+                f"({original[end:end + 4]!r}); the name may be truncated"
+            )
 
     @staticmethod
     def _date(value: str) -> date:

@@ -39,6 +39,12 @@ GIVEN_CHARS: str = (
     "志晓小红春秋菊冬珍爱民生新庆永花凤金银香竹林树大"
     "武立学峰龙江山河彩霞云东亚楠男琴君嘉佳怡慧俊天佑"
     "德波瑞"
+    # Added after a released-text defect: the adjacent form stopped mid-name
+    # for given characters outside this inventory. Kept to characters that are
+    # overwhelmingly given names rather than ordinary words, so clinical prose
+    # is not read as a person.
+    "婷妍婉珊媛娅姗姝婧婕妤茜蕾薇蓉菲芸芊蕊沁瑶琪琳璐瑾瑜瑄玥彤悦莹颖倩晴"
+    "浩睿宸昊泽霖铭煜烨熙辰皓弘骏靖翊峻崇琛珩珏璋琦珂珺鑫曦涵爽钧锐锦凯"
 )
 
 #: Zero to two given-name characters drawn from the name inventory.
@@ -63,3 +69,23 @@ COMPOUND_SURNAME_CLASS: str = (
 
 #: Digits used as placeholder given names in notes and tests (张三, 李四).
 NUMERAL_GIVEN_CLASS: str = "[一二三四五六七八九十]"
+
+#: Words that legitimately follow a personal name in a clinical note: clinical
+#: verbs, connectives, and the labels of the next field.
+#:
+#: A *labelled* name ("责任护士：郑爽") is captured with this boundary instead
+#: of the inventory, because the inventory cannot be complete: 爽, 鑫 and 曦 are
+#: ordinary given-name characters outside it, and an inventory-bounded capture
+#: stops at the surname and releases the rest of the name as residual PHI.
+#: A name with no delimiter has nothing to anchor its end, so the adjacent form
+#: still uses the inventory.
+NAME_FOLLOW_BOUNDARY: str = (
+    r"(?:入院|出院|就诊|住院|治疗|复查|随访|主诉|既往|收入|转入|转科|"
+    r"查房|病情|陪同|签字|执行|查看|测量|交接|表示|同意|拒绝|要求|建议|"
+    r"否认|"
+    r"自述|护理|看护|照料|负责|操作|实施|完成|给予|服用|注射|检查|化验|"
+    r"告知|交代|说明|询问|签署|确认|办理|准备|安排|护送|转运|接收|进入|"
+    r"离开|返回|因|于|诉|在|自|伴|拟|系|之|"
+    r"电话|手机|邮箱|身份证|证件|病历号|住院号|就诊号|地址|住址|诊断|"
+    r"症状|用药|医生|医师|大夫|护士|护师)"
+)

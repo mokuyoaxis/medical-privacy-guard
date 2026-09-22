@@ -257,7 +257,55 @@ clinical verb at end of line. This is the same structural blind spot recorded
 above: a strict 1.0 measures agreement with the templates, not coverage of the
 forms clinical text actually takes.
 
+### Fresh validation (2026-09-22): name-span completeness
+
+**Defect.** Staff and relative names were released partially redacted. The
+physician, nurse and relative detectors bounded a labelled name with the
+given-name character inventory:
+
+```text
+IN : 患者因胸痛入院，责任护士：郑爽。
+OUT: 患者因胸痛入院，责任护士：[NURSE_NAME_001]爽。
+verification: transformation checks satisfied; policy re-run → ALLOW
+```
+
+The given character 爽 is not in the inventory, so the capture stopped at the
+surname and 爽 was released as residual PHI. Six of sixteen common names tested
+truncated this way (王五 李四 张三 李雷 郑爽 欧阳修远), while the same name behind
+`患者姓名：` was sanitized whole — one datum, two outcomes depending on which
+field it appeared in.
+
+**Why verification passed.** V1 re-detects erase-type residuals, but an orphaned
+given-name character no longer matches a name pattern, so the residual was
+invisible. This is the shared-blind-spot case recorded above: re-scanning with the
+same detectors cannot establish recall.
+
+**Fix.** A labelled value is now bounded by the separator plus a
+following-boundary word (`NAME_FOLLOW_BOUNDARY`) instead of the character
+inventory; the adjacent form keeps the inventory, and the inventory itself is
+extended. `医生：`, `主刀医生：` and three further titles were added to the
+physician list, and `护士：` / `护师：` to the nurse list.
+
+**Independent check.** Verification now also rejects a name span that stops
+inside a name, or that is followed by text no boundary word explains. The check
+reads the original text rather than re-detecting. It is defence in depth: after
+the detector fix it does not fire on the corpus or on any regression case, and
+`tests/test_name_span_completeness.py::TestTruncatedNameWithholdsRelease` injects
+a deliberately truncating detector to prove release is withheld.
+
+**Not proven.** The corpus could not see this defect: every committed staff and
+relative name uses a character that is in the inventory, so a strict 1.0 was
+silent. It was found by probing released output, not by any gate. A name whose
+given character is outside the inventory is still missed in the adjacent form.
+
 ## Test and packaging status
+
+Verified locally on 2026-09-22 (v0.2.1): 777 tests pass on Python 3.13, including
+the 55 cases in `tests/test_name_span_completeness.py` and six new challenge-corpus
+regression probes; the benchmark reports strict recall and precision 1.0000
+(1474/1474), 135 SANITIZE / 35 ALLOW / 5 ASK and zero on every safety gate. The
+CI matrix (3.10–3.12) is the authority for those interpreters; this change was not
+re-run on them locally.
 
 Verified on 2026-09-21: 705 tests pass on Python 3.10, 3.11 and 3.12, including
 the 14 regressions added by the adjacent person-field fix above. The CI quality

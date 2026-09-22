@@ -29,35 +29,89 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
-from .field_syntax import FIELD_SEP, label_with_value
-from .surnames import GIVEN_CLASS, SURNAME_CLASS
+from .field_syntax import FIELD_SEP_REQUIRED, label_with_value
+from .surnames import (
+    COMPOUND_SURNAME_CLASS,
+    GIVEN_CLASS,
+    GIVEN_NAME_CLASS,
+    NAME_FOLLOW_BOUNDARY,
+    NUMERAL_GIVEN_CLASS,
+    SURNAME_CLASS,
+)
 
 # -- staff and family names -------------------------------------------------
 
-# Name patterns are anchored on common surnames (see surnames.py). Without the
-# anchor the suffix rule "…医生" matches the measure word in "共12名医生", and
-# relative rules match ordinary words. The given-name part is non-greedy so a
-# trailing verb is not swallowed ("其妻王芳陪同" must not capture "王芳陪").
-# The negative lookbehinds stop the suffix rule from matching *inside* a title
-# word: "主任医师" contains "任医师" (任 is a surname) and "责任护士" contains
-# "任护士". Without them, sanitizing a title form leaves a residual match and
-# verification correctly rejects the result.
+# Two shapes carry a personal name, and they need different end conditions.
+#
+# Labelled ("责任护士：郑爽", "家属 郑爽", "主治医师：王建国"): an explicit
+# separator bounds the value, so the surname anchors the start and a boundary
+# word or punctuation ends it. No character inventory is involved, which is
+# what lets a name outside the inventory survive whole. 郑爽, 王鑫 and 李曦 are
+# ordinary names; an inventory-bounded capture stopped at 郑 and released "爽"
+# as residual PHI while verification still reported success.
+#
+# Adjacent ("责任护士王芳执行医嘱", "其妻张伟签字"): nothing separates the label
+# from the name and nothing follows it but prose, so the given-name part must
+# come from the shared inventory. A looser rule here reads prose as people
+# ("责任护士每班交接" must not yield 每班交接).
+#
+# Both shapes stay anchored on a surname. Without that anchor the label alone
+# matches prose ("家属表示理解").
+_NAME_AFTER_LABEL = (
+    r"[（(【\[]?"
+    r"(?P<name>"
+    r"(?:" + COMPOUND_SURNAME_CLASS + r")[\u3400-\u9fff]{0,2}?"
+    r"|" + SURNAME_CLASS + r"[\u3400-\u9fff]{0,2}?"
+    r")"
+    r"(?=[，,。；;、\s）)】\]（(【\[]|$|" + NAME_FOLLOW_BOUNDARY + r")"
+)
+
+_NAME_ADJACENT = (
+    r"(?P<name>"
+    r"(?:" + COMPOUND_SURNAME_CLASS + r")" + GIVEN_NAME_CLASS +
+    r"|" + SURNAME_CLASS + GIVEN_NAME_CLASS +
+    r"|" + SURNAME_CLASS + NUMERAL_GIVEN_CLASS +
+    r")"
+)
+
+# Titles that introduce a physician's name, longest first: the alternation is
+# ordered, so 主任医师 is tried before 医师.
+_DOCTOR_TITLES = (
+    r"主任医师|副主任医师|主治医师|住院医师|主管医师|经治医师|"
+    r"接诊医师|手术医师|会诊医师|主刀医生|管床医生|手术医生|"
+    r"接诊医生|经治医生|值班医生|医生|医师|大夫"
+)
+
+# "张医生" / "王大夫": the title follows the name, so a bare surname is a
+# complete match and the given name may legitimately be empty. The negative
+# lookbehinds stop the rule from matching inside a title word: 主任医师
+# contains 任医师 (任 is a surname) and 责任护士 contains 任护士. Without them,
+# sanitizing a title form leaves a residual match and verification rejects it.
 _DOCTOR_SUFFIX_RE = re.compile(
-    rf"(?<!主)(?<!责)(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})(?:医生|医师|大夫)"
+    rf"(?<!主)(?<!责)(?P<name>"
+    rf"(?:{COMPOUND_SURNAME_CLASS})(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS})"
+    rf"|{SURNAME_CLASS}(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS}))"
+    r"(?:医生|医师|大夫)"
 )
-# "主治医师李某" / "主任医师王某某": title first, name after. The given-name
-# part uses the shared name inventory so the match stops before a following
-# verb ("责任护士王芳执行医嘱" must not capture 王芳执).
-_DOCTOR_TITLE_RE = re.compile(
-    r"(?:主任医师|副主任医师|主治医师|住院医师|主管医师|经治医师|接诊医师|手术医师|会诊医师)"
-    + FIELD_SEP
-    + rf"(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
+_DOCTOR_TITLE_SEP_RE = re.compile(
+    r"(?:" + _DOCTOR_TITLES + r")" + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL
 )
-_NURSE_RE = re.compile(
-    rf"(?<!责)(?<!主)(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})护士"
-    r"|(?:责任护士|值班护士|接诊护士|主管护师|护士长)"
-    + FIELD_SEP
-    + rf"(?P<title_name>{SURNAME_CLASS}{GIVEN_CLASS})"
+_DOCTOR_TITLE_ADJACENT_RE = re.compile(
+    r"(?:" + _DOCTOR_TITLES + r")" + _NAME_ADJACENT
+)
+
+_NURSE_TITLES = r"责任护士|值班护士|接诊护士|主管护师|护士长|护士|护师"
+_NURSE_SUFFIX_RE = re.compile(
+    rf"(?<!责)(?<!主)(?P<name>"
+    rf"(?:{COMPOUND_SURNAME_CLASS})(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS})"
+    rf"|{SURNAME_CLASS}(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS}))"
+    r"护士"
+)
+_NURSE_TITLE_SEP_RE = re.compile(
+    r"(?:" + _NURSE_TITLES + r")" + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL
+)
+_NURSE_TITLE_ADJACENT_RE = re.compile(
+    r"(?:" + _NURSE_TITLES + r")" + _NAME_ADJACENT
 )
 
 _RELATIVE_KINDS = (
@@ -66,11 +120,13 @@ _RELATIVE_KINDS = (
     "哥哥", "姐姐", "弟弟", "妹妹", "祖父", "祖母", "外祖父", "外祖母",
 )
 # Kinship terms are written both adjacent ("其子张伟") and labelled
-# ("父亲：张伟"). Using FIELD_SEP rather than bare \s* keeps the two forms
-# consistent; a colon used to make the labelled form undetectable.
-_RELATIVE_RE = re.compile(
-    r"(?:" + "|".join(_RELATIVE_KINDS) + r")" + FIELD_SEP
-    + rf"(?P<name>{SURNAME_CLASS}{GIVEN_CLASS})"
+# ("父亲：张伟"), so the same two shapes apply here.
+_RELATIVE_KINDS_RE = r"(?:" + "|".join(_RELATIVE_KINDS) + r")"
+_RELATIVE_SEP_RE = re.compile(
+    _RELATIVE_KINDS_RE + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL
+)
+_RELATIVE_ADJACENT_RE = re.compile(
+    _RELATIVE_KINDS_RE + _NAME_ADJACENT
 )
 
 # -- accession and specimen identifiers -------------------------------------
@@ -130,28 +186,22 @@ class DoctorNameDetector(Detector):
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
         facts: list[DetectedFact] = []
-        for m in _DOCTOR_SUFFIX_RE.finditer(text):
-            facts.append(
-                DetectedFact(
-                    type=self.fact_type,
-                    start=m.start("name"),
-                    end=m.end("name"),
-                    confidence=self.confidence,
-                    source=f"regex.{self.name}",
-                    value=m.group("name"),
+        for pattern, source in (
+            (_DOCTOR_SUFFIX_RE, f"regex.{self.name}"),
+            (_DOCTOR_TITLE_SEP_RE, f"regex.{self.name}.title"),
+            (_DOCTOR_TITLE_ADJACENT_RE, f"regex.{self.name}.title_adjacent"),
+        ):
+            for m in pattern.finditer(text):
+                facts.append(
+                    DetectedFact(
+                        type=self.fact_type,
+                        start=m.start("name"),
+                        end=m.end("name"),
+                        confidence=self.confidence,
+                        source=source,
+                        value=m.group("name"),
+                    )
                 )
-            )
-        for m in _DOCTOR_TITLE_RE.finditer(text):
-            facts.append(
-                DetectedFact(
-                    type=self.fact_type,
-                    start=m.start("name"),
-                    end=m.end("name"),
-                    confidence=self.confidence,
-                    source=f"regex.{self.name}.title",
-                    value=m.group("name"),
-                )
-            )
         return tuple(facts)
 
 
@@ -164,18 +214,18 @@ class NurseNameDetector(Detector):
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
         facts: list[DetectedFact] = []
-        for m in _NURSE_RE.finditer(text):
-            group = "name" if m.group("name") else "title_name"
-            facts.append(
-                DetectedFact(
-                    type=self.fact_type,
-                    start=m.start(group),
-                    end=m.end(group),
-                    confidence=self.confidence,
-                    source=f"regex.{self.name}",
-                    value=m.group(group),
+        for pattern in (_NURSE_SUFFIX_RE, _NURSE_TITLE_SEP_RE, _NURSE_TITLE_ADJACENT_RE):
+            for m in pattern.finditer(text):
+                facts.append(
+                    DetectedFact(
+                        type=self.fact_type,
+                        start=m.start("name"),
+                        end=m.end("name"),
+                        confidence=self.confidence,
+                        source=f"regex.{self.name}",
+                        value=m.group("name"),
+                    )
                 )
-            )
         return tuple(facts)
 
 
@@ -196,7 +246,8 @@ class RelativeNameDetector(Detector):
                 source=f"regex.{self.name}",
                 value=m.group("name"),
             )
-            for m in _RELATIVE_RE.finditer(text)
+            for pattern in (_RELATIVE_SEP_RE, _RELATIVE_ADJACENT_RE)
+            for m in pattern.finditer(text)
         )
 
 

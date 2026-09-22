@@ -232,8 +232,8 @@ medical-privacy-guard/
 - a synthetic evaluation corpus and benchmark, with historical results separate
   from the stronger remediation contract in [evaluation.md](evaluation.md).
 
-v0.2 is implemented but not released. FHIR, DICOM, MCP and provider egress
-adapters remain roadmap items. The library offers a guarded application path,
+v0.2.0 is released; v0.2.1 is a correctness fix to name-span completeness.
+FHIR, DICOM, MCP and provider egress adapters remain roadmap items. The library offers a guarded application path,
 not a network-level enforcement boundary or an anonymity guarantee.
 
 ## Authoritative scope

@@ -17,6 +17,12 @@ when they disagree, this file wins and the other two are updated.
   (clinical-context only) and a baseline medical-content signal. Label/value
   separators — colon, equals, whitespace, none, or a bracketed value — are
   shared across detectors (``detectors/field_syntax.py``);
+- whole-name spans: a labelled name value is bounded by its separator and a
+  following-boundary word rather than by the given-name inventory, so a name
+  whose given character is outside that inventory is still captured whole. A
+  staff or relative label carrying no name (``责任护士每班交接``) yields no fact,
+  and verification withholds release when a name span stops inside a name or is
+  followed by text no boundary word explains;
 - mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
   and day. Detection retains original source spans; these are bounded format
@@ -64,12 +70,14 @@ The challenge corpus under `tests/fixtures/challenge/` holds independent probes
 for these forms. Its `regression/` half runs in CI; its `exploratory/` half
 records forms that are outside the baseline and is expected to fail.
 
-Adjacent person fields (`患者张三`) require the given name to come from the
-name-character inventory in `detectors/surnames.py`. An ordinary word following
-a surname is therefore not read as a name — `患者周转正常` does not yield a person
-called 周转正常 — at the cost of missing a real name whose given character is
-outside that inventory. A bare name token with no field label is not detected at
-all.
+Adjacent person fields (`患者张三`, `其妻郑爽`) require the given name to come
+from the name-character inventory in `detectors/surnames.py`. An ordinary word
+following a surname is therefore not read as a name — `患者周转正常` does not
+yield a person called 周转正常 — at the cost of missing a real name whose given
+character is outside that inventory. A *labelled* value (`姓名：`, `主治医师：`) is
+bounded by its separator instead and does not have this limitation, which is why
+`主治医师欧阳修远` yields no fact while `主治医师：欧阳修远` yields the whole name.
+A bare name token with no field label is not detected at all.
 
 The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
 the five annotated rare-context notes correctly returned ASK. That run did not
