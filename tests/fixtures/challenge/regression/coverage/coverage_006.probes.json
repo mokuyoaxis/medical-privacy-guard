@@ -1,0 +1,12 @@
+{
+  "doc_id": "coverage_006",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "床位"
+  ],
+  "probe_note": "over-redaction control: capacity is a concept, not an identifier"
+}

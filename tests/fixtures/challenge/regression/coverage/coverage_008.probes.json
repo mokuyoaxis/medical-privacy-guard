@@ -1,0 +1,10 @@
+{
+  "doc_id": "coverage_008",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [],
+  "probe_note": "over-redaction control: 住院 is a clinical term, not an address"
+}

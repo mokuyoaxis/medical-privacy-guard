@@ -267,6 +267,23 @@ class Verifier:
             )
 
     @staticmethod
+    def _age_value(raw: str) -> int | None:
+        """Read an age from either numeral system.
+
+        The detector reports whatever the note wrote, so the postcondition has
+        to understand digits ("67岁") and Chinese numerals ("五十六岁") alike.
+        """
+        digits = re.fullmatch(r"(\d{1,3})\s*(?:岁|周岁)", raw)
+        if digits:
+            return int(digits[1])
+        numeral = re.fullmatch(r"([一二两三四五六七八九十]{1,3})\s*(?:岁|周岁)", raw)
+        if numeral:
+            from detectors.demographics import parse_cn_numeral
+
+            return parse_cn_numeral(numeral[1])
+        return None
+
+    @staticmethod
     def _date(value: str) -> date:
         match = re.fullmatch(r"(\d{4})([-/.])(\d{1,2})\2(\d{1,2})", value)
         if match:
@@ -324,24 +341,24 @@ class Verifier:
                         "不足1岁", "1-9岁"
                     )
                 else:
-                    age_match = re.fullmatch(r"(\d{1,3})\s*(?:岁|周岁)", raw)
-                    if age_match:
-                        age = int(age_match[1])
-                        if kind == "AGE_90_PLUS" and age < 90:
-                            raise _CheckFailure(
-                                "invalid age category in transformation evidence"
-                            )
-                        if age == 0:
-                            valid = output == "不足1岁"
-                        elif age < 10:
-                            valid = output == "1-9岁"
-                        elif age < 90:
-                            band = re.fullmatch(r"(\d{2})-(\d{2})岁", output)
-                            valid = bool(band and int(band[1]) % 10 == 0 and
-                                         int(band[2]) == int(band[1]) + 9 and
-                                         int(band[1]) <= age <= int(band[2]))
-                        elif age <= 200:
-                            valid = output == "90岁及以上"
+                    age = cls._age_value(raw)
+                    if age is None:
+                        raise _CheckFailure("invalid age in transformation evidence")
+                    if kind == "AGE_90_PLUS" and age < 90:
+                        raise _CheckFailure(
+                            "invalid age category in transformation evidence"
+                        )
+                    if age == 0:
+                        valid = output == "不足1岁"
+                    elif age < 10:
+                        valid = output == "1-9岁"
+                    elif age < 90:
+                        band = re.fullmatch(r"(\d{2})-(\d{2})岁", output)
+                        valid = bool(band and int(band[1]) % 10 == 0 and
+                                     int(band[2]) == int(band[1]) + 9 and
+                                     int(band[1]) <= age <= int(band[2]))
+                    elif age <= 200:
+                        valid = output == "90岁及以上"
         if not valid:
             raise _CheckFailure("transformation violates type-specific postcondition")
 

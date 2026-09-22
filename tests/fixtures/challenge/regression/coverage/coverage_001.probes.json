@@ -1,0 +1,19 @@
+{
+  "doc_id": "coverage_001",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "五十六岁"
+    },
+    {
+      "type": "SEX",
+      "text": "女"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Chinese numeral age: digits and numerals must reach the same verdict"
+}

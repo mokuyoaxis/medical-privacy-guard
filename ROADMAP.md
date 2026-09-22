@@ -14,6 +14,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.2.1 | Name-span completeness hotfix | Released (`v0.2.1`) |
 | v0.2.2 | Chained audit integrity | Released (`v0.2.2`) |
 | v0.2.3 | Audit leak gate false positive | Released (`v0.2.3`) |
+| v0.2.4 | Detection coverage | Released (`v0.2.4`) |
 | v0.3 | CSV / XLSX / JSON | Not started |
 | v0.4 | LLM SDK wrapper + MCP gateway | Not started |
 | v0.5 | FHIR minimal resource set | Not started |

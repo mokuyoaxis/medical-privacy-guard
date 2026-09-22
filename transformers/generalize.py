@@ -22,12 +22,14 @@ from __future__ import annotations
 import re
 
 from core.errors import TransformerError
+from detectors.demographics import parse_cn_numeral
 from core.model import DetectedFact, TransformationOp
 
 from .base import TokenRegistry, Transformer
 from .dates import _parse_full_date
 
 _AGE_RE = re.compile(r"(\d{1,3})\s*(?:岁|周岁)")
+_CN_AGE_RE = re.compile(r"([一二两三四五六七八九十]{1,3})\s*(?:岁|周岁)")
 
 # Age bands. Width 10 below 90 keeps cohorts clinically meaningful while
 # preventing an exact age from selecting a single person in a small dataset.
@@ -95,18 +97,27 @@ class GeneralizeTransformer(Transformer):
     @staticmethod
     def _band(value: str) -> str:
         m = _AGE_RE.fullmatch(value)
-        if not m:
-            # A month-age fact carries the whole token ("6个月" from
-            # "患儿6个月"), because replacing only the digits would leave a
-            # dangling "个月" and produce incoherent clinical text.
-            m_month = re.fullmatch(r"(\d{1,2})\s*个?月(?:龄|大)?", value)
-            if m_month:
-                months = int(m_month.group(1))
-                if not 1 <= months <= 36:
-                    raise TransformerError("month age out of supported range")
-                return "不足1岁" if months < 12 else "1-9岁"
-            raise TransformerError("cannot generalize age value")
-        age = int(m.group(1))
+        if m:
+            age = int(m.group(1))
+        else:
+            # Chinese numerals are the other common way an age is written
+            # ("五十六岁"). The detector reports the whole token, so the band
+            # has to come from the numeral rather than from digits; without
+            # this the fact is detected, policy plans GENERALIZE, and the
+            # transformation raises instead of releasing anything.
+            numeral = _CN_AGE_RE.fullmatch(value)
+            age = parse_cn_numeral(numeral.group(1)) if numeral else None
+            if age is None:
+                # A month-age fact carries the whole token ("6个月" from
+                # "患儿6个月"), because replacing only the digits would leave a
+                # dangling "个月" and produce incoherent clinical text.
+                m_month = re.fullmatch(r"(\d{1,2})\s*个?月(?:龄|大)?", value)
+                if m_month:
+                    months = int(m_month.group(1))
+                    if not 1 <= months <= 36:
+                        raise TransformerError("month age out of supported range")
+                    return "不足1岁" if months < 12 else "1-9岁"
+                raise TransformerError("cannot generalize age value")
         for low, high, label in _AGE_BANDS:
             if low <= age <= high:
                 return label

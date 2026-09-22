@@ -20,6 +20,7 @@ has no span transformation, so it never blocks a release on its own.
 from __future__ import annotations
 
 import re
+from typing import Mapping
 
 from core.model import DetectedFact
 
@@ -59,6 +60,20 @@ _MONTH_AGE_RE = re.compile(
     r"|(?:年龄|月龄)\s*[:：=]?\s*(?P<v2>\d{1,2}\s*个?月(?:龄|大)?)"
     r"|(?P<v3>\d{1,2}\s*个月大)"
 )
+# Chinese numerals are how ages are often written in narrative notes
+# ("五十岁", "六十七岁"). Without them the age is invisible, and so is the sex
+# beside it: "患者，女，五十六岁。" produced no fact at all and was released
+# unchanged, while "患者，女，67岁。" was sanitized. Same sentence, different
+# digits, opposite outcome.
+_CN_DIGITS: Mapping[str, int] = {
+    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+    "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+}
+_CN_AGE_RE = re.compile(
+    r"(?<![\d一二三四五六七八九十两])"
+    r"(?P<age>[一二两三四五六七八九十]{1,3})\s*(?:岁|周岁)"
+    r"(?!(?:及)?(?:以上|以下)|左右|上下|年代|时期)"
+)
 _AGE_GENERIC_BEFORE_RE = re.compile(
     r"(?:多见于|多发于|好发于|高发于|见于|纳入|选取|年龄在|超过|大于|小于|"
     r"至少|多为|大于等于|小于等于|一般在)$"
@@ -69,8 +84,12 @@ _AGE_MAX = 120
 # Explicit field label: 性别：男 / 性别 男 / 性别男 / 性别=男
 _SEX_FIELD_RE = re.compile(r"性别" + FIELD_SEP + r"(?P<sex>男|女)")
 # Patient enumeration, the most common clinical form: 患者男，67岁 / 病人女,45岁
+# A comma often sits between the patient word and the sex character
+# ("患者，女，56岁"), which the earlier adjacent-only form missed; the same
+# sentence with digits after the sex still matched, so the gap was invisible.
+# The lookahead keeps "患者，女性家属" out: 性 is not a following boundary.
 _SEX_PATIENT_RE = re.compile(
-    r"(?:患者|病人|患儿|伤者)\s*(?P<sex>男|女)(?=[，,、。；;\s)]|\d)"
+    r"(?:患者|病人|患儿|伤者)[\s，,、]*(?P<sex>男|女)(?=[，,、。；;\s)]|\d|$)"
 )
 # Structured enumeration: 男，67岁 / 女,45岁
 _SEX_ENUM_RE = re.compile(
@@ -78,6 +97,27 @@ _SEX_ENUM_RE = re.compile(
 )
 # Attributive: 男性患者 / 女性 / 男性病人
 _SEX_ATTR_RE = re.compile(r"(?P<sex>男|女)性(?=患者|病人|病例|住院|就诊|体检|受检)")
+
+
+def parse_cn_numeral(token: str) -> int | None:
+    """Parse a Chinese numeral of the form the age rule can produce.
+
+    Handles 一–九, 十, 十五, 二十 and 五十六. Returns None for anything else,
+    so an implausible token is dropped rather than guessed at.
+    """
+    if not token:
+        return None
+    if "十" not in token:
+        return _CN_DIGITS.get(token) if len(token) == 1 else None
+    head, _, tail = token.partition("十")
+    if head == "零":
+        return None
+    if head and head not in _CN_DIGITS:
+        return None
+    if tail and tail not in _CN_DIGITS:
+        return None
+    tens = _CN_DIGITS[head] if head else 1
+    return tens * 10 + (_CN_DIGITS[tail] if tail else 0)
 
 
 class AgeDetector(Detector):
@@ -106,7 +146,28 @@ class AgeDetector(Detector):
                 )
             )
         facts.extend(self._month_ages(text))
+        facts.extend(self._numeral_ages(text))
         return tuple(facts)
+
+    def _numeral_ages(self, text: str) -> list[DetectedFact]:
+        facts: list[DetectedFact] = []
+        for match in _CN_AGE_RE.finditer(text):
+            age = parse_cn_numeral(match.group("age"))
+            if age is None or not _AGE_MIN <= age <= _AGE_MAX:
+                continue
+            if _AGE_GENERIC_BEFORE_RE.search(text[max(0, match.start() - 8) : match.start()]):
+                continue
+            facts.append(
+                DetectedFact(
+                    type=self.fact_type,
+                    start=match.start(),
+                    end=match.end(),
+                    confidence=self.confidence,
+                    source=f"regex.{self.name}.numeral",
+                    value=match.group(0),
+                )
+            )
+        return facts
 
     def _month_ages(self, text: str) -> list[DetectedFact]:
         facts: list[DetectedFact] = []

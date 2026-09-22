@@ -36,9 +36,10 @@ from .surnames import (
 # silently truncating uncommon/compound or synthetic names at four characters.
 _CN_SEPARATED_RE = re.compile(
     r"(?:患者姓名|病人姓名|患者名字|患者|病人|姓名|名字)"
-    r"(?:\s*[:：]\s*|\s+)"
+    r"(?:\s*[:：]\s*|\s+|(?=[（(]))"
+    r"[（(]?"
     r"(?P<name>[\u3400-\u9fff·]{2,20}?)"
-    r"(?=(?:电话|手机|邮箱|身份证号?|证件号?|病历号|住院号|就诊号|"
+    r"(?=\s*[）)]|(?:电话|手机|邮箱|身份证号?|证件号?|病历号|住院号|就诊号|"
     r"地址|住址|诊断|症状|用药|治疗)\s*[:：]?|[,，。；;\s]|$)"
 )
 

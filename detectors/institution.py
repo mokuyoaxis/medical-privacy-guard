@@ -24,6 +24,7 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
+from .field_syntax import label_with_value
 
 # Common department names. Kept as an explicit set because a generic
 # "…科" pattern produces unacceptable false positives on ordinary words
@@ -153,6 +154,11 @@ _WARD_NAMED_RE = re.compile(
 
 _BED_RE = re.compile(r"(?<![A-Za-z0-9])(?P<bed>[A-Z]?\d{1,3})\s*床(?!位)")
 
+# The labelled form ("床号 12") is at least as common as the suffix form and
+# was not covered at all. 床位 is deliberately not a label: it is a capacity
+# concept ("床位紧张"), not an identifier.
+_BED_LABEL_RE = re.compile(label_with_value(r"床号|床位号", r"[A-Z]?\d{1,3}") + r"(?!\d)")
+
 
 class HospitalNameDetector(Detector):
     """Detects institution names by their institutional suffix."""
@@ -254,14 +260,27 @@ class BedNumberDetector(Detector):
     confidence = 0.9
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
-        return tuple(
-            DetectedFact(
-                type=self.fact_type,
-                start=m.start(),
-                end=m.end(),
-                confidence=self.confidence,
-                source=f"regex.{self.name}",
-                value=m.group(0),
+        facts: list[DetectedFact] = []
+        for match in _BED_RE.finditer(text):
+            facts.append(
+                DetectedFact(
+                    type=self.fact_type,
+                    start=match.start(),
+                    end=match.end(),
+                    confidence=self.confidence,
+                    source=f"regex.{self.name}",
+                    value=match.group(0),
+                )
             )
-            for m in _BED_RE.finditer(text)
-        )
+        for match in _BED_LABEL_RE.finditer(text):
+            facts.append(
+                DetectedFact(
+                    type=self.fact_type,
+                    start=match.start("value"),
+                    end=match.end("value"),
+                    confidence=self.confidence,
+                    source=f"regex.{self.name}.label",
+                    value=match.group("value"),
+                )
+            )
+        return tuple(facts)

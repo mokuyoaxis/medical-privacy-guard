@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-22
+
+### Added
+
+- **Chinese numeral ages** (``五十六岁``, ``两岁``) are detected and
+  generalized. Digits and numerals now reach the same verdict: previously
+  ``患者，女，56岁。`` was sanitized while ``患者，女，五十六岁。`` produced no
+  fact at all and was released unchanged — including the sex beside it, because
+  the sex rule keyed off the digits.
+- **Comma-separated sex** (``患者，女，67岁``). The adjacent-only form missed it
+  while the digits-only variant still matched, so the gap was invisible.
+- **Bracketed name values** (``患者（张三）``, ``患者姓名（李四）``).
+- **Labelled bed numbers** (``床号 12``, ``床号：A03``). ``床位`` is
+  deliberately not a label: it is a capacity concept, not an identifier.
+- **Unlabelled addresses** introduced by a residence verb
+  (``患者住北京市朝阳区建国路1号。``). The value must end at an administrative or
+  street suffix, and ``住院`` / ``住所`` / ``住房`` are excluded explicitly, so
+  ordinary prose does not match.
+
+### Fixed
+
+- Age generalization and the age postcondition now understand Chinese numerals.
+  Detection alone was not enough: the fact was reported, policy planned
+  GENERALIZE, and the transformer raised ``cannot generalize age value`` —
+  turning a silent release into a failed request. Detection, transformation and
+  verification are pinned together by the new tests.
+
+### Documentation
+
+- ``tests/fixtures/challenge/`` gains a ``coverage`` dimension with ten probes,
+  four of them over-redaction controls.
+
 ## [0.2.3] - 2026-09-22
 
 ### Fixed
@@ -193,7 +225,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.0...v0.2.1

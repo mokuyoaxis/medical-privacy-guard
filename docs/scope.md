@@ -13,8 +13,11 @@ when they disagree, this file wins and the other two are updated.
   staff names (title or suffix form), relatives named in the history, medical
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
   precise addresses, postal codes (label-required), institution names,
-  department names, ward designations, bed numbers, ages, sex
-  (clinical-context only) and a baseline medical-content signal. Label/value
+  department names, ward designations, bed numbers (suffix and labelled forms),
+  ages in digits and in Chinese numerals, sex (clinical-context only, adjacent
+  or comma-separated) and a baseline medical-content signal; addresses with a
+  residence verb and no field label are detected when the value ends at an
+  administrative or street suffix; Label/value
   separators — colon, equals, whitespace, none, or a bracketed value — are
   shared across detectors (``detectors/field_syntax.py``);
 - whole-name spans: a labelled name value is bounded by its separator and a
