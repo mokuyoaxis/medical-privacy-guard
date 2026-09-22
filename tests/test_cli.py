@@ -155,9 +155,9 @@ class TestSanitize:
 class TestInputFormats:
     @pytest.mark.parametrize("command", ["inspect", "sanitize"])
     @pytest.mark.parametrize("suffix", [
-        ".json", ".JSON", ".jsonl", ".ndjson", ".csv", ".tsv", ".xlsx",
+        ".jsonl", ".ndjson", ".csv", ".tsv", ".xlsx",
         ".xls", ".pdf", ".docx", ".fhir", ".xml", ".dcm", ".dicom", ".bin",
-        ".json.txt", ".csv.gz",
+        ".csv.gz",
     ])
     def test_known_unsupported_suffix_blocks(self, tmp_path, capsys, command, suffix):
         src = write(tmp_path, "SYNTH-CANARY" + suffix, "SYNTH-CANARY")
@@ -187,12 +187,10 @@ class TestInputFormats:
 
     @pytest.mark.parametrize("command", ["inspect", "sanitize"])
     @pytest.mark.parametrize("data", [
-        b'{"patient": "\\u5f20\\u4e09", "note": "SYNTH-CANARY"}',
-        b'\xef\xbb\xbf  [{"note": "SYNTH-CANARY"}]',
+        # Malformed containers stay blocked. A well-formed one now takes the
+        # structured path instead; see TestJsonPayloads below.
         b'{"note": "SYNTH-CANARY"}\n{"other": 1}',
         b'[] trailing SYNTH-CANARY',
-        b'[' * 2000 + b'"SYNTH-CANARY"' + b']' * 2000,
-        b'{"SYNTH-CANARY":' + b'9' * 5000 + b'}',
         b'\x00SYNTH-CANARY', b'\x01SYNTH-CANARY', b'\x7fSYNTH-CANARY',
         "\u0085SYNTH-CANARY".encode(), b'\xffSYNTH-CANARY',
         b'%PDF-1.7\nSYNTH-CANARY', b'{\\rtf1 SYNTH-CANARY}',
@@ -234,7 +232,8 @@ class TestInputFormats:
 
 class TestUnsupportedInputAudit:
     @pytest.mark.parametrize("data", [
-        b'{"patient":"SYNTH-CONTENT-CANARY"}',
+        # A well-formed JSON container is no longer an unsupported input; it
+        # takes the structured path and is audited as a normal decision.
         b'\x00SYNTH-CONTENT-CANARY',
         b'\xffSYNTH-CONTENT-CANARY',
     ])
@@ -556,6 +555,64 @@ class TestBenchmarkCommand:
         assert rc == EXIT_BLOCK
         assert "sanitize_path_not_exercised" in out
         assert "verdict_mismatch" in out
+
+
+# -- JSON payloads -----------------------------------------------------------
+
+
+class TestJsonPayloads:
+    """A well-formed JSON container takes the structured path."""
+
+    def test_object_is_sanitized_with_structure_intact(self, tmp_path, capsys):
+        src = tmp_path / "record.json"
+        src.write_text(
+            '{"patient": {"name": "张三", "phone": "13800000000"}, "note": "因脑梗死入院"}',
+            encoding="utf-8",
+        )
+        rc = main(["sanitize", str(src), "--recipient", "external_approved"])
+        out = capsys.readouterr().out
+        assert rc == EXIT_OK
+        payload = json.loads(out)
+        # Keys and nesting survive; only the values are transformed.
+        assert set(payload) == {"patient", "note"}
+        assert set(payload["patient"]) == {"name", "phone"}
+        assert payload["patient"]["name"] == "[PERSON_NAME_001]"
+        assert payload["patient"]["phone"] == "[REDACTED]"
+        assert payload["note"] == "因脑梗死入院"
+
+    def test_array_is_supported(self, tmp_path, capsys):
+        src = tmp_path / "records.json"
+        src.write_text('[{"name": "李四", "phone": "13800000000"}]', encoding="utf-8")
+        rc = main(["sanitize", str(src), "--recipient", "external_approved"])
+        payload = json.loads(capsys.readouterr().out)
+        assert rc == EXIT_OK
+        assert isinstance(payload, list) and len(payload) == 1
+        assert payload[0]["name"] == "[PERSON_NAME_001]"
+
+    def test_deeply_nested_payload_does_not_crash(self, tmp_path, capsys):
+        """Nesting depth is caller-controlled; it must not reach a traceback."""
+        src = tmp_path / "deep.json"
+        src.write_bytes(b'[' * 2000 + b'"x"' + b']' * 2000)
+        rc = main(["inspect", str(src), "--json"])
+        capsys.readouterr()
+        assert rc in {EXIT_OK, EXIT_ASK, EXIT_BLOCK, EXIT_ERROR}
+
+    def test_numeric_leaves_are_not_rewritten(self, tmp_path, capsys):
+        """Rewriting a number would change its JSON type and break consumers."""
+        src = tmp_path / "counts.json"
+        src.write_text('{"age": 67, "name": "张三"}', encoding="utf-8")
+        rc = main(["sanitize", str(src), "--recipient", "external_approved"])
+        payload = json.loads(capsys.readouterr().out)
+        assert rc == EXIT_OK
+        assert payload["age"] == 67
+        assert isinstance(payload["age"], int)
+
+    def test_json_suffix_is_accepted(self, tmp_path, capsys):
+        src = tmp_path / "note.json"
+        src.write_text('{"name": "张三"}', encoding="utf-8")
+        rc = main(["inspect", str(src), "--json"])
+        capsys.readouterr()
+        assert rc != EXIT_BLOCK
 
 
 # -- audit-verify ------------------------------------------------------------

@@ -192,17 +192,29 @@ class TestSanitize:
 
 
 class TestFailClosed:
-    def test_non_text_payload_blocks(self):
+    def test_unsupported_kind_blocks(self):
+        """JSON is supported as of v0.3; kinds without a parser still block."""
         guard = Guard()
         result = guard.sanitize(
-            Payload(kind="json", content={"patient": "张三"}),
+            Payload(kind="fhir", content={"patient": "张三"}),
             "external-unknown",
             "EXTERNAL_AI_ASSISTANCE",
         )
         assert result.decision_before.verdict is Verdict.BLOCK
         assert result.sanitized_payload is None
 
-    @pytest.mark.parametrize("kind", ["json", "fhir", "dicom", "binary"])
+    def test_json_payload_is_supported(self):
+        guard = Guard()
+        result = guard.sanitize(
+            Payload(kind="json", content={"patient": "张三"}),
+            "external-approved",
+            "EXTERNAL_AI_ASSISTANCE",
+        )
+        assert result.decision_before.verdict is Verdict.SANITIZE
+        assert result.sanitized_payload is not None
+        assert "张三" not in result.sanitized_payload.content
+
+    @pytest.mark.parametrize("kind", ["fhir", "dicom", "binary"])
     def test_non_text_kind_with_string_content_still_blocks(self, kind):
         guard = Guard()
         evaluated = guard.evaluate(
@@ -245,7 +257,7 @@ def test_noop_transform_never_releases(profile, monkeypatch, tmp_path):
     assert "2026-08-21" not in log
 
 
-@pytest.mark.parametrize("kind,content", [("json", {"patient": "张三"}), ("text", b"secret")])
+@pytest.mark.parametrize("kind,content", [("fhir", {"patient": "张三"}), ("text", b"secret")])
 def test_unsupported_payload_block_is_audited(kind, content, tmp_path):
     import json
 

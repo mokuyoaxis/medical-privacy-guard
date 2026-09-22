@@ -14,6 +14,6 @@ Public entry point:
 
 from .guard import Guard
 
-__version__ = "0.2.6"
+__version__ = "0.3.0"
 
 __all__ = ["Guard", "__version__"]

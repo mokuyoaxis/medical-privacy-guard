@@ -54,6 +54,7 @@ hardening contract, not proof of complete anonymization. See
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
 | `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
+| `formats/` | Flatten a structured payload into string leaves and rebuild it | `StructuredPayload` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats` (planned) | Parse CSV / XLSX / JSON / FHIR / DICOM | format-specific representation |
 | `adapters` (planned) | Translate external calls and enforce decisions before sending | adapter-specific |
@@ -61,6 +62,11 @@ hardening contract, not proof of complete anonymization. See
 ## Component boundaries
 
 - **Detectors do not decide.** They emit facts; policy chooses the outcome.
+- **A structured payload is one disclosure.** Its leaves are flattened into a
+  single text for detection, transformation and verification, and the verdict
+  covers the whole document: one direct identifier withholds the record. Leaves
+  are joined with NUL so two adjacent values cannot form a pattern that exists
+  in neither.
 - **No facts is not proof of safety.** Unrecognized content may produce ALLOW;
   re-scanning with the same detectors cannot independently establish recall.
 - **Core is deterministic.** The same request and policy version should yield

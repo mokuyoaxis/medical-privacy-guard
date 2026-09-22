@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-22
+
+### Added
+
+- **JSON payload support.** An object or array is flattened into its string
+  leaves, run through the existing text pipeline, and written back into a copy
+  of the original structure. Keys, array lengths, ordering and non-string values
+  are preserved; only the values the plan targeted change.
+- **A JSON key acts as a field label.** ``{"name": "张三"}`` is detected because
+  the key says what the value is; without that mapping the value is bare prose,
+  which the detectors deliberately leave alone. Key lookup is case-insensitive
+  and ignores ``_``/``-``/spaces, so ``patient_name``, ``patientName`` and
+  ``Patient Name`` all resolve.
+- ``Payload(kind="json", ...)`` accepts either serialised text or an
+  already-decoded object, and the CLI routes ``.json`` files to the structured
+  path.
+
+### Design
+
+- **One decision per document, transformation per leaf.** A structured payload
+  is the unit of disclosure, not the field: one direct identifier withholds the
+  record, because a partially released record is exactly where cross-field
+  quasi-identifiers do their damage. Audit and verification contracts are
+  therefore unchanged.
+- **Leaves are joined with NUL** when flattened. NUL cannot appear in a JSON
+  string and no detector matches it, so two adjacent leaves can never form a
+  pattern that exists in neither — ``{"a": "患者张", "b": "三入院"}`` stays
+  clean.
+- **Nesting is walked iteratively.** Depth is caller-controlled, and a payload
+  of a few thousand brackets overflows Python's recursion limit before any size
+  limit applies.
+
+### Known boundary
+
+- Numeric, boolean and null leaves are **not** inspected: rewriting a number
+  would change its JSON type and silently break the consumer. A numeric value
+  that happens to be an identifier (``{"phone": 13800000000}``) is therefore not
+  detected. Recorded in ``docs/scope.md`` rather than left implicit.
+- JSON keys themselves are not treated as values, so a name used as a key is not
+  detected.
+- CSV is not implemented yet; ``.csv`` files remain blocked.
+
+### Changed
+
+- CLI admission: a well-formed JSON container now takes the structured path
+  instead of being blocked. Something that looks like a container but does not
+  parse (truncated, double-wrapped) is still an admission failure, while
+  ordinary text starting with a bracket (``[随访] 记录``) stays on the plain-text
+  path.
+
 ## [0.2.6] - 2026-09-22
 
 ### Added
@@ -292,7 +342,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...v0.2.4

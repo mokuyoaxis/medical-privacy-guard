@@ -7,6 +7,11 @@ when they disagree, this file wins and the other two are updated.
 ## Supported
 
 - UTF-8 plain text input (Python API and CLI);
+- JSON objects and arrays (``Payload(kind="json")`` or a ``.json`` file): leaves
+  are sanitized and the structure is preserved. A key acts as a field label for
+  its value. Numeric, boolean and null leaves are not inspected, because
+  rewriting a number would change its JSON type; keys themselves are not treated
+  as values;
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
   ID candidates (GB 11643-1999 check digit), email, social-media handles,
   exact dates, labelled patient names, narrative ``姓名，性别`` openers,
@@ -127,8 +132,7 @@ contain them, and a detector firing on one of them fails the precision gate.
 
 No parsers or sanitization support exist for:
 
-- CSV / XLSX (planned v0.3)
-- JSON-like payload traversal (planned v0.3)
+- CSV (planned v0.3), XLSX (deferred: CSV covers the need)
 - FHIR (planned v0.5)
 - DICOM (planned v0.6)
 - PDF / DOCX

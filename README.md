@@ -96,8 +96,8 @@ has a deterministic operation; only the verified output may be released.
   scores are not evidence that those stronger checks passed.
   See [docs/evaluation.md](docs/evaluation.md) for the baseline and validation status.
 
-Only plain text is supported. Explicitly typed non-text API payloads return
-BLOCK. CLI admission checks reject known unsupported extensions, NUL and other
+Plain text and JSON objects/arrays are supported. Other explicitly typed
+non-text API payloads return BLOCK. CLI admission checks reject known unsupported extensions, NUL and other
 unsupported control characters, and JSON-container content; they do not reliably
 identify every disguised format. Callers using `str` or `Payload(kind="text")`
 are responsible for supplying plain text, not serialized structured/binary data.
@@ -173,7 +173,8 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   detected alongside the rules and used as an independent verification signal.
 - **v0.2.6 — Remaining detection gaps**: released as `v0.2.6`. Chinese numeral
   dates and title-suffix names whose given character is outside the inventory.
-- **v0.3 — CSV / XLSX / JSON**: not started (XLSX deferred; CSV covers the need).
+- **v0.3 — CSV / XLSX / JSON**: **JSON done** (`v0.3.0`); CSV not started;
+  XLSX deferred (CSV covers the need).
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.

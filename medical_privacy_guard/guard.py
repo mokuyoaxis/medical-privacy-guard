@@ -20,6 +20,7 @@ from typing import Sequence
 
 from core.audit import AuditError, AuditWriter, build_audit_event
 from core.dictionary import load_dictionary
+from core.errors import ParserError
 from core.model import (
     Decision,
     DetectedFact,
@@ -42,10 +43,17 @@ from core.verify import verify_sanitized
 from detectors import detect_all
 from detectors import registry as detector_registry
 from detectors.dictionary import DictionaryDetector
+from formats import dumps, from_document, parse_json_payload, rebuild
 from transformers import apply_plan
 
 __all__ = ["Guard"]
 
+
+#: Separator between leaf values when a structured payload is flattened for the
+#: text pipeline. NUL cannot occur in a JSON string, and no detector's character
+#: classes or whitespace escapes match it, so two adjacent leaves can never form
+#: a pattern that exists in neither of them.
+_LEAF_SEPARATOR = "\x00"
 
 #: Environment variable holding the optional audit HMAC key. Read from the
 #: environment rather than a parameter default so a key never lands in argv.
@@ -102,6 +110,75 @@ def _coerce_environment(environment: EnvironmentContext | None) -> EnvironmentCo
     )
 
 
+def _flatten(leaves) -> tuple[str, list[tuple[int, int, object]]]:
+    """Join leaf values into one text; return it and each leaf's span."""
+    parts: list[str] = []
+    spans: list[tuple[int, int, object]] = []
+    offset = 0
+    for leaf in leaves:
+        parts.append(leaf.text)
+        spans.append((offset, offset + len(leaf.text), leaf))
+        offset += len(leaf.text) + len(_LEAF_SEPARATOR)
+    return _LEAF_SEPARATOR.join(parts), spans
+
+
+def _detect_leaves(
+    leaves, spans: list[tuple[int, int, object]], detectors
+) -> tuple:
+    """Detect over each leaf, offsetting the facts into the flattened text.
+
+    A leaf whose key implies a field label is probed as "label：value" so the
+    label-driven detectors apply, and the label's own span is discarded. The
+    flattened text itself carries no labels, so the transformation never sees
+    them.
+    """
+    from dataclasses import replace as _replace
+
+    facts: list[DetectedFact] = []
+    for leaf, (start, end, _) in zip(leaves, spans):
+        if leaf.label:
+            probe = f"{leaf.label}：{leaf.text}"
+            offset = len(leaf.label) + 1
+        else:
+            probe, offset = leaf.text, 0
+        for fact in detect_all(probe, detectors):
+            if fact.start < offset:
+                continue
+            facts.append(
+                _replace(
+                    fact,
+                    start=fact.start - offset + start,
+                    end=fact.end - offset + start,
+                )
+            )
+    return tuple(facts)
+
+
+def _split(
+    text: str,
+    output: str,
+    spans: list[tuple[int, int, object]],
+    evidence,
+) -> dict[str, str]:
+    """Map each leaf to its sanitized value.
+
+    The transformation guarantees untargeted context is byte-identical, so a
+    leaf's output span is its input span shifted by the net length change of
+    every replacement before it.
+    """
+    def net(record) -> int:
+        return (record.output_end - record.output_start) - (record.end - record.start)
+
+    replacements: dict[str, str] = {}
+    for start, end, leaf in spans:
+        inner = [r for r in evidence if start <= r.start < end]
+        before = sum(net(r) for r in evidence if r.start < start)
+        out_start = start + before
+        out_end = out_start + (end - start) + sum(net(r) for r in inner)
+        replacements[leaf.path] = output[out_start:out_end]
+    return replacements
+
+
 class Guard:
     """Privacy guard for one policy profile.
 
@@ -156,6 +233,21 @@ class Guard:
             base = base + (DictionaryDetector(self.dictionary),)
         self._detectors = base
 
+    def _parse_structured(self, content):
+        """Parse a structured payload, or None when it cannot be parsed.
+
+        Accepts either serialised text or an already-decoded object, so a caller
+        holding a document does not have to serialise it to hand it back.
+        """
+        if isinstance(content, (dict, list)):
+            return from_document(content)
+        if not isinstance(content, str):
+            return None
+        try:
+            return parse_json_payload(content)
+        except ParserError:
+            return None
+
     # -- detection ----------------------------------------------------------
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
@@ -184,8 +276,17 @@ class Guard:
         env = _coerce_environment(environment)
 
         text = request_payload.content
+        if request_payload.kind == "json":
+            parsed = self._parse_structured(text)
+            if parsed is None:
+                return EvaluationResult(
+                    decision=self._decision_fail_closed(ReasonCode.PARSER_FAILURE), facts=()
+                )
+            _, spans = _flatten(parsed.leaves)
+            facts = _detect_leaves(parsed.leaves, spans, self._detectors)
+            decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
+            return EvaluationResult(decision=decision, facts=facts)
         if request_payload.kind != "text" or not isinstance(text, str):
-            # v0.1 supports text payloads only; structured formats fail closed.
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
             return EvaluationResult(decision=decision, facts=())
 
@@ -227,6 +328,15 @@ class Guard:
         purpose_obj = _coerce_purpose(purpose)
         env = _coerce_environment(environment)
         text = request_payload.content
+
+        if request_payload.kind == "json":
+            return self._sanitize_structured(
+                request_payload,
+                recipient_obj,
+                purpose_obj,
+                env,
+                audit_dir or self.audit_dir,
+            )
 
         if request_payload.kind != "text" or not isinstance(text, str):
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
@@ -282,6 +392,76 @@ class Guard:
             purpose_obj,
             verification,
         )
+        return SanitizationResult(
+            decision_before=decision,
+            sanitized_payload=sanitized,
+            verification=verification,
+            decision_after=decision_after,
+        )
+
+    def _sanitize_structured(
+        self,
+        payload: Payload,
+        recipient: Recipient,
+        purpose: Purpose,
+        env: EnvironmentContext | None,
+        audit_dir: str | None,
+    ) -> SanitizationResult:
+        """Sanitize a structured payload: one decision, per-leaf transformation.
+
+        The leaves are flattened into a single text so detection, transformation
+        and verification all run unchanged; the result is split back and written
+        into a copy of the original structure. The verdict covers the whole
+        document, not individual fields — a single direct identifier withholds
+        the record, because a partially released record is exactly where
+        cross-field quasi-identifiers do their damage.
+        """
+        parsed = self._parse_structured(payload.content)
+        if parsed is None:
+            decision = self._decision_fail_closed(ReasonCode.PARSER_FAILURE)
+            self._maybe_audit(audit_dir, decision, (), recipient, purpose, None)
+            return SanitizationResult(
+                decision_before=decision,
+                sanitized_payload=None,
+                verification=None,
+                decision_after=None,
+            )
+
+        text, spans = _flatten(parsed.leaves)
+        facts = _detect_leaves(parsed.leaves, spans, self._detectors)
+        decision = self._evaluator.evaluate(facts, recipient, purpose, env)
+        verification: VerificationResult | None = None
+        sanitized: Payload | None = None
+        decision_after: Decision | None = None
+
+        if decision.verdict is Verdict.ALLOW:
+            sanitized = payload
+        elif decision.verdict is Verdict.SANITIZE and decision.plan is not None:
+            outcome = apply_plan(text, facts, decision.plan)
+            verification = verify_sanitized(
+                profile=self.profile,
+                sanitized_text=outcome.text,
+                original_facts=facts,
+                recipient=recipient,
+                purpose=purpose,
+                original_text=text,
+                plan=decision.plan,
+                outcome=outcome,
+                detectors=self._detectors,
+                dictionary=self.dictionary,
+            )
+            if verification.passed:
+                replacements = _split(text, outcome.text, spans, outcome._evidence)
+                serialized = dumps(rebuild(parsed.document, replacements))
+                sanitized = Payload(
+                    kind="json", content=serialized, provenance=payload.provenance
+                )
+                reparsed = parse_json_payload(serialized)
+                residual_spans = _flatten(reparsed.leaves)[1]
+                residual = _detect_leaves(reparsed.leaves, residual_spans, self._detectors)
+                decision_after = self._evaluator.evaluate(residual, recipient, purpose, env)
+
+        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification)
         return SanitizationResult(
             decision_before=decision,
             sanitized_payload=sanitized,

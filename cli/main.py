@@ -64,9 +64,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     format_boundary = (
-        "Only UTF-8 plain text is supported. Known unsupported suffixes, binary "
-        "markers and JSON containers are blocked; arbitrary disguised formats "
-        "cannot be detected."
+        "UTF-8 plain text and JSON objects/arrays are supported. Known "
+        "unsupported suffixes and binary markers are blocked; arbitrary "
+        "disguised formats cannot be detected."
     )
     p_inspect = sub.add_parser(
         "inspect", help="Detect and evaluate without modifying data.", epilog=format_boundary,
@@ -150,7 +150,7 @@ def _add_common(
 
 
 _UNSUPPORTED_SUFFIXES = {
-    ".json", ".jsonl", ".ndjson", ".csv", ".tsv", ".xls", ".xlsx", ".xlsm",
+    ".jsonl", ".ndjson", ".csv", ".tsv", ".xls", ".xlsx", ".xlsm",
     ".ods", ".pdf", ".doc", ".docx", ".odt", ".rtf", ".fhir", ".xml",
     ".hl7", ".dcm", ".dicom", ".bin", ".zip", ".gz", ".png", ".jpg",
     ".jpeg", ".gif", ".tif", ".tiff", ".wav", ".mp3", ".mp4",
@@ -183,17 +183,44 @@ def _read_text(path: str) -> str:
         or data[128:132] == b"DICM"
     ):
         raise _UnsupportedInput("unsupported binary or document format")
+    return text
+
+
+def _classify(text: str) -> str:
+    """Classify the input as ``json``, ``text`` or ``unsupported``.
+
+    Something that looks like a container but does not parse as one is not
+    quietly demoted to prose: a truncated or double-wrapped JSON file is a
+    format problem, and treating it as clinical text would release its
+    contents as if they had been inspected properly.
+    """
     stripped = text.lstrip()
-    if stripped.startswith(("{", "[")):
+    if not stripped.startswith(("{", "[")):
+        return "text"
+    try:
+        container = json.loads(stripped)
+    except (json.JSONDecodeError, RecursionError, ValueError):
+        # Not a complete document. It is only a broken payload if a valid JSON
+        # value parses and leaves content behind (a truncated or double-wrapped
+        # file); otherwise the braces are ordinary text, and "[随访] 记录"
+        # must not be blocked merely for starting with a bracket.
         try:
-            container, _ = json.JSONDecoder().raw_decode(stripped)
-        except json.JSONDecodeError:
-            pass
-        except (RecursionError, ValueError) as exc:
-            raise _UnsupportedInput("unsupported structured input") from exc
-        else:
-            if isinstance(container, (dict, list)):
-                raise _UnsupportedInput("unsupported JSON container input")
+            value, end = json.JSONDecoder().raw_decode(stripped)
+        except (json.JSONDecodeError, RecursionError, ValueError):
+            return "text"
+        if isinstance(value, (dict, list)) and stripped[end:].strip():
+            return "unsupported"
+        return "text"
+    return "json" if isinstance(container, (dict, list)) else "unsupported"
+
+
+def _payload_for(text: str) -> str | Payload:
+    """Build the payload a classified input should take through the guard."""
+    kind = _classify(text)
+    if kind == "json":
+        return Payload(kind="json", content=text)
+    if kind == "unsupported":
+        return Payload(kind="unsupported", content="")
     return text
 
 
@@ -296,9 +323,15 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     text = _read_text(args.file)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
+    if _classify(text) == "unsupported":
+        # Admission failure, not a policy verdict: keep it off stdout so the
+        # two are distinguishable, exactly as sanitize does.
+        print("BLOCK: unsupported structured input", file=sys.stderr)
+        return EXIT_BLOCK
+    payload = _payload_for(text)
     result = Guard(
         profile=args.profile, dictionary_path=args.dictionary
-    ).evaluate(text, recipient, purpose)
+    ).evaluate(payload, recipient, purpose)
     facts = result.facts
     decision = result.decision
     counts = _counts(facts)
@@ -313,9 +346,11 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 def _cmd_sanitize(args: argparse.Namespace) -> int:
     _check_paths(args.file, args.output, args.audit_dir)
     try:
-        payload: str | Payload = _read_text(args.file)
+        text = _read_text(args.file)
     except _UnsupportedInput:
-        payload = Payload(kind="unsupported", content="")
+        payload: str | Payload = Payload(kind="unsupported", content="")
+    else:
+        payload = _payload_for(text)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
     # Guard owns detect → decide → transform → verify → audit.  In particular,
