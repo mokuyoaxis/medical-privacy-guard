@@ -556,3 +556,95 @@ class TestBenchmarkCommand:
         assert rc == EXIT_BLOCK
         assert "sanitize_path_not_exercised" in out
         assert "verdict_mismatch" in out
+
+
+# -- audit-verify ------------------------------------------------------------
+
+
+class TestAuditVerifyCommand:
+    """The integrity chain is only useful if the CLI surfaces its verdict."""
+
+    def _write_log(self, tmp_path, capsys, runs=1):
+        note = write(tmp_path, "note.txt", "患者张三，电话13800000000。\n")
+        audit_dir = tmp_path / "audit"
+        for _ in range(runs):
+            rc = main([
+                "sanitize", note, "--recipient", "external_approved",
+                "--audit-dir", str(audit_dir),
+            ])
+            assert rc == EXIT_OK
+        capsys.readouterr()  # drop the sanitized payload; keep only our output
+        return audit_dir
+
+    def test_intact_chain_exits_ok(self, tmp_path, capsys):
+        audit_dir = self._write_log(tmp_path, capsys, runs=3)
+        rc = main(["audit-verify", str(audit_dir)])
+        out = capsys.readouterr().out
+        assert rc == EXIT_OK
+        assert "Result: INTACT" in out
+        assert "Records: 3 (chained 3, pre-chain 0)" in out
+
+    def test_missing_log_is_an_error_not_a_pass(self, tmp_path, capsys):
+        rc = main(["audit-verify", str(tmp_path / "absent")])
+        assert rc == EXIT_ERROR
+        assert "no audit log" in capsys.readouterr().err
+
+    def test_edited_record_exits_block(self, tmp_path, capsys):
+        audit_dir = self._write_log(tmp_path, capsys)
+        log = audit_dir / "events.jsonl"
+        payload = json.loads(log.read_text(encoding="utf-8").strip())
+        payload["decision"] = "ALLOW"
+        log.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        rc = main(["audit-verify", str(audit_dir)])
+        out = capsys.readouterr().out
+        assert rc == EXIT_BLOCK
+        assert "Result: BROKEN" in out
+        assert "event_hash does not match its contents" in out
+
+    def test_json_report_is_machine_readable(self, tmp_path, capsys):
+        audit_dir = self._write_log(tmp_path, capsys, runs=2)
+        rc = main(["audit-verify", str(audit_dir), "--json"])
+        payload = json.loads(capsys.readouterr().out)
+        assert rc == EXIT_OK
+        assert payload["verified"] is True
+        assert payload["total"] == payload["chained"] == 2
+        assert payload["unchained"] == 0
+        assert payload["failures"] == []
+
+    def test_unset_key_env_is_an_error(self, tmp_path, monkeypatch, capsys):
+        """Asking for a keyed check and silently running unkeyed would pass a
+        log the caller expects to be authenticated."""
+        audit_dir = self._write_log(tmp_path, capsys)
+        monkeypatch.delenv("MPG_TEST_ABSENT_KEY", raising=False)
+        rc = main(["audit-verify", str(audit_dir), "--key-env", "MPG_TEST_ABSENT_KEY"])
+        assert rc == EXIT_ERROR
+        assert "MPG_TEST_ABSENT_KEY is not set" in capsys.readouterr().err
+
+    def test_keyed_log_verifies_only_with_the_same_key(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("MEDICAL_PRIVACY_GUARD_AUDIT_KEY", "synthetic-cli-key")
+        audit_dir = self._write_log(tmp_path, capsys)
+        rc = main(
+            ["audit-verify", str(audit_dir), "--key-env", "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"]
+        )
+        assert rc == EXIT_OK
+        assert "Result: INTACT" in capsys.readouterr().out
+
+        monkeypatch.setenv("MEDICAL_PRIVACY_GUARD_AUDIT_KEY", "a-different-key")
+        rc = main(
+            ["audit-verify", str(audit_dir), "--key-env", "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"]
+        )
+        assert rc == EXIT_BLOCK
+        assert "Result: BROKEN" in capsys.readouterr().out
+
+    def test_unkeyed_log_fails_a_keyed_check(self, tmp_path, monkeypatch, capsys):
+        """An unkeyed chain must not satisfy a caller asking for authentication."""
+        monkeypatch.delenv("MEDICAL_PRIVACY_GUARD_AUDIT_KEY", raising=False)
+        audit_dir = self._write_log(tmp_path, capsys)
+        monkeypatch.setenv("MEDICAL_PRIVACY_GUARD_AUDIT_KEY", "some-key")
+        rc = main(
+            ["audit-verify", str(audit_dir), "--key-env", "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"]
+        )
+        assert rc == EXIT_BLOCK

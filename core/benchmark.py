@@ -601,10 +601,15 @@ def _check_audit(
         return "invalid", content
     if not isinstance(event, dict):
         return "invalid", content
+    # The exact field set is checked on purpose: an audit record that grows an
+    # unexpected field is a schema change, and this gate must be updated
+    # deliberately rather than silently accept it. prev_hash / event_hash are
+    # the chained-integrity fields; both must be non-empty on a chained record.
     fields = {
         "event_id", "timestamp", "decision", "reason_codes", "entity_counts",
         "risk_level", "risk_score", "recipient_class", "purpose", "policy_profile",
         "policy_version", "transformations", "verification",
+        "prev_hash", "event_hash",
     }
     string_fields = fields - {"reason_codes", "entity_counts", "risk_score", "transformations"}
     if (

@@ -52,10 +52,17 @@ CLI:
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
 medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
+medical-privacy-guard audit-verify audit/
 ```
 
-Exit codes: `0` = ALLOW or verified SANITIZE, `2` = BLOCK, `3` = ASK,
+Exit codes: `0` = ALLOW or verified SANITIZE (for `audit-verify`, an intact
+chain), `2` = BLOCK (for `audit-verify`, a broken chain), `3` = ASK,
 `4` = parser/configuration/internal error.
+
+Audit events are chained by hash, so a deleted, reordered or edited record is
+detectable. Set `MEDICAL_PRIVACY_GUARD_AUDIT_KEY` to authenticate records with
+an HMAC as well. Tail truncation and keyless whole-chain rewriting are not
+detectable and are documented as such.
 
 Reported risk is the engineering risk of the **input before transformation**.
 A high/critical input may still receive SANITIZE when every direct identifier
@@ -152,6 +159,9 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   relative names bounded by the given-name inventory were released partially
   redacted; a labelled value is now bounded by its separator instead, and
   verification withholds release when a name span stops inside a name.
+- **v0.2.2 — Chained audit integrity**: released as `v0.2.2`. Audit events carry
+  the previous event's hash so deletion, reordering and edits are detectable,
+  with an optional HMAC key and an `audit-verify` command.
 - **v0.3 — CSV / XLSX / JSON**: not started.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.

@@ -5,10 +5,12 @@ Commands:
     sanitize  <file> [-o OUT] [--profile P] [--recipient T] [--purpose U]
               [--audit-dir DIR]
     benchmark <corpus_dir> [--json] [--profile P] [--limit N]
+    audit-verify <audit_dir> [--json] [--key-env VAR]
 
 Exit codes:
-    0  ALLOW, or SANITIZE that passed verification
-    2  BLOCK (or verification failure — no output is produced)
+    0  ALLOW, or SANITIZE that passed verification; for audit-verify, an intact chain
+    2  BLOCK (or verification failure — no output is produced); for
+       audit-verify, a broken chain
     3  ASK
     4  internal / parser / configuration error
 """
@@ -22,8 +24,9 @@ import sys
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
-from core.errors import GuardError, ParserError
+from core.errors import AuditError, GuardError, ParserError
 from core.model import (
     Decision,
     DetectedFact,
@@ -41,6 +44,9 @@ EXIT_ASK = 3
 EXIT_ERROR = 4
 
 DEFAULT_PROFILE = "external-ai-strict"
+#: Environment variable holding the optional audit HMAC key. A key is read from
+#: the environment rather than argv so it never lands in a process listing.
+DEFAULT_AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
 # Kept in step with core.benchmark.DEFAULT_RECIPIENT: the corpus expects its
 # positive documents to be sanitized and released, which only an approved
 # endpoint allows.
@@ -94,6 +100,23 @@ def _build_parser() -> argparse.ArgumentParser:
     # the conservative default no note would ever reach the sanitize path and
     # the benchmark would report a pass over zero measurements.
     _add_common(p_benchmark, recipient_default=DEFAULT_BENCHMARK_RECIPIENT)
+
+    p_audit = sub.add_parser(
+        "audit-verify",
+        help="Verify the integrity chain of an audit log.",
+        epilog=(
+            "Exit codes: 0 intact, 2 broken, 4 unreadable. Tail truncation and "
+            "whole-chain rewriting are not detectable without a key or an "
+            "external anchor."
+        ),
+    )
+    p_audit.add_argument("audit_dir", help="Directory holding events.jsonl")
+    p_audit.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    p_audit.add_argument(
+        "--key-env",
+        default=None,
+        help="Environment variable holding the HMAC key (kept out of argv)",
+    )
     return parser
 
 
@@ -332,6 +355,63 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
     return EXIT_OK if report.passed() else EXIT_BLOCK
 
 
+def _audit_key(key_env: str | None) -> bytes | None:
+    """Resolve the optional audit HMAC key from the environment.
+
+    An explicitly named variable that is unset is an error: silently verifying
+    an unkeyed chain would report success on a log the caller expects to be
+    authenticated.
+    """
+    name = key_env or DEFAULT_AUDIT_KEY_ENV
+    raw = os.environ.get(name)
+    if raw is None:
+        if key_env:
+            raise GuardError(f"environment variable {key_env} is not set")
+        return None
+    return raw.encode("utf-8")
+
+
+def _cmd_audit_verify(args: argparse.Namespace) -> int:
+    key = _audit_key(args.key_env)
+    log = Path(args.audit_dir) / "events.jsonl"
+    if not log.is_file():
+        # An absent log proves nothing about integrity; reporting an empty chain
+        # as INTACT would turn a mistyped path into a passing verification.
+        print(f"error: no audit log at {log}", file=sys.stderr)
+        return EXIT_ERROR
+    events = read_events(log)
+    report = verify_chain(events, key)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "log": str(log),
+                    "total": report.total,
+                    "chained": report.chained,
+                    "unchained": report.unchained,
+                    "verified": report.verified,
+                    "failures": list(report.failures),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"Audit log: {log}")
+        print(
+            f"Records: {report.total} "
+            f"(chained {report.chained}, pre-chain {report.unchained})"
+        )
+        if report.verified:
+            print("Result: INTACT")
+        else:
+            print("Result: BROKEN")
+            for failure in report.failures:
+                print(f"  - {failure}")
+    return EXIT_OK if report.verified else EXIT_BLOCK
+
+
 def _human_benchmark(report) -> str:
     lines = [
         f"Corpus: {report.documents} documents "
@@ -413,12 +493,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_sanitize(args)
         if args.command == "benchmark":
             return _cmd_benchmark(args)
+        if args.command == "audit-verify":
+            return _cmd_audit_verify(args)
         parser.error(f"unknown command: {args.command}")
     except SystemExit:
         raise
     except _UnsupportedInput as exc:
         print(f"BLOCK: {exc}", file=sys.stderr)
         return EXIT_BLOCK
+    except AuditError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     except GuardError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR

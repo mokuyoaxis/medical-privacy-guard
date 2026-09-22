@@ -44,6 +44,12 @@ when they disagree, this file wins and the other two are updated.
   type-specific postconditions, not exemptions for untransformed dates;
 - metadata-only JSONL audit when configured (no raw PHI, token maps or internal
   transformation evidence); incomplete/short writes must prevent release;
+- chained audit integrity: each event carries the previous event's hash, so a
+  deleted, reordered or edited record is detectable, with an optional HMAC key
+  for records that must be authenticated rather than merely consistent. What the
+  chain does not cover is stated in [evaluation.md](evaluation.md) and the
+  design note: tail truncation, whole-chain rewriting without a key, and
+  timestamp authenticity;
 - BLOCK for explicitly typed unsupported payloads and failed verification;
 - an evaluation harness over 175 synthetic Chinese clinical notes (140 with
   labelled identifiers, 1474 spans, and 35 identifier-free notes). Expected

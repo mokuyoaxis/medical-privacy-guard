@@ -52,7 +52,7 @@ hardening contract, not proof of complete anonymization. See
 | `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
-| `core/audit.py` | Append metadata-only events when configured | JSONL event |
+| `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats` (planned) | Parse CSV / XLSX / JSON / FHIR / DICOM | format-specific representation |
 | `adapters` (planned) | Translate external calls and enforce decisions before sending | adapter-specific |
@@ -112,6 +112,9 @@ prevent a caller from sending raw content directly.
 3. **Audit-no-raw-PHI**: configured audit events contain metadata, not raw values,
    token maps or internal execution evidence. Audit failure, including short
    writes, must withhold release; unsupported typed payloads also need BLOCK events.
+   Events are chained by hash so deletion, reordering and edits are detectable;
+   tail truncation and keyless whole-chain rewriting are not, and are documented
+   as such rather than implied to be covered.
 4. **Bounded input admission**: typed non-text payloads BLOCK. CLI checks reject
    known unsupported extensions, NUL/control characters and JSON containers,
    not every possible disguised format. API text declarations are trusted.

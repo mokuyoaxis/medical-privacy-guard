@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-22
+
+### Added
+
+- **Chained audit integrity.** Every audit event now carries ``prev_hash`` and
+  ``event_hash``, so a deleted, reordered or edited record is detectable.
+  ``AuditWriter`` reads and writes the link under an exclusive ``flock``,
+  because a chain turns the append into a read-modify-write and two writers that
+  read the same predecessor would fork it. Without ``fcntl`` (Windows) the chain
+  is still written, but concurrency falls back to the filesystem's append
+  semantics as in v0.2.1.
+- ``audit-verify`` CLI command and ``verify_chain()`` API, reporting total,
+  chained and pre-chain counts plus per-record failures. Exit codes: ``0``
+  intact, ``2`` broken, ``4`` unreadable. A missing log is an error, not an
+  intact chain.
+- Optional HMAC key through ``Guard(audit_key=...)`` or the
+  ``MEDICAL_PRIVACY_GUARD_AUDIT_KEY`` environment variable. A key authenticates
+  records against wholesale rewriting; an unkeyed chain only detects accidental
+  damage and naive tampering. The key is read from the environment rather than
+  argv so it never appears in a process listing.
+- ``read_events()`` for read-only log access that never creates the directory or
+  the log.
+
+### Changed
+
+- Audit records written by v0.2.1 and earlier carry no hashes. They are read as
+  "pre-chain", counted separately, and do not fail verification, so an existing
+  log keeps verifying; the chain starts at the first hashed record.
+- The benchmark's audit schema gate expects the two new fields. Its exact
+  field-set check is unchanged and still rejects any unexpected field.
+
+### Notes
+
+- What the chain does **not** cover, stated rather than implied: tail truncation
+  (the surviving links stay self-consistent), whole-chain rewriting without a
+  key, and timestamp authenticity. Detecting the first needs an external anchor
+  holding the expected length, which this library deliberately does not provide.
+  See ``.internal/audit-hash-chain-plan-2026-09-22.md``.
+
 ## [0.2.1] - 2026-09-22
 
 ### Fixed
@@ -130,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mokuyoaxis/medical-privacy-guard/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mokuyoaxis/medical-privacy-guard/releases/tag/v0.1.0

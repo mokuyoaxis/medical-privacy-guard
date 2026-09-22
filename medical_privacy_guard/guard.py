@@ -15,6 +15,8 @@ pipelines and agents:
 
 from __future__ import annotations
 
+import os
+
 from core.audit import AuditError, AuditWriter, build_audit_event
 from core.model import (
     Decision,
@@ -39,6 +41,21 @@ from detectors import detect_all
 from transformers import apply_plan
 
 __all__ = ["Guard"]
+
+
+#: Environment variable holding the optional audit HMAC key. Read from the
+#: environment rather than a parameter default so a key never lands in argv.
+_AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
+
+
+def _env_audit_key() -> bytes | None:
+    """Return the configured audit HMAC key, if any.
+
+    Without a key the audit chain still detects deleted, reordered and edited
+    records, but anyone able to write the log can recompute the whole chain.
+    """
+    raw = os.environ.get(_AUDIT_KEY_ENV)
+    return raw.encode("utf-8") if raw else None
 
 
 def _coerce_payload(payload: str | Payload) -> Payload:
@@ -93,6 +110,7 @@ class Guard:
         profile: str = "external-ai-strict",
         profile_path: str | None = None,
         audit_dir: str | None = None,
+        audit_key: bytes | None = None,
     ) -> None:
         """Create a Guard bound to one policy profile.
 
@@ -100,12 +118,16 @@ class Guard:
             profile: builtin profile name (external-ai-strict, research, ...).
             profile_path: optional explicit path to a custom profile YAML.
             audit_dir: optional directory for append-only audit events.
+            audit_key: optional HMAC key for the audit chain. When omitted, the
+                ``MEDICAL_PRIVACY_GUARD_AUDIT_KEY`` environment variable is
+                used if set; otherwise the chain is unkeyed.
         """
         self.profile: PolicyProfile = (
             PolicyProfile.load(profile_path) if profile_path else load_builtin_profile(profile)
         )
         self._evaluator = PolicyEvaluator(self.profile)
         self.audit_dir = audit_dir
+        self.audit_key = audit_key if audit_key is not None else _env_audit_key()
 
     # -- detection ----------------------------------------------------------
 
@@ -257,7 +279,7 @@ class Guard:
         elif decision.verdict is Verdict.ALLOW:
             status = "N/A (ALLOW)"
         try:
-            writer = AuditWriter(audit_dir)
+            writer = AuditWriter(audit_dir, key=self.audit_key)
             event = build_audit_event(
                 decision, facts, recipient, purpose, verification=status
             )

@@ -9,10 +9,17 @@ Coverage:
 """
 
 import json
+from dataclasses import replace
 
 import pytest
 
-from core.audit import AuditEvent, AuditWriter, build_audit_event
+from core.audit import (
+    GENESIS_HASH,
+    AuditEvent,
+    AuditWriter,
+    build_audit_event,
+    verify_chain,
+)
 from core.errors import AuditError
 from core.model import (
     Decision,
@@ -94,7 +101,9 @@ class TestWriter:
         event = sample_event()
         writer.record(event)
         (read_back,) = writer.read_all()
-        assert read_back == event
+        # The stored record is the event linked to the chain head (genesis in an
+        # empty log); every other field round-trips unchanged.
+        assert read_back == event.chained(GENESIS_HASH)
         assert read_back.entity_counts == {"PHONE": 1}
         assert read_back.transformations == ("REMOVE_PHONE",)
 
@@ -120,7 +129,9 @@ class TestWriteIntegrity:
 
         writer = AuditWriter(tmp_path, strict=strict)
         event = replace(sample_event(), reason_codes=("合成元数据",))
-        data = (event.to_json_line() + "\n").encode("utf-8")
+        # The log starts empty, so the first record chains from genesis and the
+        # exact bytes are deterministic.
+        data = (event.chained(GENESIS_HASH).to_json_line() + "\n").encode("utf-8")
         original_write = os.write
         original_close = os.close
         writes = []
@@ -179,9 +190,10 @@ class TestWriteIntegrity:
         monkeypatch.setattr(os, "write", write)
         monkeypatch.setattr(os, "fsync", fsync)
         assert writer.record(event) == event.event_id
-        assert calls == [("write", (event.to_json_line() + "\n").encode("utf-8")),
+        chained = event.chained(GENESIS_HASH)
+        assert calls == [("write", (chained.to_json_line() + "\n").encode("utf-8")),
                          ("fsync", None)]
-        assert writer.read_all() == (event,)
+        assert writer.read_all() == (chained,)
 
     @pytest.mark.parametrize("executor_kind", ["threads", "processes"])
     def test_concurrent_append_keeps_complete_events(self, tmp_path, executor_kind):
@@ -341,3 +353,130 @@ class TestFullPipeline:
         assert read_back.entity_counts == {"PHONE": 1}
         assert read_back.verification == "PASS"
         assert "13800000000" not in read_back.to_json_line()
+
+
+# -- chained integrity -------------------------------------------------------
+
+
+class TestChainIntegrity:
+    """Each record links to the previous one, so edits and deletions show up.
+
+    What the chain does *not* cover is pinned here too: tail truncation and
+    whole-chain rewriting are outside its reach. See
+    ``.internal/audit-hash-chain-plan-2026-09-22.md``.
+    """
+
+    def test_sequential_writes_verify(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        for index in range(5):
+            writer.record(replace(sample_event(), event_id=f"e{index}"))
+        report = writer.verify()
+        assert report.verified, report.failures
+        assert (report.total, report.chained, report.unchained) == (5, 5, 0)
+
+    def test_first_record_links_to_genesis(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        writer.record(sample_event())
+        (event,) = writer.read_all()
+        assert event.prev_hash == GENESIS_HASH
+
+    def test_deleting_a_middle_record_is_detected(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        for index in range(4):
+            writer.record(replace(sample_event(), event_id=f"e{index}"))
+        lines = writer.filename.read_text(encoding="utf-8").splitlines()
+        del lines[1]
+        writer.filename.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        report = verify_chain(AuditWriter(tmp_path).read_all())
+        assert not report.verified
+        assert any("prev_hash" in failure for failure in report.failures)
+
+    def test_editing_a_field_is_detected(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        writer.record(sample_event())
+        payload = json.loads(writer.filename.read_text(encoding="utf-8").strip())
+        payload["decision"] = "ALLOW"
+        writer.filename.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        report = verify_chain(AuditWriter(tmp_path).read_all())
+        assert not report.verified
+        assert any("event_hash" in failure for failure in report.failures)
+
+    def test_reordering_is_detected(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        for index in range(3):
+            writer.record(replace(sample_event(), event_id=f"e{index}"))
+        lines = writer.filename.read_text(encoding="utf-8").splitlines()
+        lines[0], lines[1] = lines[1], lines[0]
+        writer.filename.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        assert not verify_chain(AuditWriter(tmp_path).read_all()).verified
+
+    def test_tail_truncation_is_not_detected(self, tmp_path):
+        """A documented limit, pinned rather than papered over.
+
+        Removing the last records leaves a chain that is still self-consistent.
+        Detecting it needs an external anchor holding the expected length, which
+        this library deliberately does not provide.
+        """
+        writer = AuditWriter(tmp_path)
+        for index in range(4):
+            writer.record(replace(sample_event(), event_id=f"e{index}"))
+        lines = writer.filename.read_text(encoding="utf-8").splitlines()
+        writer.filename.write_text("\n".join(lines[:2]) + "\n", encoding="utf-8")
+        report = verify_chain(AuditWriter(tmp_path).read_all())
+        assert report.verified
+        assert report.total == 2
+
+    def test_records_without_hashes_are_pre_chain(self, tmp_path):
+        """A log written by v0.2.1 or earlier must keep verifying."""
+        writer = AuditWriter(tmp_path)
+        legacy = replace(sample_event(), event_id="legacy")
+        writer.filename.write_text(legacy.to_json_line() + "\n", encoding="utf-8")
+        writer.record(replace(sample_event(), event_id="chained"))
+        report = writer.verify()
+        assert report.verified, report.failures
+        assert (report.unchained, report.chained) == (1, 1)
+
+    def test_hmac_key_authenticates_records(self, tmp_path):
+        key = b"synthetic-test-key"
+        AuditWriter(tmp_path, key=key).record(sample_event())
+        assert AuditWriter(tmp_path, key=key).verify().verified
+        wrong = AuditWriter(tmp_path, key=b"another-key").verify()
+        assert not wrong.verified
+        assert any("event_hash" in failure for failure in wrong.failures)
+
+    def test_unkeyed_verification_of_a_keyed_log_fails(self, tmp_path):
+        AuditWriter(tmp_path, key=b"synthetic-test-key").record(sample_event())
+        assert not AuditWriter(tmp_path).verify().verified
+
+    def test_partial_trailing_record_is_not_a_predecessor(self, tmp_path):
+        """A failed write can leave a fragment; the next record must not chain
+        from it, and the corrupt fragment must not be silently skipped."""
+        writer = AuditWriter(tmp_path)
+        writer.record(replace(sample_event(), event_id="e0"))
+        with open(writer.filename, "ab") as handle:
+            handle.write(b'{"event_id": "partial"')
+        writer.record(replace(sample_event(), event_id="e1"))
+        assert writer.filename.read_bytes().count(b"\n") == 2
+        with pytest.raises(AuditError):
+            writer.read_all()
+
+    def test_chain_stays_continuous_under_concurrent_writes(self, tmp_path):
+        """The lock is what keeps a fork from appearing across processes."""
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(
+            max_workers=4, mp_context=multiprocessing.get_context("spawn")
+        ) as executor:
+            futures = [
+                executor.submit(_write_concurrent_events, str(tmp_path), worker)
+                for worker in range(4)
+            ]
+            for future in futures:
+                future.result(timeout=30)
+        report = AuditWriter(tmp_path).verify()
+        assert report.verified, report.failures
+        assert report.chained == 48

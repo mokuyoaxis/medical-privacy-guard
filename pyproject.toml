@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "medical-privacy-guard"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local-first privacy guardrails for medical data before it crosses a trust boundary."
 readme = "README.md"
 license = "MIT"
