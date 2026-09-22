@@ -15,6 +15,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.2.2 | Chained audit integrity | Released (`v0.2.2`) |
 | v0.2.3 | Audit leak gate false positive | Released (`v0.2.3`) |
 | v0.2.4 | Detection coverage | Released (`v0.2.4`) |
+| v0.2.5 | Institution vocabulary + detector extension point | Released (`v0.2.5`) |
 | v0.3 | CSV / XLSX / JSON | Not started |
 | v0.4 | LLM SDK wrapper + MCP gateway | Not started |
 | v0.5 | FHIR minimal resource set | Not started |
@@ -124,7 +125,7 @@ time and quantify the recall/precision change per detector.
 
 **Remaining**:
 
-- local institution dictionary loading (currently a built-in department list);
+- ~~local institution dictionary loading (currently a built-in department list);~~ delivered in v0.2.5 as a local `.csv` / `.json` vocabulary.
 - validate security hardening: independent transformation evidence and
   postconditions, bounded CLI format admission, complete audit writes and
   input/output/audit collision protection;

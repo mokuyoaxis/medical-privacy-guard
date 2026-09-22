@@ -53,6 +53,7 @@ hardening contract, not proof of complete anonymization. See
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
+| `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats` (planned) | Parse CSV / XLSX / JSON / FHIR / DICOM | format-specific representation |
 | `adapters` (planned) | Translate external calls and enforce decisions before sending | adapter-specific |
@@ -133,6 +134,11 @@ blind spots remain possible despite fail-closed handling of recognized errors.
 ## Future integration requirements (not current enforced invariants)
 
 - SDK/MCP adapters must call Guard before sending and must not reimplement policy.
+- Callers may supply their own detectors through ``Guard(detectors=...)``,
+  including model-backed ones. They may only extend recall: they must return
+  ``DetectedFact`` and must not decide verdicts, skip verification, or write
+  audit records. The built-in rule set stays the default and the only path that
+  requires no optional dependencies.
 - A deployment-controlled approval service must scope and expire ASK grants;
   the current ASK result withholds content but does not implement such grants.
 - Future DICOM support must distinguish metadata cleaning from pixel risk.

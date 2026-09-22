@@ -47,6 +47,14 @@ when they disagree, this file wins and the other two are updated.
   type-specific postconditions, not exemptions for untransformed dates;
 - metadata-only JSONL audit when configured (no raw PHI, token maps or internal
   transformation evidence); incomplete/short writes must prevent release;
+- an optional local institution vocabulary (``.csv`` or ``.json``) supplying
+  institution, department, ward and staff terms. Terms are detected alongside
+  the built-in rules and give verification a signal independent of them: a term
+  that survives into the released text fails verification. Terms in a referral
+  context stay undetected, exactly as in the deliberate non-detection table
+  below — the vocabulary does not override that judgement. The vocabulary is a
+  sensitive asset: audit records carry only whether it was loaded and how many
+  terms it held, and failures name the category, never the term;
 - chained audit integrity: each event carries the previous event's hash, so a
   deleted, reordered or edited record is detectable, with an optional HMAC key
   for records that must be authenticated rather than merely consistent. What the

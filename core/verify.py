@@ -77,8 +77,13 @@ class Verifier:
         self,
         profile: PolicyProfile,
         detectors: Sequence | None = None,
+        dictionary: object | None = None,
     ) -> None:
         self.profile = profile
+        #: Optional InstitutionDictionary. Its only role here is to answer a
+        #: question the detectors cannot: whether a word the rules never knew
+        #: survived into the released text.
+        self._dictionary = dictionary
         # Imported lazily to keep core/ free of a hard detectors dependency at
         # module import time; detectors only import core.model, so this is safe.
         from detectors import DEFAULT_DETECTORS, detect_all
@@ -115,6 +120,7 @@ class Verifier:
 
         try:
             self._check_v1_no_residual(residual)
+            self._check_dictionary_residual(sanitized_text)
             self._check_v2_no_new_types(original_facts, residual)
             self._check_execution(sanitized_text, original_facts, original_text, plan, outcome)
             for fact in residual:
@@ -381,6 +387,32 @@ class Verifier:
                 f"residual identifiers after transformation: {', '.join(kinds)}"
             )
 
+    def _check_dictionary_residual(self, sanitized: str) -> None:
+        """A dictionary term that survived into the output is a residual.
+
+        This is the independent signal the project otherwise lacks: re-scanning
+        with the same detectors only proves they agree with themselves, while
+        the deployment's own vocabulary can flag a word no rule ever matched.
+        Only categories are named in the failure — the vocabulary itself is a
+        sensitive asset and must not reach an error message or a log.
+        """
+        dictionary = self._dictionary
+        if dictionary is None or dictionary.is_empty():
+            return
+        # Reuse the detector rather than re-implementing the match rules, so a
+        # term the detector deliberately ignores (a referral target, which
+        # docs/scope.md lists as non-detection) is not then reported as a
+        # residual — the two would otherwise disagree and nothing containing a
+        # referral could ever be released.
+        from detectors.dictionary import DictionaryDetector
+
+        survivors = DictionaryDetector(dictionary).detect(sanitized)
+        if survivors:
+            categories = sorted({f.source.split(".", 1)[1] for f in survivors})
+            raise _CheckFailure(
+                "dictionary terms survived transformation: " + ", ".join(categories)
+            )
+
     @staticmethod
     def _check_v2_no_new_types(
         original_facts: Sequence[DetectedFact],
@@ -431,9 +463,11 @@ def verify_sanitized(
     original_text: str | None = None,
     plan: DisclosurePlan | None = None,
     outcome: TransformOutcome | None = None,
+    detectors: Sequence | None = None,
+    dictionary: object | None = None,
 ) -> VerificationResult:
     """Convenience wrapper constructing a Verifier for *profile*."""
-    return Verifier(profile).verify(
+    return Verifier(profile, detectors=detectors, dictionary=dictionary).verify(
         sanitized_text=sanitized_text,
         original_facts=original_facts,
         recipient=recipient,

@@ -168,7 +168,10 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
 - **v0.2.4 — Detection coverage**: released as `v0.2.4`. Chinese numeral ages,
   comma-separated sex, bracketed names, labelled bed numbers and unlabelled
   addresses; age generalization learned numerals too.
-- **v0.3 — CSV / XLSX / JSON**: not started.
+- **v0.2.5 — Institution vocabulary**: released as `v0.2.5`. An optional local
+  `.csv` / `.json` vocabulary of institution, department, ward and staff terms,
+  detected alongside the rules and used as an independent verification signal.
+- **v0.3 — CSV / XLSX / JSON**: not started (XLSX deferred; CSV covers the need).
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.

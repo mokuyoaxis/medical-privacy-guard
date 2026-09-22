@@ -73,6 +73,11 @@ class AuditEvent:
     #: audit log keeps verifying.
     prev_hash: str = ""
     event_hash: str = ""
+    #: Whether an institution dictionary was active, and how many terms it
+    #: held. Counts only: the vocabulary names real institutions and real staff,
+    #: so its contents are a sensitive asset that must not enter the log.
+    dictionary_loaded: bool = False
+    dictionary_entries: int = 0
 
     # -- serialization ------------------------------------------------------
 
@@ -93,6 +98,8 @@ class AuditEvent:
             "transformations": list(self.transformations),
             "verification": self.verification,
             "prev_hash": self.prev_hash,
+            "dictionary_loaded": self.dictionary_loaded,
+            "dictionary_entries": self.dictionary_entries,
         }
 
     def to_json_line(self) -> str:
@@ -138,6 +145,8 @@ class AuditEvent:
             verification=payload["verification"],
             prev_hash=payload.get("prev_hash", ""),
             event_hash=payload.get("event_hash", ""),
+            dictionary_loaded=bool(payload.get("dictionary_loaded", False)),
+            dictionary_entries=int(payload.get("dictionary_entries", 0)),
         )
 
 
@@ -148,6 +157,8 @@ def build_audit_event(
     purpose: Purpose,
     verification: str = "N/A",
     event_id: str | None = None,
+    dictionary_loaded: bool = False,
+    dictionary_entries: int = 0,
 ) -> AuditEvent:
     """Build an audit event from a decision; raw values are never included.
 
@@ -170,6 +181,8 @@ def build_audit_event(
         policy_version=decision.policy_version,
         transformations=transformations,
         verification=verification,
+        dictionary_loaded=dictionary_loaded,
+        dictionary_entries=dictionary_entries,
     )
 
 

@@ -73,6 +73,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_inspect.add_argument("file", help="UTF-8 text file to inspect")
     p_inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    p_inspect.add_argument(
+        "--dictionary", default=None,
+        help="Optional .csv or .json institution vocabulary (local-only)",
+    )
     _add_common(p_inspect)
 
     p_sanitize = sub.add_parser(
@@ -87,6 +91,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="New owner-only output file; existing paths are refused (default: stdout)",
     )
     p_sanitize.add_argument("--audit-dir", default=None, help="Append audit events to this directory")
+    p_sanitize.add_argument(
+        "--dictionary", default=None,
+        help="Optional .csv or .json institution vocabulary (local-only)",
+    )
     _add_common(p_sanitize)
 
     p_benchmark = sub.add_parser(
@@ -288,7 +296,9 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     text = _read_text(args.file)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
-    result = Guard(profile=args.profile).evaluate(text, recipient, purpose)
+    result = Guard(
+        profile=args.profile, dictionary_path=args.dictionary
+    ).evaluate(text, recipient, purpose)
     facts = result.facts
     decision = result.decision
     counts = _counts(facts)
@@ -310,7 +320,7 @@ def _cmd_sanitize(args: argparse.Namespace) -> int:
     purpose = _PURPOSES[args.purpose]
     # Guard owns detect → decide → transform → verify → audit.  In particular,
     # audit completes before this function writes/reveals the output.
-    result = Guard(profile=args.profile).sanitize(
+    result = Guard(profile=args.profile, dictionary_path=args.dictionary).sanitize(
         payload,
         recipient,
         purpose,

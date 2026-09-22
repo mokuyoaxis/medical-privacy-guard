@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-22
+
+### Added
+
+- **Local institution vocabulary** (``.csv`` or ``.json``), loading institution,
+  department, ward and staff terms. Terms are detected alongside the built-in
+  rules — an institution's own records are stronger evidence than a shape match,
+  so the dictionary detector reports higher confidence and wins on overlap.
+- **The first genuinely independent verification signal.** A term the rules
+  never knew cannot be found by re-scanning with those same rules; the
+  vocabulary can. A surviving term fails verification with
+  ``DICTIONARY_RESIDUAL``.
+- ``Guard(dictionary_path=...)`` and ``--dictionary`` on ``inspect`` and
+  ``sanitize``. No dictionary means no behaviour change.
+- ``Guard(detectors=...)``, the reserved extension point for callers that want
+  to add their own detectors (including models). Supplied detectors may only
+  extend recall: policy still decides, verification still runs, audit is still
+  written by the guard.
+- Audit events carry ``dictionary_loaded`` and ``dictionary_entries`` — counts
+  only. The vocabulary names real institutions and real staff, so its contents
+  never enter an audit record, a log line or an error message.
+
+### Notes
+
+- A dictionary term in a referral context (``建议神经内科会诊``) stays
+  undetected, and verification agrees: the residual check reuses the detector
+  rather than re-implementing the match rules, so the two cannot disagree and
+  no note containing a referral is blocked. ``docs/scope.md`` owns that
+  judgement, not the vocabulary.
+- Loading fails closed: an unreadable file, a missing header, an unknown
+  category or an empty term raises rather than being skipped, because a
+  vocabulary the deployment believes is active but which loaded nothing is
+  worse than none.
+- ``.xlsx`` is deliberately not supported; ``.csv`` covers the same need
+  without adding a dependency.
+
 ## [0.2.4] - 2026-09-22
 
 ### Added
@@ -225,7 +261,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...v0.2.2

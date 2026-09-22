@@ -34,3 +34,12 @@ class AuditError(GuardError):
 
 class TransformerError(GuardError):
     """Raised when a transformation operation is unknown or cannot be applied."""
+
+
+class DictionaryError(GuardError):
+    """Raised when an institution dictionary cannot be loaded or is invalid.
+
+    Fail closed, for the same reason policy configuration does: a dictionary
+    the deployment believes is active but which silently loaded nothing is
+    worse than no dictionary at all.
+    """

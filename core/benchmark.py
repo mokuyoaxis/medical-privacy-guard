@@ -611,12 +611,21 @@ def _check_audit(
         "risk_level", "risk_score", "recipient_class", "purpose", "policy_profile",
         "policy_version", "transformations", "verification",
         "prev_hash", "event_hash",
+        "dictionary_loaded", "dictionary_entries",
     }
-    string_fields = fields - {"reason_codes", "entity_counts", "risk_score", "transformations"}
+    # Non-string fields are excluded from the "must be a non-empty string" check
+    # below; the two dictionary fields are a bool and an int.
+    string_fields = fields - {
+        "reason_codes", "entity_counts", "risk_score", "transformations",
+        "dictionary_loaded", "dictionary_entries",
+    }
     if (
         set(event) != fields
         or any(not isinstance(event[k], str) or not event[k] for k in string_fields)
         or type(event["risk_score"]) is not int
+        or type(event["dictionary_loaded"]) is not bool
+        or type(event["dictionary_entries"]) is not int
+        or event["dictionary_entries"] < 0
         or not isinstance(event["entity_counts"], dict)
         or any(not isinstance(k, str) or type(v) is not int or v < 0
                for k, v in event["entity_counts"].items())

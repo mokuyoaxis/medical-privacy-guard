@@ -527,10 +527,12 @@ with patch(target, replacement):
         _write_corpus(tmp_path)
         original = detect_all
 
-        def partial(text):
+        def partial(text, detectors=None):
+            # Guard now passes its detector set explicitly so that a loaded
+            # dictionary is seen by detection and verification alike.
             return tuple(
                 dataclasses.replace(f, end=f.start + 1, value=text[f.start:f.start + 1])
-                if f.type == "PERSON_NAME" else f for f in original(text)
+                if f.type == "PERSON_NAME" else f for f in original(text, detectors)
             )
 
         monkeypatch.setattr("core.benchmark.detect_all", partial)

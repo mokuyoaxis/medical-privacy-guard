@@ -76,6 +76,11 @@ class ReasonCode(str, Enum):
     TRANSFORMATION_AVAILABLE = "TRANSFORMATION_AVAILABLE"
     TRANSFORMATION_INCOMPLETE = "TRANSFORMATION_INCOMPLETE"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    #: A term from the deployment's institution dictionary survived into the
+    #: released text. The rule-based re-scan cannot see this on its own: the
+    #: rules never knew the word, which is why the dictionary is a genuinely
+    #: independent verification signal rather than a second set of patterns.
+    DICTIONARY_RESIDUAL = "DICTIONARY_RESIDUAL"
 
     # Format / policy errors
     PARSER_FAILURE = "PARSER_FAILURE"

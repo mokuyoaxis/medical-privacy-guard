@@ -16,8 +16,10 @@ pipelines and agents:
 from __future__ import annotations
 
 import os
+from typing import Sequence
 
 from core.audit import AuditError, AuditWriter, build_audit_event
+from core.dictionary import load_dictionary
 from core.model import (
     Decision,
     DetectedFact,
@@ -38,6 +40,8 @@ from core.model import (
 from core.policy import PolicyEvaluator, PolicyProfile, load_builtin_profile
 from core.verify import verify_sanitized
 from detectors import detect_all
+from detectors import registry as detector_registry
+from detectors.dictionary import DictionaryDetector
 from transformers import apply_plan
 
 __all__ = ["Guard"]
@@ -111,6 +115,8 @@ class Guard:
         profile_path: str | None = None,
         audit_dir: str | None = None,
         audit_key: bytes | None = None,
+        dictionary_path: str | None = None,
+        detectors: Sequence | None = None,
     ) -> None:
         """Create a Guard bound to one policy profile.
 
@@ -121,6 +127,12 @@ class Guard:
             audit_key: optional HMAC key for the audit chain. When omitted, the
                 ``MEDICAL_PRIVACY_GUARD_AUDIT_KEY`` environment variable is
                 used if set; otherwise the chain is unkeyed.
+            dictionary_path: optional ``.csv`` or ``.json`` institution
+                vocabulary. Its terms are detected alongside the built-in
+                rules and give verification a signal independent of them.
+            detectors: optional replacement detector set. Supplied detectors
+                may only extend recall; they must return ``DetectedFact`` and
+                must not decide verdicts, bypass verification or write audit.
         """
         self.profile: PolicyProfile = (
             PolicyProfile.load(profile_path) if profile_path else load_builtin_profile(profile)
@@ -128,6 +140,21 @@ class Guard:
         self._evaluator = PolicyEvaluator(self.profile)
         self.audit_dir = audit_dir
         self.audit_key = audit_key if audit_key is not None else _env_audit_key()
+        self.dictionary = load_dictionary(dictionary_path) if dictionary_path else None
+        # The dictionary is a detector like any other, so detection and
+        # verification always see the same set — a mismatch there is how a
+        # fact gets transformed but not verified, or vice versa.
+        # Read the registry attribute at call time rather than binding the name
+        # at import time, so a caller (or a test) that replaces the default set
+        # is actually honoured.
+        base = (
+            tuple(detectors)
+            if detectors is not None
+            else tuple(detector_registry.DEFAULT_DETECTORS)
+        )
+        if self.dictionary is not None and not self.dictionary.is_empty():
+            base = base + (DictionaryDetector(self.dictionary),)
+        self._detectors = base
 
     # -- detection ----------------------------------------------------------
 
@@ -135,7 +162,7 @@ class Guard:
         """Run all detectors; returns internal facts (may contain raw values)."""
         if not isinstance(text, str):
             raise TypeError(f"detect expects str, got {type(text).__name__}")
-        return detect_all(text)
+        return detect_all(text, self._detectors)
 
     # -- evaluation ---------------------------------------------------------
 
@@ -162,7 +189,7 @@ class Guard:
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
             return EvaluationResult(decision=decision, facts=())
 
-        facts = detect_all(text)
+        facts = detect_all(text, self._detectors)
         decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
         return EvaluationResult(decision=decision, facts=facts)
 
@@ -213,7 +240,7 @@ class Guard:
                 decision_after=None,
             )
 
-        facts = detect_all(text)
+        facts = detect_all(text, self._detectors)
         decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
         verification: VerificationResult | None = None
         sanitized: Payload | None = None
@@ -232,6 +259,8 @@ class Guard:
                 original_text=text,
                 plan=decision.plan,
                 outcome=outcome,
+                detectors=self._detectors,
+                dictionary=self.dictionary,
             )
             if verification.passed:
                 sanitized = Payload(
@@ -239,7 +268,7 @@ class Guard:
                     content=outcome.text,
                     provenance=request_payload.provenance,
                 )
-                residual = detect_all(outcome.text)
+                residual = detect_all(outcome.text, self._detectors)
                 decision_after = self._evaluator.evaluate(
                     residual, recipient_obj, purpose_obj, env
                 )
@@ -281,7 +310,13 @@ class Guard:
         try:
             writer = AuditWriter(audit_dir, key=self.audit_key)
             event = build_audit_event(
-                decision, facts, recipient, purpose, verification=status
+                decision,
+                facts,
+                recipient,
+                purpose,
+                verification=status,
+                dictionary_loaded=self.dictionary is not None,
+                dictionary_entries=len(self.dictionary) if self.dictionary else 0,
             )
             writer.record(event)
         except AuditError:
