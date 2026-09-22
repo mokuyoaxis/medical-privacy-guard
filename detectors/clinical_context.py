@@ -32,7 +32,6 @@ from .base import Detector
 from .field_syntax import FIELD_SEP_REQUIRED, label_with_value
 from .surnames import (
     COMPOUND_SURNAME_CLASS,
-    GIVEN_CLASS,
     GIVEN_NAME_CLASS,
     NAME_FOLLOW_BOUNDARY,
     NUMERAL_GIVEN_CLASS,
@@ -87,11 +86,16 @@ _DOCTOR_TITLES = (
 # lookbehinds stop the rule from matching inside a title word: 主任医师
 # contains 任医师 (任 is a surname) and 责任护士 contains 任护士. Without them,
 # sanitizing a title form leaves a residual match and verification rejects it.
+#
+# The given name is a lazy 0-2 characters here rather than the name inventory:
+# the title already supplies the end boundary, so the inventory only causes
+# misses. 郑沫医生 and 欧阳修远医生 were both undetected because 沫 and 修 are
+# outside it, while the same names behind a labelled field were captured.
 _DOCTOR_SUFFIX_RE = re.compile(
     rf"(?<!主)(?<!责)(?P<name>"
-    rf"(?:{COMPOUND_SURNAME_CLASS})(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS})"
-    rf"|{SURNAME_CLASS}(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS}))"
-    r"(?:医生|医师|大夫)"
+    rf"(?:{COMPOUND_SURNAME_CLASS})[\u3400-\u9fff]{{0,2}}?"
+    rf"|{SURNAME_CLASS}[\u3400-\u9fff]{{0,2}}?"
+    r")(?:医生|医师|大夫)"
 )
 _DOCTOR_TITLE_SEP_RE = re.compile(
     r"(?:" + _DOCTOR_TITLES + r")" + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL
@@ -103,9 +107,9 @@ _DOCTOR_TITLE_ADJACENT_RE = re.compile(
 _NURSE_TITLES = r"责任护士|值班护士|接诊护士|主管护师|护士长|护士|护师"
 _NURSE_SUFFIX_RE = re.compile(
     rf"(?<!责)(?<!主)(?P<name>"
-    rf"(?:{COMPOUND_SURNAME_CLASS})(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS})"
-    rf"|{SURNAME_CLASS}(?:{GIVEN_CLASS}|{NUMERAL_GIVEN_CLASS}))"
-    r"护士"
+    rf"(?:{COMPOUND_SURNAME_CLASS})[\u3400-\u9fff]{{0,2}}?"
+    rf"|{SURNAME_CLASS}[\u3400-\u9fff]{{0,2}}?"
+    r")护士"
 )
 _NURSE_TITLE_SEP_RE = re.compile(
     r"(?:" + _NURSE_TITLES + r")" + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL

@@ -28,7 +28,7 @@ when they disagree, this file wins and the other two are updated.
   followed by text no boundary word explains;
 - mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
-  and day. Detection retains original source spans; these are bounded format
+  and day, and fully Chinese-numeral dates (``二〇二六年九月二十一日``). Detection retains original source spans; these are bounded format
   families, not universal Unicode or OCR normalization;
 - ages in years and in months (1–36 months, the primary infant form), kept
   distinct from a duration ("反复头痛3个月");

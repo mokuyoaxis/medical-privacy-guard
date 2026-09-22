@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-22
+
+### Added
+
+- **Chinese numeral dates** (``二〇二六年九月二十一日``). Formal documents and
+  signature lines write dates this way; they matched no pattern, so the note was
+  released with the date intact. Now detected, generalized to the month and
+  verified, and the digit and numeral forms reach the same output. Impossible
+  calendar dates (``二〇二三年二月三十日``) are still not facts.
+- **Title-suffix names whose given character is outside the inventory**
+  (``郑沫医生``, ``欧阳修远医生``). The title already supplies the end boundary,
+  so the inventory only caused misses here; the same names behind a labelled
+  field were captured whole.
+- Ten challenge probes that had been deleted are absorbed: eight reach their
+  declared verdict and now run in CI, two are bare-name forms that stay outside
+  the baseline and are recorded as exploratory. Six further coverage probes
+  cover the new forms and their over-redaction controls.
+
+### Changed
+
+- ``_DOCTOR_SUFFIX_RE`` and ``_NURSE_SUFFIX_RE`` capture a lazy 0–2 given-name
+  characters instead of drawing from the name inventory. The negative
+  lookbehinds that stop 主任医师 and 责任护士 from matching inside a title word
+  are unchanged, and a full title is still not absorbed (``患者李四住院医师``
+  yields no doctor).
+
+### Documentation
+
+- ``tests/fixtures/challenge/README.md`` dimensions: narrative 24 regression /
+  6 exploratory, coverage 16 regression.
+
 ## [0.2.5] - 2026-09-22
 
 ### Added
@@ -261,7 +292,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...v0.2.3

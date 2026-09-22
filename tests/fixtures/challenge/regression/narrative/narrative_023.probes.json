@@ -1,0 +1,12 @@
+{
+  "doc_id": "narrative_023",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "本病区"
+  ],
+  "probe_note": "generic ward must not be reported"
+}

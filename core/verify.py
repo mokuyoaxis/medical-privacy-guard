@@ -301,7 +301,12 @@ class Verifier:
             else:
                 match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", value)
                 if not match:
-                    raise _CheckFailure("invalid date in transformation evidence")
+                    from detectors.dates import parse_cn_date
+
+                    numeral = parse_cn_date(value)
+                    if numeral is None:
+                        raise _CheckFailure("invalid date in transformation evidence")
+                    return numeral
                 parts = (match[3], match[1], match[2])
         try:
             return date(*(int(part) for part in parts))

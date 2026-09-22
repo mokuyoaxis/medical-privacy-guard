@@ -13,10 +13,13 @@ Detection, transformation and verification are checked together.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from core.model import Purpose, Recipient, TrustLevel
 from detectors import detect_all
+from detectors.dates import parse_cn_date
 from detectors.demographics import parse_cn_numeral
 from medical_privacy_guard import Guard
 
@@ -165,3 +168,89 @@ class TestUnlabelledAddress:
         assert result.decision_before.verdict.value == "SANITIZE"
         assert result.sanitized_payload is not None
         assert "建国路" not in result.sanitized_payload.content
+
+
+# -- Chinese numeral dates ---------------------------------------------------
+
+
+class TestChineseNumeralDates:
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("二〇二六年九月二十一日", date(2026, 9, 21)),
+            ("二零二六年十二月三十一日", date(2026, 12, 31)),
+            ("二〇二六年一月一日", date(2026, 1, 1)),
+            ("二〇二六年十月十日", date(2026, 10, 10)),
+        ],
+    )
+    def test_parses(self, text: str, expected: date) -> None:
+        assert parse_cn_date(text) == expected
+
+    @pytest.mark.parametrize(
+        "text", ["二〇二三年二月三十日", "二〇二六年十三月一日", "二〇二六年九月"]
+    )
+    def test_invalid_or_partial_dates_are_rejected(self, text: str) -> None:
+        assert parse_cn_date(text) is None
+
+    def test_detected_and_generalized(self, guard: Guard, approved: Recipient) -> None:
+        result = guard.sanitize(
+            "就诊日期：二〇二六年九月二十一日。", approved, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        assert result.decision_before.verdict.value == "SANITIZE"
+        assert result.sanitized_payload is not None
+        assert "2026年9月" in result.sanitized_payload.content
+        assert result.verification is not None and result.verification.passed
+
+    def test_digits_and_numerals_reach_the_same_output(
+        self, guard: Guard, approved: Recipient
+    ) -> None:
+        outputs = set()
+        for text in ("就诊日期：2026年9月21日。", "就诊日期：二〇二六年九月二十一日。"):
+            result = guard.sanitize(text, approved, Purpose.EXTERNAL_AI_ASSISTANCE)
+            assert result.sanitized_payload is not None, text
+            outputs.add(result.sanitized_payload.content)
+        assert len(outputs) == 1
+
+    def test_impossible_date_is_not_a_fact(self) -> None:
+        assert values_of("签署日期：二〇二三年二月三十日。", "EXACT_DATE") == []
+
+
+# -- given names outside the inventory ---------------------------------------
+
+
+class TestOutOfInventoryGivenNames:
+    """The title already bounds the name, so the inventory only causes misses.
+
+    郑沫医生 and 欧阳修远医生 were undetected because 沫 and 修 are outside the
+    name-character inventory, while the same names behind a labelled field were
+    captured whole.
+    """
+
+    @pytest.mark.parametrize(
+        "text, fact_type, expected",
+        [
+            ("郑沫医生。", "DOCTOR_NAME", "郑沫"),
+            ("欧阳修远医生。", "DOCTOR_NAME", "欧阳修远"),
+            ("郑沫护士。", "NURSE_NAME", "郑沫"),
+            ("王五医生。", "DOCTOR_NAME", "王五"),
+        ],
+    )
+    def test_suffix_form_is_captured_whole(
+        self, text: str, fact_type: str, expected: str
+    ) -> None:
+        assert values_of(text, fact_type) == [expected]
+
+    @pytest.mark.parametrize(
+        "text, fact_type",
+        [
+            ("本科室共12名医生。", "DOCTOR_NAME"),
+            ("主任医师每周查房两次。", "DOCTOR_NAME"),
+            ("责任护士每班交接。", "NURSE_NAME"),
+        ],
+    )
+    def test_title_words_are_not_names(self, text: str, fact_type: str) -> None:
+        assert values_of(text, fact_type) == []
+
+    def test_a_full_title_is_not_absorbed(self) -> None:
+        """患者李四住院医师 names a patient, not a doctor called 李四住院."""
+        assert values_of("患者李四住院医师。", "DOCTOR_NAME") == []

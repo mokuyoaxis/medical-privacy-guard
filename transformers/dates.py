@@ -36,6 +36,11 @@ def _parse_full_date(value: str) -> date:
             return date(int(cn.group(1)), int(cn.group(2)), int(cn.group(3)))
         except ValueError:
             pass
+    from detectors.dates import parse_cn_date
+
+    numeral = parse_cn_date(value)
+    if numeral is not None:
+        return numeral
     raise TransformerError("cannot parse date value for transformation")
 
 
