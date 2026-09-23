@@ -41,6 +41,12 @@ jobs:
         run: python -m ruff check .
       - name: Static security scan
         run: python -m bandit -q -r core detectors transformers medical_privacy_guard cli formats
+      - name: Contract audit
+        run: python tools/audit_contracts.py
+      - name: Generalisation measurement
+        # Recorded, not gated: the corpus is deliberately not tuned to the
+        # detectors, so its number is information rather than a pass/fail.
+        run: python tools/evaluate_simulation.py
       - name: Dependency audit
         run: python -m pip_audit
       - name: Build distributions

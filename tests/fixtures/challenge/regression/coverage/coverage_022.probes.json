@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_022",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "RELATIVE_NAME",
+      "text": "白洁"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "nested kinship value after a label"
+}

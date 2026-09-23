@@ -60,7 +60,7 @@ dimension that fails entirely behind one that passes.
 | Dimension | Probes | Status |
 |---|---|---|
 | narrative | 24 regression / 6 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls |
-| coverage | 16 regression / 0 exploratory | numeral ages and dates, comma-separated sex, bracketed names, labelled beds, unlabelled addresses, out-of-inventory given names |
+| coverage | 23 regression / 0 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship |
 
 ### narrative
 

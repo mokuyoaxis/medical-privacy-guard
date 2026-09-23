@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_018",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DEPARTMENT",
+      "text": "神经内科"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "bracketed department value"
+}

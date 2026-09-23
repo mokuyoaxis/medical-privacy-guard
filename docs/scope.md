@@ -20,16 +20,20 @@ when they disagree, this file wins and the other two are updated.
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
   ID candidates (GB 11643-1999 check digit), email, social-media handles,
   exact dates, labelled patient names, narrative ``姓名，性别`` openers,
-  staff names (title or suffix form), relatives named in the history, medical
+  staff names (title, suffix, signature or assistant form), relatives named in
+  the history (including a kinship term repeated after a label), medical
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
   precise addresses, postal codes (label-required), institution names,
-  department names, ward designations, bed numbers (suffix and labelled forms),
+  department names (labelled, or reached by a movement verb), ward designations,
+  bed numbers (suffix and labelled forms),
   ages in digits and in Chinese numerals, sex (clinical-context only, adjacent
   or comma-separated) and a baseline medical-content signal; addresses with a
   residence verb and no field label are detected when the value ends at an
   administrative or street suffix; Label/value
   separators — colon, equals, whitespace, none, or a bracketed value — are
-  shared across detectors (``detectors/field_syntax.py``);
+  shared across detectors (``detectors/field_syntax.py``), so every labelled
+  field accepts the same spellings — a detector that spells out its own
+  separator silently diverges and is caught by ``tools/audit_contracts.py``;
 - whole-name spans: a labelled name value is bounded by its separator and a
   following-boundary word rather than by the given-name inventory, so a name
   whose given character is outside that inventory is still captured whole. A

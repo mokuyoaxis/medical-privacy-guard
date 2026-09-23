@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_017",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张伟"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "equals separator: the detector had its own, narrower separator"
+}

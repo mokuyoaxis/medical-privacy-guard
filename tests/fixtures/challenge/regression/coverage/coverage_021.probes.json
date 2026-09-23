@@ -1,0 +1,23 @@
+{
+  "doc_id": "coverage_021",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "汪洋"
+    },
+    {
+      "type": "DEPARTMENT",
+      "text": "急诊科"
+    },
+    {
+      "type": "DEPARTMENT",
+      "text": "心血管内科"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "movement verb: both departments are the patient's"
+}

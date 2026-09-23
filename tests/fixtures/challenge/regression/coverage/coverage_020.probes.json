@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_020",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "邓超"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "surgical assistant line"
+}
