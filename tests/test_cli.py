@@ -155,7 +155,7 @@ class TestSanitize:
 class TestInputFormats:
     @pytest.mark.parametrize("command", ["inspect", "sanitize"])
     @pytest.mark.parametrize("suffix", [
-        ".jsonl", ".ndjson", ".csv", ".tsv", ".xlsx",
+        ".jsonl", ".ndjson", ".tsv", ".xlsx",
         ".xls", ".pdf", ".docx", ".fhir", ".xml", ".dcm", ".dicom", ".bin",
         ".csv.gz",
     ])
@@ -223,7 +223,7 @@ class TestInputFormats:
         assert capsys.readouterr().out == text
 
     def test_symlink_cannot_hide_unsupported_suffix(self, tmp_path, capsys):
-        source = Path(write(tmp_path, "source.csv", "姓名,备注\n张三,随访\n"))
+        source = Path(write(tmp_path, "source.xlsx", "SYNTH-CANARY"))
         alias = tmp_path / "note.txt"
         alias.symlink_to(source)
         assert main(["sanitize", str(alias)]) == EXIT_BLOCK
@@ -613,6 +613,55 @@ class TestJsonPayloads:
         rc = main(["inspect", str(src), "--json"])
         capsys.readouterr()
         assert rc != EXIT_BLOCK
+
+
+# -- CSV payloads ------------------------------------------------------------
+
+
+class TestCsvPayloads:
+    def test_csv_is_sanitized_with_the_table_intact(self, tmp_path, capsys):
+        src = tmp_path / "records.csv"
+        src.write_text(
+            "姓名,电话,年龄,备注\n张三,13800000000,67,因脑梗死入院\n", encoding="utf-8"
+        )
+        rc = main(["sanitize", str(src), "--recipient", "external_approved"])
+        out = capsys.readouterr().out
+        assert rc == EXIT_OK
+        rows = [line.split(",") for line in out.strip().splitlines()]
+        assert rows[0] == ["姓名", "电话", "年龄", "备注"]
+        assert rows[1][0] == "[PERSON_NAME_001]"
+        assert rows[1][1] == "[REDACTED]"
+        assert rows[1][2] == "67"
+        assert rows[1][3] == "因脑梗死入院"
+
+    def test_stated_encoding_is_honoured(self, tmp_path, capsys):
+        src = tmp_path / "records.csv"
+        src.write_bytes("姓名,电话\n张三,13800000000\n".encode("gb18030"))
+        rc = main([
+            "sanitize", str(src), "--encoding", "gb18030",
+            "--recipient", "external_approved",
+        ])
+        out = capsys.readouterr().out
+        assert rc == EXIT_OK
+        assert "张三" not in out
+        assert "[PERSON_NAME_001]" in out
+
+    def test_a_wrong_encoding_is_reported_not_guessed(self, tmp_path, capsys):
+        """Mojibake that reaches a model is worse than an error reaching us."""
+        src = tmp_path / "records.csv"
+        src.write_bytes("姓名,电话\n张三,13800000000\n".encode("gb18030"))
+        rc = main(["sanitize", str(src), "--recipient", "external_approved"])
+        captured = capsys.readouterr()
+        assert rc == EXIT_BLOCK
+        assert captured.out == ""
+        assert "--encoding" in captured.err
+
+    def test_unknown_encoding_is_an_error(self, tmp_path, capsys):
+        src = tmp_path / "records.csv"
+        src.write_text("姓名\n张三\n", encoding="utf-8")
+        rc = main(["sanitize", str(src), "--encoding", "no-such-codec"])
+        assert rc == EXIT_ERROR
+        assert "unknown encoding" in capsys.readouterr().err
 
 
 # -- audit-verify ------------------------------------------------------------

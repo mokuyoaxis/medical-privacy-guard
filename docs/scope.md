@@ -7,6 +7,11 @@ when they disagree, this file wins and the other two are updated.
 ## Supported
 
 - UTF-8 plain text input (Python API and CLI);
+- CSV files (``Payload(kind="csv")`` or a ``.csv`` file): cells are sanitized
+  and the header/row/column structure is preserved. A column name acts as a
+  field label for its cells; cells are scanned regardless, so an unconventional
+  header costs labels but not detection. The encoding is stated with
+  ``--encoding`` and never guessed;
 - JSON objects and arrays (``Payload(kind="json")`` or a ``.json`` file): leaves
   are sanitized and the structure is preserved. A key acts as a field label for
   its value. Numeric, boolean and null leaves are not inspected, because
@@ -132,7 +137,7 @@ contain them, and a detector firing on one of them fails the precision gate.
 
 No parsers or sanitization support exist for:
 
-- CSV (planned v0.3), XLSX (deferred: CSV covers the need)
+- XLSX (deferred: CSV covers the need), TSV (needs a delimiter choice)
 - FHIR (planned v0.5)
 - DICOM (planned v0.6)
 - PDF / DOCX

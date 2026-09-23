@@ -18,90 +18,11 @@ from __future__ import annotations
 
 import copy
 import json
-from dataclasses import dataclass
 from typing import Any, Mapping
 
 from core.errors import ParserError
 
-#: Key names that label their own value. In ``{"name": "张三"}`` the key says
-#: what the value is, so the value needs no label inside the text — but the
-#: detectors are label-driven, so without this the name would be treated as bare
-#: prose and deliberately not detected. Keys are matched case-insensitively with
-#: separators removed, so ``patient_name``, ``patientName`` and ``PatientName``
-#: all resolve.
-LABEL_KEYS: Mapping[str, str] = {
-    "name": "姓名",
-    "patientname": "患者姓名",
-    "patient": "患者",
-    "phone": "电话",
-    "tel": "电话",
-    "telephone": "电话",
-    "mobile": "手机",
-    "phonenumber": "电话",
-    "email": "邮箱",
-    "idcard": "身份证号",
-    "idnumber": "身份证号",
-    "nationalid": "身份证号",
-    "governmentid": "身份证号",
-    "mrn": "病历号",
-    "medicalrecordnumber": "病历号",
-    "recordnumber": "病历号",
-    "address": "住址",
-    "homeaddress": "住址",
-    "postalcode": "邮编",
-    "zipcode": "邮编",
-    "wechat": "微信",
-    "qq": "QQ号",
-    "birthdate": "出生日期",
-    "dateofbirth": "出生日期",
-    "dob": "出生日期",
-    "date": "日期",
-    "age": "年龄",
-    "sex": "性别",
-    "gender": "性别",
-    "department": "科室",
-    "ward": "病区",
-    "bed": "床号",
-    "bednumber": "床号",
-    "institution": "机构",
-    "hospital": "医院",
-    "doctor": "医生",
-    "physician": "医师",
-    "nurse": "护士",
-}
-
-
-def label_for(key: str) -> str | None:
-    """Return the field label a JSON key implies, or None.
-
-    The lookup is case-insensitive and ignores underscores, hyphens and spaces,
-    because the same field is written ``patient_name``, ``patientName`` and
-    ``Patient Name`` across systems.
-    """
-    normalized = key.strip().lower()
-    for separator in ("_", "-", " "):
-        normalized = normalized.replace(separator, "")
-    return LABEL_KEYS.get(normalized)
-
-
-@dataclass(frozen=True)
-class Leaf:
-    """One string value inside a structured payload."""
-
-    path: str
-    text: str
-    #: Field label implied by the key that holds this value, if any. Detection
-    #: runs over "label：value" so the label-driven detectors apply.
-    label: str | None = None
-
-
-@dataclass(frozen=True)
-class StructuredPayload:
-    """A parsed document plus the leaves the pipeline will run over."""
-
-    kind: str
-    document: Any
-    leaves: tuple[Leaf, ...]
+from .leaf import LABEL_KEYS, Leaf, StructuredPayload, label_for
 
 
 def escape_token(token: str) -> str:
@@ -204,3 +125,15 @@ def _parse_pointer(path: str) -> list[str]:
 def dumps(document: Any) -> str:
     """Serialise a rebuilt document with its structure intact."""
     return json.dumps(document, ensure_ascii=False, indent=2)
+
+
+__all__ = [
+    "LABEL_KEYS",
+    "Leaf",
+    "StructuredPayload",
+    "dumps",
+    "from_document",
+    "label_for",
+    "parse_json_payload",
+    "rebuild",
+]

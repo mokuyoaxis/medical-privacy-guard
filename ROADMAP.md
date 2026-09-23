@@ -17,7 +17,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.2.4 | Detection coverage | Released (`v0.2.4`) |
 | v0.2.5 | Institution vocabulary + detector extension point | Released (`v0.2.5`) |
 | v0.2.6 | Remaining detection gaps (numeral dates, out-of-inventory names) | Released (`v0.2.6`) |
-| v0.3 | CSV / XLSX / JSON | In progress: JSON released (`v0.3.0`); CSV not started; XLSX deferred |
+| v0.3 | CSV / XLSX / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.4 | LLM SDK wrapper + MCP gateway | Not started |
 | v0.5 | FHIR minimal resource set | Not started |
 | v0.6 | DICOM metadata scanner | Not started |

@@ -64,9 +64,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     format_boundary = (
-        "UTF-8 plain text and JSON objects/arrays are supported. Known "
-        "unsupported suffixes and binary markers are blocked; arbitrary "
-        "disguised formats cannot be detected."
+        "Plain text, JSON objects/arrays and CSV files are supported; state the "
+        "encoding with --encoding (it is never guessed). Known unsupported "
+        "suffixes and binary markers are blocked; arbitrary disguised formats "
+        "cannot be detected."
     )
     p_inspect = sub.add_parser(
         "inspect", help="Detect and evaluate without modifying data.", epilog=format_boundary,
@@ -76,6 +77,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_inspect.add_argument(
         "--dictionary", default=None,
         help="Optional .csv or .json institution vocabulary (local-only)",
+    )
+    p_inspect.add_argument(
+        "--encoding", default="utf-8-sig",
+        help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
     )
     _add_common(p_inspect)
 
@@ -94,6 +99,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sanitize.add_argument(
         "--dictionary", default=None,
         help="Optional .csv or .json institution vocabulary (local-only)",
+    )
+    p_sanitize.add_argument(
+        "--encoding", default="utf-8-sig",
+        help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
     )
     _add_common(p_sanitize)
 
@@ -150,7 +159,7 @@ def _add_common(
 
 
 _UNSUPPORTED_SUFFIXES = {
-    ".jsonl", ".ndjson", ".csv", ".tsv", ".xls", ".xlsx", ".xlsm",
+    ".jsonl", ".ndjson", ".tsv", ".xls", ".xlsx", ".xlsm",
     ".ods", ".pdf", ".doc", ".docx", ".odt", ".rtf", ".fhir", ".xml",
     ".hl7", ".dcm", ".dicom", ".bin", ".zip", ".gz", ".png", ".jpg",
     ".jpeg", ".gif", ".tif", ".tiff", ".wav", ".mp3", ".mp4",
@@ -161,8 +170,13 @@ class _UnsupportedInput(ParserError):
     pass
 
 
-def _read_text(path: str) -> str:
-    """Reject known formats, not arbitrary formats disguised as clinical text."""
+def _read_text(path: str, encoding: str = "utf-8-sig") -> str:
+    """Reject known formats, not arbitrary formats disguised as clinical text.
+
+    The encoding is stated by the caller and never guessed. A wrong codec is
+    reported rather than silently retried with another one: mojibake that
+    reaches a model is worse than an error that reaches the operator.
+    """
     source = Path(path)
     try:
         suffixes = source.suffixes + source.resolve().suffixes
@@ -172,9 +186,13 @@ def _read_text(path: str) -> str:
     except (OSError, RuntimeError) as exc:
         raise ParserError("cannot read input file") from exc
     try:
-        text = data.decode("utf-8-sig")
+        text = data.decode(encoding)
+    except LookupError as exc:
+        raise ParserError(f"unknown encoding {encoding!r}") from exc
     except UnicodeDecodeError as exc:
-        raise _UnsupportedInput("unsupported input encoding; UTF-8 plain text required") from exc
+        raise _UnsupportedInput(
+            f"cannot decode input as {encoding}; state the correct --encoding"
+        ) from exc
     if (
         any((ord(char) < 32 and char not in "\t\r\n") or 127 <= ord(char) <= 159
             for char in text)
@@ -214,8 +232,15 @@ def _classify(text: str) -> str:
     return "json" if isinstance(container, (dict, list)) else "unsupported"
 
 
-def _payload_for(text: str) -> str | Payload:
-    """Build the payload a classified input should take through the guard."""
+def _payload_for(text: str, path: str) -> str | Payload:
+    """Build the payload a classified input should take through the guard.
+
+    CSV is recognised by suffix rather than by content: no byte pattern marks a
+    CSV file, and any text can be read as one. JSON is recognised by content,
+    because a container is unambiguous.
+    """
+    if Path(path).suffix.lower() == ".csv":
+        return Payload(kind="csv", content=text)
     kind = _classify(text)
     if kind == "json":
         return Payload(kind="json", content=text)
@@ -320,7 +345,7 @@ def _counts(facts: Sequence[DetectedFact]) -> dict[str, int]:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    text = _read_text(args.file)
+    text = _read_text(args.file, args.encoding)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
     if _classify(text) == "unsupported":
@@ -328,7 +353,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         # two are distinguishable, exactly as sanitize does.
         print("BLOCK: unsupported structured input", file=sys.stderr)
         return EXIT_BLOCK
-    payload = _payload_for(text)
+    payload = _payload_for(text, args.file)
     result = Guard(
         profile=args.profile, dictionary_path=args.dictionary
     ).evaluate(payload, recipient, purpose)
@@ -345,12 +370,16 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 def _cmd_sanitize(args: argparse.Namespace) -> int:
     _check_paths(args.file, args.output, args.audit_dir)
+    admission_error: str | None = None
     try:
-        text = _read_text(args.file)
-    except _UnsupportedInput:
+        text = _read_text(args.file, args.encoding)
+    except _UnsupportedInput as exc:
+        # Keep the reason: "cannot decode as utf-8-sig" tells the operator what
+        # to do, where a generic block message does not.
+        admission_error = str(exc)
         payload: str | Payload = Payload(kind="unsupported", content="")
     else:
-        payload = _payload_for(text)
+        payload = _payload_for(text, args.file)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
     # Guard owns detect → decide → transform → verify → audit.  In particular,
@@ -364,7 +393,7 @@ def _cmd_sanitize(args: argparse.Namespace) -> int:
     decision = result.decision_before
 
     if decision.verdict is Verdict.BLOCK:
-        print(f"BLOCK: {decision.explanation}", file=sys.stderr)
+        print(f"BLOCK: {admission_error or decision.explanation}", file=sys.stderr)
         return EXIT_BLOCK
     if decision.verdict is Verdict.ASK:
         print(f"ASK: {decision.explanation}", file=sys.stderr)

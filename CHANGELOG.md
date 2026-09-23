@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-22
+
+### Added
+
+- **CSV support**, completing the v0.3 format set apart from XLSX. A table is
+  flattened into its cells, run through the text pipeline, and rebuilt with the
+  header, row and column structure intact. Recognised by suffix, since no byte
+  pattern marks a CSV file.
+- **Column detection is two-sided.** Column names supply the field label, which
+  is what makes a value detectable at all; cell scanning is the source of truth
+  for facts, because a header can be wrong, missing or duplicated. A table with
+  unconventional headers simply gets no labels and still has its cells scanned.
+- ``--encoding`` on ``inspect`` and ``sanitize``. The encoding is stated and
+  **never guessed**: a wrong codec is reported with the codec named, because
+  mojibake that reaches a model is worse than an error that reaches the
+  operator. ``gb18030`` covers legacy exports.
+
+### Notes
+
+- Token consistency is a file-level property. Because a whole table is flattened
+  and transformed in one pass, the same patient name in several rows maps to the
+  same token — row identity does not leak through token numbering.
+- Rebuilt CSV follows the csv module's minimal quoting: an input that quoted
+  every field comes back minimally quoted. The data is identical, the bytes are
+  not.
+- ``.tsv`` remains unsupported: it needs a delimiter choice, not just a codec.
+- A first row is treated as a header when any of its cells is a recognised field
+  name. That heuristic can misread a data row whose first cell is a field name.
+
 ## [0.3.0] - 2026-09-22
 
 ### Added
@@ -342,7 +371,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...v0.2.5

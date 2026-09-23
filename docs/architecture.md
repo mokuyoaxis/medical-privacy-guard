@@ -54,7 +54,7 @@ hardening contract, not proof of complete anonymization. See
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
 | `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
-| `formats/` | Flatten a structured payload into string leaves and rebuild it | `StructuredPayload` |
+| `formats/` | Flatten a JSON or CSV payload into string leaves and rebuild it | `StructuredPayload` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats` (planned) | Parse CSV / XLSX / JSON / FHIR / DICOM | format-specific representation |
 | `adapters` (planned) | Translate external calls and enforce decisions before sending | adapter-specific |

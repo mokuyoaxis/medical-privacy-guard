@@ -43,7 +43,15 @@ from core.verify import verify_sanitized
 from detectors import detect_all
 from detectors import registry as detector_registry
 from detectors.dictionary import DictionaryDetector
-from formats import dumps, from_document, parse_json_payload, rebuild
+from formats import (
+    dumps,
+    dumps_csv,
+    from_document,
+    parse_csv_payload,
+    parse_json_payload,
+    rebuild,
+    rebuild_csv,
+)
 from transformers import apply_plan
 
 __all__ = ["Guard"]
@@ -120,6 +128,20 @@ def _flatten(leaves) -> tuple[str, list[tuple[int, int, object]]]:
         spans.append((offset, offset + len(leaf.text), leaf))
         offset += len(leaf.text) + len(_LEAF_SEPARATOR)
     return _LEAF_SEPARATOR.join(parts), spans
+
+
+def _rebuild_payload(parsed, replacements: dict[str, str]):
+    """Write replacements back into the document and re-read the result.
+
+    The re-read is what verification runs over, so a rebuild that lost or
+    mangled a value cannot pass: the check sees the document as it would be
+    released, not as the transformer intended it.
+    """
+    if parsed.kind == "csv":
+        serialized = dumps_csv(rebuild_csv(parsed.document, replacements))
+        return serialized, parse_csv_payload(serialized)
+    serialized = dumps(rebuild(parsed.document, replacements))
+    return serialized, parse_json_payload(serialized)
 
 
 def _detect_leaves(
@@ -233,12 +255,19 @@ class Guard:
             base = base + (DictionaryDetector(self.dictionary),)
         self._detectors = base
 
-    def _parse_structured(self, content):
+    def _parse_structured(self, content, kind: str = "json"):
         """Parse a structured payload, or None when it cannot be parsed.
 
         Accepts either serialised text or an already-decoded object, so a caller
         holding a document does not have to serialise it to hand it back.
         """
+        if kind == "csv":
+            if not isinstance(content, str):
+                return None
+            try:
+                return parse_csv_payload(content)
+            except ParserError:
+                return None
         if isinstance(content, (dict, list)):
             return from_document(content)
         if not isinstance(content, str):
@@ -276,8 +305,8 @@ class Guard:
         env = _coerce_environment(environment)
 
         text = request_payload.content
-        if request_payload.kind == "json":
-            parsed = self._parse_structured(text)
+        if request_payload.kind in {"json", "csv"}:
+            parsed = self._parse_structured(text, request_payload.kind)
             if parsed is None:
                 return EvaluationResult(
                     decision=self._decision_fail_closed(ReasonCode.PARSER_FAILURE), facts=()
@@ -329,7 +358,7 @@ class Guard:
         env = _coerce_environment(environment)
         text = request_payload.content
 
-        if request_payload.kind == "json":
+        if request_payload.kind in {"json", "csv"}:
             return self._sanitize_structured(
                 request_payload,
                 recipient_obj,
@@ -416,7 +445,7 @@ class Guard:
         the record, because a partially released record is exactly where
         cross-field quasi-identifiers do their damage.
         """
-        parsed = self._parse_structured(payload.content)
+        parsed = self._parse_structured(payload.content, payload.kind)
         if parsed is None:
             decision = self._decision_fail_closed(ReasonCode.PARSER_FAILURE)
             self._maybe_audit(audit_dir, decision, (), recipient, purpose, None)
@@ -452,11 +481,10 @@ class Guard:
             )
             if verification.passed:
                 replacements = _split(text, outcome.text, spans, outcome._evidence)
-                serialized = dumps(rebuild(parsed.document, replacements))
+                serialized, reparsed = _rebuild_payload(parsed, replacements)
                 sanitized = Payload(
-                    kind="json", content=serialized, provenance=payload.provenance
+                    kind=payload.kind, content=serialized, provenance=payload.provenance
                 )
-                reparsed = parse_json_payload(serialized)
                 residual_spans = _flatten(reparsed.leaves)[1]
                 residual = _detect_leaves(reparsed.leaves, residual_spans, self._detectors)
                 decision_after = self._evaluator.evaluate(residual, recipient, purpose, env)
