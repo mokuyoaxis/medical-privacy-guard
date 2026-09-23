@@ -24,7 +24,7 @@ import re
 from core.model import DetectedFact
 
 from .base import Detector
-from .field_syntax import label_with_value
+from .field_syntax import FIELD_SEP, VALUE_OPEN, label_with_value
 
 # Common department names. Kept as an explicit set because a generic
 # "…科" pattern produces unacceptable false positives on ordinary words
@@ -49,10 +49,14 @@ _DEPARTMENTS: frozenset[str] = frozenset(
 # and redacting it strips the meaning of the referral while revealing nothing
 # the diagnosis in the same note does not already imply.
 _DEPARTMENT_BEFORE_RE = re.compile(
-    r"(?:科室|部门|病区|病房)\s*[:：]?\s*$"
+    r"(?:科室|部门|病区|病房)" + FIELD_SEP + VALUE_OPEN + r"$"
     r"|(?:转入|转至|转往|收入|收治|入住|收住)\s*$"
 )
-_DEPARTMENT_AFTER_RE = re.compile(r"(?:门诊|病房|病区|住院)")
+
+# Movement verbs count as context too: "由急诊科转入心血管内科" names the
+# department the patient came from, and neither the label rule nor the
+# trailing-suffix rule catches it on its own.
+_DEPARTMENT_AFTER_RE = re.compile(r"(?:门诊|病房|病区|住院|转入|转出|转至|转往)")
 
 # Institutional suffixes. These are specific enough that a preceding Chinese
 # run is reliably part of the institution name. The pattern deliberately stays
@@ -222,7 +226,13 @@ class DepartmentDetector(Detector):
 
 
 def _in_department_context(text: str, start: int, end: int) -> bool:
-    """True when a department name refers to this patient's own department."""
+    """True when a department name refers to this patient's own department.
+
+    The deliberate non-detection in docs/scope.md covers the *verb* form
+    ("建议神经内科会诊"), which names a service in passing. A labelled field
+    ("会诊科室：神经内科") is a record field and is detected; the corpus agrees,
+    marking 40 such fields, and that is stronger evidence than a single probe.
+    """
     if _DEPARTMENT_BEFORE_RE.search(text[max(0, start - 10) : start]):
         return True
     return bool(_DEPARTMENT_AFTER_RE.match(text[end : end + 3]))

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-23
+
+### Fixed
+
+- **`person.py` never adopted `field_syntax`.** It spelled out its own "colon
+  or whitespace", so ``姓名=张伟`` was missed while ``病历号=ZY1`` was caught.
+  It now uses ``FIELD_SEP_REQUIRED`` like every other labelled field.
+- **The department label rule had the same gap** (``科室=神经内科`` and the
+  bracketed form were missed). It now uses ``FIELD_SEP`` / ``VALUE_OPEN``.
+- **Signature and assistant lines were not covered**: ``医师签名：王强`` and
+  ``助手：邓超`` produced no fact. Both are standard in surgical and outpatient
+  notes.
+- **A department reached by a movement verb was missed**: in
+  ``由急诊科转入心血管内科`` neither the label rule nor the trailing-suffix rule
+  applied. ``_DEPARTMENT_AFTER_RE`` now includes the movement verbs.
+- **A nested kinship value was missed**: ``家属：其妻白洁陪同`` failed because the
+  value must start with a surname and 其 is not one. The kinship term may now
+  repeat after the label.
+- **The adjacent person form and the verifier kept separate boundary lists.**
+  Adding a word to one and not the other turns a detection into a verification
+  failure. `person.py` now uses the shared `NAME_FOLLOW_BOUNDARY`.
+
+### Added
+
+- ``tools/evaluate_simulation.py`` with a hand-written corpus under
+  ``tests/fixtures/simulation/``. It measures **generalisation** rather than
+  agreement with the template generator, and is deliberately not a build gate.
+  Baseline was 10.0% missed / 5.3% over-redacted; after these fixes it is
+  **2.7% / 0.0%**, and the two remaining misses are the documented
+  bare-name non-detection.
+- ``tools/audit_contracts.py``: checks separator spelling across fields, fact
+  types against the policy tables, and detection against transformation. It
+  catches the "declared but not wired" defect class, which has now occurred four
+  times (v0.2.1, v0.2.4, v0.3.x, and once more while fixing this release).
+
+### Notes
+
+- A judgement was reversed during this work. ``会诊科室：X`` was initially
+  treated as a referral target to leave alone, but the corpus marks 40 such
+  fields as detectable and ``docs/scope.md``'s deliberate non-detection covers
+  the *verb* form (``建议神经内科会诊``), not the labelled field. The exclusion
+  was reverted and the simulation corpus labels were corrected to match.
+- README's capability list had fallen behind: it still listed CSV and JSON
+  traversal as unimplemented and described CLI admission as rejecting JSON
+  containers. Corrected.
+
 ## [0.3.1] - 2026-09-22
 
 ### Added
@@ -371,7 +417,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...v0.2.6

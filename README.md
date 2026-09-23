@@ -68,7 +68,7 @@ Reported risk is the engineering risk of the **input before transformation**.
 A high/critical input may still receive SANITIZE when every direct identifier
 has a deterministic operation; only the verified output may be released.
 
-### Implemented in v0.1 / v0.2
+### Implemented
 
 - UTF-8 plain text;
 - deterministic detection of CN mobile numbers and landlines, email,
@@ -78,14 +78,25 @@ has a deterministic operation; only the verified output may be released.
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses,
   labelled precise addresses (including 户籍地 / 工作单位), label-anchored
   postal codes, institution names (including after function words), department
-  names, ward designations, bed numbers, ages in years and months, clinical-context
-  sex and a baseline medical-content signal now covering encounter/action terms;
+  names, ward designations, bed numbers (suffix and labelled forms), ages in
+  years, months and Chinese numerals, clinical-context sex (adjacent or
+  comma-separated), addresses with a residence verb and no field label, and a
+  baseline medical-content signal covering encounter/action terms;
 - mobile-number variants with 3-4-4 grouping and ASCII/full-width digits;
-  real calendar dates in 1900–2099, including non-zero-padded YMD/MDY forms,
-  retaining original source spans (see [scope](docs/scope.md));
+  real calendar dates in 1900–2099, including non-zero-padded YMD/MDY forms and
+  fully Chinese-numeral dates, retaining original source spans
+  (see [scope](docs/scope.md));
+- an optional local institution vocabulary (`.csv` / `.json`), supplying
+  institution, department, ward and staff terms that are detected alongside the
+  rules and give verification a signal independent of them;
 - REMOVE, MASK, TOKENIZE, GENERALIZE (dates to month, ages to bands,
   location/institution/department/ward to type markers) and DATE_SHIFT;
-- metadata-only JSONL audit when configured;
+- JSON objects/arrays and CSV files, flattened to string leaves, sanitized and
+  rebuilt with their structure intact (a key or column name acts as a field
+  label for its value);
+- metadata-only JSONL audit when configured, with each event chained by hash so
+  a deleted, reordered or edited record is detectable, and an `audit-verify`
+  command to check it;
 - an evaluation harness (`benchmark`) over a synthetic corpus of 175 Chinese
   clinical notes — 140 with labelled identifiers (1474 spans, 24 types) and 35
   identifier-free documents. The declared outcomes are **135 SANITIZE, 5 ASK,
@@ -96,11 +107,18 @@ has a deterministic operation; only the verified output may be released.
   scores are not evidence that those stronger checks passed.
   See [docs/evaluation.md](docs/evaluation.md) for the baseline and validation status.
 
-Plain text, JSON objects/arrays and CSV files are supported. Other explicitly typed
-non-text API payloads return BLOCK. CLI admission checks reject known unsupported extensions, NUL and other
-unsupported control characters, and JSON-container content; they do not reliably
-identify every disguised format. Callers using `str` or `Payload(kind="text")`
-are responsible for supplying plain text, not serialized structured/binary data.
+A separate hand-written corpus under `tests/fixtures/simulation/` measures
+**generalisation** rather than template agreement:
+`python tools/evaluate_simulation.py`. It is deliberately not tuned to the
+detectors and is not a build gate — it exists to show which real note shapes the
+baseline misses.
+
+Plain text, JSON objects/arrays and CSV files are supported. Other explicitly
+typed non-text API payloads return BLOCK. CLI admission checks reject known
+unsupported extensions, NUL and other unsupported control characters, and
+containers that do not parse; they do not reliably identify every disguised
+format. Callers using `str` or `Payload(kind="text")` are responsible for
+supplying plain text, not serialized structured/binary data.
 Medical-content classification is a rule baseline, not full medical NER or
 proof of anonymity.
 
@@ -112,8 +130,8 @@ deploying organization.
 
 ### Not implemented yet
 
-- CSV / XLSX
-- JSON payload traversal
+- XLSX (CSV covers the same need)
+- TSV (needs a delimiter choice)
 - FHIR
 - DICOM
 - PDF / DOCX
@@ -175,6 +193,8 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   dates and title-suffix names whose given character is outside the inventory.
 - **v0.3 — CSV / XLSX / JSON**: **JSON done** (`v0.3.0`), **CSV done**
   (`v0.3.1`); XLSX deferred (CSV covers the need).
+- **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
+  found by an independent hand-written corpus, plus a contract audit tool.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.

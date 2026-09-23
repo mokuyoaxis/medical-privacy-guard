@@ -78,7 +78,11 @@ _NAME_ADJACENT = (
 _DOCTOR_TITLES = (
     r"主任医师|副主任医师|主治医师|住院医师|主管医师|经治医师|"
     r"接诊医师|手术医师|会诊医师|主刀医生|管床医生|手术医生|"
-    r"接诊医生|经治医生|值班医生|医生|医师|大夫"
+    r"接诊医生|经治医生|值班医生|"
+    # Signature and assistant lines are standard in surgical and outpatient
+    # notes: 医师签名：王强 / 助手：邓超.
+    r"医师签名|医生签名|签名|一助|二助|手术助手|助手|"
+    r"医生|医师|大夫"
 )
 
 # "张医生" / "王大夫": the title follows the name, so a bare surname is a
@@ -126,8 +130,14 @@ _RELATIVE_KINDS = (
 # Kinship terms are written both adjacent ("其子张伟") and labelled
 # ("父亲：张伟"), so the same two shapes apply here.
 _RELATIVE_KINDS_RE = r"(?:" + "|".join(_RELATIVE_KINDS) + r")"
+# The value may repeat the kinship term after the label — "家属：其妻白洁陪同"
+# is a common way to write it, and without the optional prefix the name is
+# missed because 其 is not a surname.
 _RELATIVE_SEP_RE = re.compile(
-    _RELATIVE_KINDS_RE + FIELD_SEP_REQUIRED + _NAME_AFTER_LABEL
+    _RELATIVE_KINDS_RE
+    + FIELD_SEP_REQUIRED
+    + r"(?:" + _RELATIVE_KINDS_RE + r")?"
+    + _NAME_AFTER_LABEL
 )
 _RELATIVE_ADJACENT_RE = re.compile(
     _RELATIVE_KINDS_RE + _NAME_ADJACENT
