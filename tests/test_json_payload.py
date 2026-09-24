@@ -51,9 +51,18 @@ class TestLeafExtraction:
             ("/c", "z"),
         ]
 
-    def test_numbers_booleans_and_null_are_not_leaves(self):
+    def test_numeric_leaves_are_collected_read_only(self):
+        """A number can be an identifier, so it must be inspected.
+
+        It is collected with ``read_only=True`` because writing a string back
+        over it would change the document's JSON type. Booleans and null carry
+        no identifier and produce no leaf.
+        """
         parsed = parse_json_payload('{"age": 67, "flag": true, "none": null, "name": "张三"}')
-        assert [leaf.text for leaf in parsed.leaves] == ["张三"]
+        assert [(leaf.text, leaf.read_only) for leaf in parsed.leaves] == [
+            ("67", True),
+            ("张三", False),
+        ]
 
     @pytest.mark.parametrize(
         "key, expected",
@@ -237,3 +246,116 @@ class TestStructuredPipeline:
         assert event["entity_counts"] == {"PERSON_NAME": 1, "PHONE": 1}
         stream = (audit_dir / "events.jsonl").read_text(encoding="utf-8")
         assert "张三" not in stream and "13800000000" not in stream
+
+
+# -- read-only leaves --------------------------------------------------------
+
+
+class TestReadOnlyLeaves:
+    """A number that is an identifier must never leave as a quiet SANITIZE.
+
+    The defect these tests pin: numbers were not collected as leaves at all, so
+    ``{"mrn": 1234567}`` produced no fact, the verdict was ALLOW, and the record
+    was released with the number intact. A string carrying the same value was
+    sanitized, and a government ID in a number bypassed the hard BLOCK rule.
+    """
+
+    @pytest.mark.parametrize(
+        "document, expected",
+        [
+            ({"mrn": 1234567}, "ASK"),
+            ({"mrn": "1234567"}, "SANITIZE"),
+            # Under an approved recipient a government ID is REMOVE-able, so
+            # the string form sanitizes and the number form is withheld.
+            ({"id_card": "110101199003078888"}, "SANITIZE"),
+            ({"id_card": 110101199003078888}, "ASK"),
+            ({"phone": 13800000000}, "ASK"),
+            ({"nested": {"phone": 13800000000}}, "ASK"),
+            ({"list": [110101199003078888]}, "ASK"),
+            ({"name": "张三"}, "SANITIZE"),
+            ({"note": "普通随访"}, "ALLOW"),
+        ],
+    )
+    def test_verdict_by_value_type(self, guard, approved, document, expected):
+        result = sanitize_json(guard, approved, document)
+        assert result.decision_before.verdict.value == expected
+
+    @pytest.mark.parametrize(
+        "document",
+        [{"id_card": "110101199003078888"}, {"id_card": 110101199003078888}],
+    )
+    def test_a_hard_rule_still_outranks_the_read_only_path(self, guard, document):
+        """The strict profile blocks a government ID to an unknown recipient.
+
+        The read-only path is a fallback for values the transformer cannot
+        rewrite, not a way around a hard rule: the number form is BLOCK here
+        exactly like the string form, rather than the ASK an approved
+        recipient would get.
+        """
+        result = guard.sanitize(
+            Payload(kind="json", content=document),
+            "external-unknown",
+            Purpose.EXTERNAL_AI_ASSISTANCE,
+        )
+        assert result.decision_before.verdict.value == "BLOCK"
+        assert result.sanitized_payload is None
+
+    def test_an_untransformable_identifier_names_itself(self, guard, approved):
+        result = sanitize_json(guard, approved, {"mrn": 1234567})
+        codes = {code.value for code in result.decision_before.reason_codes}
+        assert "UNTRANSFORMABLE_IDENTIFIER" in codes
+
+    def test_a_mixed_document_is_withheld_whole(self, guard, approved):
+        """One unwritable identifier takes the record, like any other block.
+
+        This is the case that used to release: the plan covered the name, the
+        number stayed, and verification passed because re-scanning the rebuilt
+        document could not read a number either.
+        """
+        document = {"name": "张三", "phone": 13800000000}
+        result = sanitize_json(guard, approved, document)
+        assert result.decision_before.verdict.value == "ASK"
+        assert result.sanitized_payload is None
+        assert result.verification is None
+
+    def test_an_approved_recipient_does_not_lower_the_bar(self, guard):
+        """EXTERNAL_APPROVED relaxes scores, not transformability."""
+        result = guard.sanitize(
+            Payload(kind="json", content={"mrn": 1234567}),
+            "external-approved",
+            Purpose.EXTERNAL_AI_ASSISTANCE,
+        )
+        assert result.decision_before.verdict.value == "ASK"
+        assert result.sanitized_payload is None
+
+    def test_the_text_form_still_transforms(self, guard, approved):
+        """The regression guard: strings keep their old behaviour."""
+        result = sanitize_json(guard, approved, {"mrn": "1234567"})
+        assert result.decision_before.verdict.value == "SANITIZE"
+        assert result.verification is not None and result.verification.passed
+        assert "1234567" not in result.sanitized_payload.content
+
+    def test_a_read_only_leaf_never_reaches_the_rebuild(self):
+        """Rebuilding must not write a string over a number."""
+        parsed = parse_json_payload('{"mrn": 1234567}')
+        leaf = parsed.leaves[0]
+        assert leaf.read_only
+        rebuilt = rebuild(parsed.document, {"/mrn": "[REDACTED]"})
+        assert rebuilt["mrn"] == "[REDACTED]"
+        # The guard never produces that mapping: the path is not a target.
+        untouched = rebuild(parsed.document, {})
+        assert untouched["mrn"] == 1234567
+        assert isinstance(untouched["mrn"], int)
+
+    def test_the_audit_event_records_the_read_only_fact(self, tmp_path):
+        audit_dir = tmp_path / "audit"
+        guard = Guard(profile="external-ai-strict", audit_dir=str(audit_dir))
+        guard.sanitize(
+            Payload(kind="json", content={"mrn": 1234567}),
+            "external-approved",
+            Purpose.EXTERNAL_AI_ASSISTANCE,
+        )
+        stream = (audit_dir / "events.jsonl").read_text(encoding="utf-8")
+        assert "1234567" not in stream
+        event = json.loads(stream.strip())
+        assert event["decision"] == "ASK"

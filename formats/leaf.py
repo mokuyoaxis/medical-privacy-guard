@@ -103,6 +103,10 @@ class Leaf:
     text: str
     #: Field label implied by the key or column holding this value, if any.
     label: str | None = None
+    #: True when the value can be inspected but not rewritten, because writing
+    #: a string back would change its type (a JSON number). Detection still
+    #: runs over it; the transformation layer must leave it alone.
+    read_only: bool = False
 
 
 @dataclass(frozen=True)

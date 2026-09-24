@@ -14,8 +14,11 @@ when they disagree, this file wins and the other two are updated.
   ``--encoding`` and never guessed;
 - JSON objects and arrays (``Payload(kind="json")`` or a ``.json`` file): leaves
   are sanitized and the structure is preserved. A key acts as a field label for
-  its value. Numeric, boolean and null leaves are not inspected, because
-  rewriting a number would change its JSON type; keys themselves are not treated
+  its value. Numeric leaves are inspected but never rewritten: writing a string
+  over a number would change the document's JSON type, so a number that matches
+  an identifier withholds the record (ASK, or BLOCK under a hard rule) rather
+  than producing a SANITIZE that quietly left the value in place. Booleans and
+  null carry no identifier and produce no leaf; keys themselves are not treated
   as values;
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
   ID candidates (GB 11643-1999 check digit), email, social-media handles,

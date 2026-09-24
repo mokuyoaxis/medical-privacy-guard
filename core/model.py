@@ -75,6 +75,10 @@ class ReasonCode(str, Enum):
     # Transformation / verification
     TRANSFORMATION_AVAILABLE = "TRANSFORMATION_AVAILABLE"
     TRANSFORMATION_INCOMPLETE = "TRANSFORMATION_INCOMPLETE"
+    #: An identifier was found inside a value the transformation layer cannot
+    #: rewrite (a JSON number). Nothing can be redacted in place, so the
+    #: payload needs human review instead of an automatic release.
+    UNTRANSFORMABLE_IDENTIFIER = "UNTRANSFORMABLE_IDENTIFIER"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
     #: A term from the deployment's institution dictionary survived into the
     #: released text. The rule-based re-scan cannot see this on its own: the
@@ -182,6 +186,12 @@ class DetectedFact:
     confidence: float
     source: str
     value: str | None = None
+    #: True when the span sits in a value the transformation layer cannot
+    #: rewrite, such as a JSON number: the text matches an identifier, but
+    #: replacing it would change the document's type. The fact still counts for
+    #: risk and for hard rules; it can never be part of a transformation plan,
+    #: so a payload carrying one must not reach SANITIZE.
+    read_only: bool = False
 
     def to_public(self) -> PublicDetectedFact:
         """Return a privacy-safe representation for logging and audit."""
@@ -191,6 +201,7 @@ class DetectedFact:
             end=self.end,
             confidence=self.confidence,
             source=self.source,
+            read_only=self.read_only,
         )
 
 
@@ -206,6 +217,8 @@ class PublicDetectedFact:
     end: int
     confidence: float
     source: str
+    #: True when the fact was detected in a value that cannot be rewritten.
+    read_only: bool = False
 
 
 @dataclass(frozen=True)

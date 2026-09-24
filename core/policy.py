@@ -497,6 +497,31 @@ class PolicyEvaluator:
                 ),
             )
 
+        # A fact found inside a value the transformer cannot rewrite (a JSON
+        # number) can never be part of a plan. Releasing it as SANITIZE would be
+        # a false allow: the plan covers every other fact, the number stays in
+        # the document, and verification still passes because re-scanning the
+        # rebuilt document finds nothing readable there either. The hard rules
+        # above keep precedence, so a government ID in a number is still BLOCK.
+        read_only_types = sorted(
+            {f.type for f in facts if f.read_only and f.type not in CONTEXT_ONLY_TYPES}
+        )
+        if read_only_types:
+            return self._decision(
+                verdict=Verdict.ASK,
+                reason_codes=(
+                    ReasonCode.UNTRANSFORMABLE_IDENTIFIER,
+                    ReasonCode.CONSENT_REQUIRED,
+                ),
+                risk=risk,
+                plan=None,
+                explanation=(
+                    "Identifier(s) detected inside value(s) that cannot be rewritten "
+                    f"({', '.join(read_only_types)}); no automatic transformation is "
+                    "possible, so the payload needs human review before release."
+                ),
+            )
+
         # A declared purpose is required before disclosing detected sensitive
         # content.  This is the normal, non-mocked ASK path: the caller must
         # provide context instead of a risk score guessing intent.

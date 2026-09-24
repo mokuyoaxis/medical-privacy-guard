@@ -8,7 +8,9 @@ diverges silently. Three instances so far:
 - v0.2.4: Chinese numeral ages were detected but the transformer could not
   execute them, turning a silent release into a raised error;
 - v0.2.6+: ``person.py`` never adopted ``field_syntax``, so ``姓名=张伟`` was
-  missed while every other field accepted the equals sign.
+  missed while every other field accepted the equals sign;
+- v0.3.x: detection and transformation disagreed about JSON numbers, so
+  ``{"mrn": 1234567}`` was reported ALLOW and released intact.
 
 Run this after touching detectors, transformers or policy: it is cheap and it
 catches the class of defect that unit tests miss, because each consumer is
@@ -28,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.errors import GuardError  # noqa: E402
-from core.model import Purpose, Recipient, TrustLevel  # noqa: E402
+from core.model import Payload, Purpose, Recipient, TrustLevel  # noqa: E402
 from detectors import detect_all  # noqa: E402
 from medical_privacy_guard import Guard  # noqa: E402
 
@@ -130,12 +132,66 @@ def transformation_coverage() -> list[str]:
     return problems
 
 
+#: Identifiers carried in a value the transformer cannot rewrite. Each of these
+#: must be withheld; reporting SANITIZE would release the number untouched.
+READ_ONLY_SAMPLES: dict[str, dict] = {
+    "numeric MRN": {"mrn": 1234567},
+    "numeric phone": {"phone": 13800000000},
+    "numeric government ID": {"id_card": 110101199003078888},
+    "nested numeric phone": {"patient": {"phone": 13800000000}},
+    "numeric phone in an array": {"phones": [13800000000]},
+}
+
+#: The same values as strings, which the transformer can execute. A regression
+#: here would mean the read-only path swallowed the writable one.
+WRITABLE_SAMPLES: dict[str, dict] = {
+    "string MRN": {"mrn": "1234567"},
+    "string phone": {"phone": "13800000000"},
+}
+
+
+def read_only_leaf_coverage() -> list[str]:
+    """A detected identifier the transformer cannot rewrite must not be released.
+
+    This is the same declared-but-not-wired shape as the separator defects: the
+    detectors can read a JSON number, the transformer cannot write over one, and
+    nothing compared the two. The verdict must therefore be ASK or BLOCK, never
+    a SANITIZE whose plan silently skipped the value.
+    """
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    problems: list[str] = []
+    for name, document in sorted(READ_ONLY_SAMPLES.items()):
+        result = guard.sanitize(
+            Payload(kind="json", content=document), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        verdict = result.decision_before.verdict.value
+        if verdict not in {"ASK", "BLOCK"}:
+            problems.append(
+                f"  {name}: released as {verdict}; a value the transformer cannot "
+                "rewrite must be withheld, not sanitized"
+            )
+        elif result.sanitized_payload is not None:
+            problems.append(f"  {name}: verdict {verdict} but a payload was released")
+    for name, document in sorted(WRITABLE_SAMPLES.items()):
+        result = guard.sanitize(
+            Payload(kind="json", content=document), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        verdict = result.decision_before.verdict.value
+        if verdict != "SANITIZE":
+            problems.append(f"  {name}: expected SANITIZE, got {verdict}")
+        elif result.sanitized_payload is None:
+            problems.append(f"  {name}: SANITIZE with nothing released")
+    return problems
+
+
 def main() -> int:
     sections = collections.OrderedDict(
         (
             ("Separator spelling (field_syntax)", separator_matrix()),
             ("Fact types vs policy tables", fact_type_coverage()),
             ("Detection vs transformation", transformation_coverage()),
+            ("Read-only leaves vs verdict", read_only_leaf_coverage()),
         )
     )
     failed = False

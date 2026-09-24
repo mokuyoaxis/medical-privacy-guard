@@ -5,10 +5,14 @@ pipeline can run over them, then rebuilt from a copy of the original structure.
 Nothing here decides anything: parsing produces leaves, rebuilding writes
 replacement values back.
 
-Scope note: only *string* leaves are extracted. A numeric value that happens to
-be an identifier (``{"phone": 13800000000}``) is left alone, because rewriting it
-would change its JSON type and silently break the consumer. That boundary is
-recorded in ``docs/scope.md`` rather than left implicit.
+Scope note: string leaves can be rewritten; numeric leaves are collected as
+*read-only*. A number can be an identifier (``{"phone": 13800000000}``), but
+writing a string back over it would change the document's JSON type, so the
+transformation layer must leave it alone. It is still detected, and a payload
+carrying one can never be released as SANITIZE — the policy sends it to human
+review instead of reporting a sanitization that quietly left the number in
+place. That boundary is recorded in ``docs/scope.md`` rather than left
+implicit.
 
 Paths are JSON Pointers (RFC 6901), so ``~0`` and ``~1`` escaping is handled and
 a key containing ``/`` still addresses the right leaf.
@@ -54,7 +58,16 @@ def _collect_leaves(document: Any) -> list[Leaf]:
         elif isinstance(node, list):
             for index in range(len(node) - 1, -1, -1):
                 stack.append((node[index], f"{path}/{index}", inherited))
-        # Numbers, booleans and null are not text: see the module docstring.
+        elif isinstance(node, bool):
+            # A boolean is never an identifier, and ``bool`` is an ``int``
+            # subclass, so it has to be excluded before the numeric branch.
+            continue
+        elif isinstance(node, (int, float)):
+            # ``str`` is exact for the integers a JSON document actually
+            # carries: Python ints are arbitrary precision, so an 18-digit ID
+            # survives the round trip unmangled.
+            leaves.append(Leaf(path=path, text=str(node), label=inherited, read_only=True))
+        # Null has no text to inspect.
     return leaves
 
 

@@ -94,7 +94,9 @@ has a deterministic operation; only the verified output may be released.
   location/institution/department/ward to type markers) and DATE_SHIFT;
 - JSON objects/arrays and CSV files, flattened to string leaves, sanitized and
   rebuilt with their structure intact (a key or column name acts as a field
-  label for its value);
+  label for its value). JSON numbers are inspected but never rewritten — writing
+  a string over a number would change its type — so a number that matches an
+  identifier withholds the record instead of being released untouched;
 - metadata-only JSONL audit when configured, with each event chained by hash so
   a deleted, reordered or edited record is detectable, and an `audit-verify`
   command to check it;
@@ -196,7 +198,11 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   (`v0.3.1`); XLSX deferred (CSV covers the need).
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
-- **v0.4 — LLM SDK wrapper + MCP gateway**: not started.
+- **v0.4 — LLM SDK wrapper + MCP gateway**: **skeleton in place**. The
+  `adapters/` package carries the shared release contract
+  (`release_or_raise`) and the caller-facing exception family
+  (`DisclosureBlocked`, `HumanApprovalRequired`, `VerificationFailed`). Vendor
+  transports (OpenAI-compatible, Anthropic, MCP stdio) are not started.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.
 - **v1.0 — Medical AI egress privacy gateway**: target.

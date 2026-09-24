@@ -171,6 +171,7 @@ def _detect_leaves(
                     fact,
                     start=fact.start - offset + start,
                     end=fact.end - offset + start,
+                    read_only=leaf.read_only,
                 )
             )
     return tuple(facts)
@@ -193,6 +194,14 @@ def _split(
 
     replacements: dict[str, str] = {}
     for start, end, leaf in spans:
+        if leaf.read_only:
+            # The policy refuses SANITIZE whenever a read-only leaf carries a
+            # fact, so no plan should ever reach here with one as a target.
+            # Skipping it keeps the value byte-identical instead of writing a
+            # string over a number and changing the document's type. Offsets
+            # for the other leaves are unaffected: ``before`` sums over the
+            # evidence, not over the spans visited so far.
+            continue
         inner = [r for r in evidence if start <= r.start < end]
         before = sum(net(r) for r in evidence if r.start < start)
         out_start = start + before
