@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-24
+
+### Fixed
+
+- **A JSON number that is an identifier was released untouched.** Numbers were
+  not collected as leaves at all, so ``{"mrn": 1234567}`` produced no fact, the
+  verdict was ALLOW, and the record went out with the number intact. The same
+  value as a string was sanitized, and ``{"id_card": <number>}`` bypassed the
+  hard government-ID BLOCK rule. Numeric leaves are now collected as
+  **read-only**: detection sees them, the transformation layer never writes over
+  them, and a payload carrying one can no longer reach SANITIZE. The verdict is
+  ASK, or BLOCK where a hard rule applies. Booleans and null still produce no
+  leaf.
+
+### Added
+
+- ``read_only`` on ``DetectedFact``, ``PublicDetectedFact`` and ``Leaf``, plus
+  the ``UNTRANSFORMABLE_IDENTIFIER`` reason code, so a withheld payload states
+  why instead of only that it was withheld.
+- A fourth section in ``tools/audit_contracts.py``: read-only leaves against the
+  verdict. It was confirmed to fail with the policy guard disabled — the three
+  existing sections were all green while this defect was live, which is the
+  point of adding it.
+- ``tests/test_json_payload.py::TestReadOnlyLeaves``: numeric against string
+  verdicts, hard-rule precedence, nested and array forms, the approved-recipient
+  case, and an audit event carrying no raw value.
+- **v0.4 skeleton**: the ``adapters/`` package with ``release_or_raise``, the
+  single verdict-to-caller mapping every vendor transport will use, plus the
+  caller-facing exception family ``DisclosureBlocked``,
+  ``HumanApprovalRequired`` and ``VerificationFailed`` in ``core/errors.py``.
+  Vendor transports are not started, and ASK grants are not implemented:
+  ``HumanApprovalRequired`` says a scoped grant is required, not how one is
+  obtained. The package name follows ``docs/architecture.md``, which already
+  described ``adapters/``; ``ROADMAP.md`` said ``integrations/`` and now agrees.
+- Release-gate checks for version consistency: ``__version__`` against
+  ``pyproject.toml``, the current version against a CHANGELOG section, section
+  uniqueness and ordering, and a section running ahead of the version. The first
+  two were listed as release-gate conditions in ``ROADMAP.md`` and nothing
+  enforced them. Both were confirmed to fail when the version is bumped without
+  the matching changes.
+
+### Notes
+
+- ``EXTERNAL_APPROVED`` does not relax this. An approved recipient lowers risk
+  scores, not transformability. A government ID in a number is still BLOCK for
+  ``EXTERNAL_UNKNOWN``, because the hard rules run before the read-only path.
+- Known boundary, unchanged by this fix: a bare 8-digit date (``{"date":
+  20260921}``) is detected in neither form. The date detector requires a
+  separator or Chinese numerals, so ``日期：20260921`` is missed as text too.
+  Recorded here because a number is exactly where the separator-less spelling
+  appears in practice.
+- ``ROADMAP.md``'s v0.3 section still described the plan — XLSX,
+  ``sanitize_file()``, a file-scoped token map, a dataset-level uniqueness check
+  — while its status row said XLSX was deferred. The section now separates what
+  shipped from what did not and records why: CSV covers the XLSX need, the CLI
+  writes to a separate output file rather than overwriting its input, and
+  declaring the encoding was a deliberate choice rather than an omission.
+
 ## [0.3.2] - 2026-09-23
 
 ### Fixed
