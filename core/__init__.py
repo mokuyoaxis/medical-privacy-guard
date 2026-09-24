@@ -3,10 +3,13 @@
 from .audit import AuditEvent, AuditWriter, build_audit_event
 from .errors import (
     AuditError,
+    DisclosureBlocked,
     GuardError,
+    HumanApprovalRequired,
     ParserError,
     PolicyError,
     VerificationError,
+    VerificationFailed,
 )
 from .model import (
     DataProvenance,
@@ -39,10 +42,13 @@ __all__ = [
     "build_audit_event",
     # errors
     "AuditError",
+    "DisclosureBlocked",
     "GuardError",
+    "HumanApprovalRequired",
     "ParserError",
     "PolicyError",
     "VerificationError",
+    "VerificationFailed",
     # model
     "DataProvenance",
     "Decision",

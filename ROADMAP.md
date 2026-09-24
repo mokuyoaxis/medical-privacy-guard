@@ -17,9 +17,9 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.2.4 | Detection coverage | Released (`v0.2.4`) |
 | v0.2.5 | Institution vocabulary + detector extension point | Released (`v0.2.5`) |
 | v0.2.6 | Remaining detection gaps (numeral dates, out-of-inventory names) | Released (`v0.2.6`) |
-| v0.3 | CSV / XLSX / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
+| v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
-| v0.4 | LLM SDK wrapper + MCP gateway | Not started |
+| v0.4 | LLM SDK wrapper + MCP gateway | **Skeleton** (`adapters/`, exception family); transports not started |
 | v0.5 | FHIR minimal resource set | Not started |
 | v0.6 | DICOM metadata scanner | Not started |
 | v1.0 | Medical AI egress privacy gateway | Target |
@@ -167,30 +167,47 @@ build/test/release checks. This list is an acceptance contract, not new test res
 
 ---
 
-## v0.3 — CSV / XLSX / JSON
+## v0.3 — CSV / JSON (XLSX deferred)
 
 **Goal**: serve real clinical research table data.
 
-**Scope**:
+**Delivered**:
 
-- `formats/` module: csv, xlsx (openpyxl), json path traversal;
-- column-level detection driven by header-name patterns plus cell-level
-  scanning;
-- `sanitize_file()` preserving sheet names, row/column structure, headers,
-  and data types; output never overwrites input;
-- consistent tokenization within a dataset via a file-scoped token map stored
-  locally, never written to audit;
-- dataset-level uniqueness check over quasi-identifier columns;
-- explicit encoding handling for GBK / GB18030 and UTF-8 CSV.
+- `formats/` module: JSON object/array traversal (`v0.3.0`) and CSV parsing
+  (`v0.3.1`), both flattening a document into addressable string leaves and
+  rebuilding it with its structure intact;
+- a key or column name acts as a field label for its value
+  (`formats/leaf.py`), so the label-driven detectors apply to a structured field
+  that carries no in-band label. Cells and leaves are scanned regardless, so an
+  unconventional header costs a label, not detection;
+- one decision per document: a single direct identifier withholds the whole
+  record, because a partially released record is where cross-field
+  quasi-identifiers do their damage;
+- numeric JSON leaves are inspected but never rewritten, and withhold the record
+  rather than releasing a number the transformer cannot reach;
+- encoding is stated with `--encoding` and never guessed. A wrong codec is
+  reported rather than silently retried: mojibake that reaches a model is worse
+  than an error that reaches the operator.
 
-**Acceptance criteria**:
+**Deferred**:
 
-- multi-sheet XLSX handled; structure preserved;
-- sanitized reports contain no raw PHI;
-- unique high-risk quasi-identifier combinations return ASK/BLOCK.
+- XLSX. CSV covers the same need, and an XLSX reader would add a dependency to a
+  project that currently has one;
+- `sanitize_file()` as a separate entry point: `Guard.sanitize` with a
+  `Payload(kind="csv"|"json")` covers the path, and the CLI writes to a separate
+  output file rather than overwriting the input;
+- the file-scoped token map, and with it consistent tokenization across a
+  dataset: `TokenRegistry` is in-memory and scoped to one sanitization, so two
+  rows naming the same person do not yet share a token across files;
+- the dataset-level uniqueness check over quasi-identifier columns, and the
+  acceptance criterion that depended on it (unique high-risk combinations
+  returning ASK/BLOCK);
+- GBK / GB18030 auto-detection. Declaring the encoding is the deliberate choice
+  above, not an omission.
 
-**Test requirements**: format regression tests; date-shift consistency
-tests; audit-no-raw-PHI tests for file outputs.
+**Test requirements**: format regression tests and audit-no-raw-PHI tests for
+file outputs are in place. Date-shift consistency across a dataset is not
+tested, because the file-scoped token map it would rely on is not implemented.
 
 **Docs**: scope.md; README status flip.
 
@@ -202,7 +219,7 @@ tests; audit-no-raw-PHI tests for file outputs.
 
 **Scope**:
 
-- OpenAI-compatible and Anthropic wrappers (`integrations/`): message
+- OpenAI-compatible and Anthropic wrappers (`adapters/`): message
   content, tool arguments, file upload names, and metadata all pass through
   the guard;
 - `DisclosureBlocked` / `HumanApprovalRequired` / `VerificationFailed`

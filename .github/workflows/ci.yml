@@ -40,7 +40,7 @@ jobs:
       - name: Lint
         run: python -m ruff check .
       - name: Static security scan
-        run: python -m bandit -q -r core detectors transformers medical_privacy_guard cli formats
+        run: python -m bandit -q -r core detectors transformers medical_privacy_guard cli formats adapters
       - name: Contract audit
         run: python tools/audit_contracts.py
       - name: Generalisation measurement
@@ -58,6 +58,9 @@ jobs:
           /tmp/mpg-wheel-venv/bin/python -m pip install dist/*.whl
           cd /tmp
           /tmp/mpg-wheel-venv/bin/python - <<'PY'
+          from adapters import release_or_raise
+          from core.errors import HumanApprovalRequired
+          from core.model import Payload
           from medical_privacy_guard import Guard
 
           result = Guard().sanitize(
@@ -67,4 +70,21 @@ jobs:
           )
           assert result.sanitized_payload is not None
           assert result.verification is not None and result.verification.passed
+          # The adapter package must be packaged, not just present in the tree.
+          assert release_or_raise(result) is result.sanitized_payload
+
+          # A number that is an identifier cannot be rewritten, so it has to be
+          # withheld rather than released as a sanitized payload.
+          try:
+              release_or_raise(
+                  Guard().sanitize(
+                      Payload(kind="json", content='{"mrn": 1234567}'),
+                      "external_approved",
+                      "EXTERNAL_AI_ASSISTANCE",
+                  )
+              )
+          except HumanApprovalRequired:
+              pass
+          else:
+              raise AssertionError("a read-only identifier must not be released")
           PY

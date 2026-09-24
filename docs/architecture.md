@@ -8,8 +8,9 @@
 
 ## High-level pipeline
 
-The implemented v0.1/v0.2 path accepts plain text. Structured-format parsers,
-MCP/SDK adapters and dataset-level re-identification analysis are future work.
+The implemented path accepts plain text, JSON and CSV. XLSX, FHIR and DICOM
+parsers, the vendor SDK / MCP adapters and dataset-level re-identification
+analysis are future work.
 
 ```text
 Plain text (caller-declared in API; admission checks in CLI)
@@ -56,8 +57,8 @@ hardening contract, not proof of complete anonymization. See
 | `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
 | `formats/` | Flatten a JSON or CSV payload into string leaves and rebuild it | `StructuredPayload` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
-| `formats` (planned) | Parse CSV / XLSX / JSON / FHIR / DICOM | format-specific representation |
-| `adapters` (planned) | Translate external calls and enforce decisions before sending | adapter-specific |
+| `formats/` (pending) | Parse XLSX / FHIR / DICOM | format-specific representation |
+| `adapters/` | Translate external calls and enforce decisions before sending | `Payload` (via `release_or_raise`) |
 
 ## Component boundaries
 
@@ -222,8 +223,8 @@ medical-privacy-guard/
 ├── cli/
 │   ├── __init__.py
 │   └── main.py
-├── formats/                   # planned (v0.3+): csv / xlsx / json / fhir / dicom
-├── adapters/                  # planned (v0.4+): SDK wrappers, MCP gateway
+├── formats/                   # csv / json implemented; xlsx / fhir / dicom pending
+├── adapters/                  # v0.4 skeleton: release semantics; vendor transports pending
 ├── tools/
 │   └── generate_synthetic_cn_notes.py
 ├── skills/

@@ -1,6 +1,8 @@
 """Release-gate integration, adversarial and cross-interface tests."""
 
 import json
+import re
+from pathlib import Path
 
 from cli.main import EXIT_ERROR, EXIT_OK, main
 from core.errors import AuditError
@@ -193,3 +195,71 @@ def test_date_shift_profile_releases_with_residual_dates():
     assert "2026-08-21" not in output
     for raw in ("测试患者甲", "67岁", "SYNTH-MRN-0001"):
         assert raw not in output, raw
+
+
+# -- version consistency -----------------------------------------------------
+#
+# ROADMAP's release gate lists "``__version__`` consistent with pyproject" and
+# "CHANGELOG updated" among its conditions. Both were verified by hand until
+# now, which is the same declared-but-not-wired shape ``tools/audit_contracts.py``
+# exists to catch — this time in the release gate itself.
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _pyproject_version() -> str:
+    """Read ``[project].version`` without adding a dependency.
+
+    ``tomllib`` is stdlib from 3.11 and the project still supports 3.10, so the
+    fallback matches the one line we care about instead of taking ``tomli``.
+    """
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        assert match is not None, "pyproject.toml declares no [project].version"
+        return match.group(1)
+    return str(tomllib.loads(text)["project"]["version"])
+
+
+def _changelog_versions() -> list[str]:
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    return re.findall(r"^## \[(\d+\.\d+\.\d+)\]", text, re.MULTILINE)
+
+
+def _key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def test_version_matches_pyproject():
+    from medical_privacy_guard import __version__
+
+    assert __version__ == _pyproject_version()
+
+
+def test_the_current_version_has_a_changelog_section():
+    """A release records what changed before the version number moves."""
+    from medical_privacy_guard import __version__
+
+    assert __version__ in _changelog_versions(), (
+        f"CHANGELOG.md has no '## [{__version__}]' section"
+    )
+
+
+def test_changelog_sections_are_unique_and_newest_first():
+    versions = _changelog_versions()
+    assert len(versions) == len(set(versions)), "duplicate version section in CHANGELOG.md"
+    keys = [_key(v) for v in versions]
+    assert keys == sorted(keys, reverse=True), "CHANGELOG.md sections are not newest-first"
+
+
+def test_no_changelog_section_runs_ahead_of_the_version():
+    """A section for a future version means the version number was not bumped."""
+    from medical_privacy_guard import __version__
+
+    current = _key(__version__)
+    ahead = [v for v in _changelog_versions() if _key(v) > current]
+    assert ahead == [], (
+        f"CHANGELOG.md documents {ahead} but __version__ is {__version__}"
+    )
