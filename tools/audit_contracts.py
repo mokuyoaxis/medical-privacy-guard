@@ -10,7 +10,9 @@ diverges silently. Three instances so far:
 - v0.2.6+: ``person.py`` never adopted ``field_syntax``, so ``姓名=张伟`` was
   missed while every other field accepted the equals sign;
 - v0.3.x: detection and transformation disagreed about JSON numbers, so
-  ``{"mrn": 1234567}`` was reported ALLOW and released intact.
+  ``{"mrn": 1234567}`` was reported ALLOW and released intact;
+- v0.3.3: the CLI classified a payload by content and an adapter would have had
+  to write its own copy of that decision, one layer above the detectors.
 
 Run this after touching detectors, transformers or policy: it is cheap and it
 catches the class of defect that unit tests miss, because each consumer is
@@ -30,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.errors import GuardError  # noqa: E402
-from core.model import Payload, Purpose, Recipient, TrustLevel  # noqa: E402
+from core.model import Payload, Purpose, Recipient, TrustLevel, Verdict  # noqa: E402
 from detectors import detect_all  # noqa: E402
 from medical_privacy_guard import Guard  # noqa: E402
 
@@ -185,6 +187,61 @@ def read_only_leaf_coverage() -> list[str]:
     return problems
 
 
+#: Content that must be recognised as structured. If an entry point scans any of
+#: these as prose, the key-derived field labels vanish and the call is released
+#: with its identifier intact.
+STRUCTURED_CALL_SAMPLES: tuple[tuple[str, object], ...] = (
+    ("JSON string with a labelled key", '{"mrn": "1234567"}'),
+    ("JSON string with a bare name", '{"name": "张三"}'),
+    ("decoded mapping", {"mrn": "1234567"}),
+    ("decoded list of mappings", [{"name": "张三"}]),
+)
+
+
+def admission_contract() -> list[str]:
+    """Both entry points must classify content from one shared rule.
+
+    The CLI and an adapter each decide what a piece of content is before the
+    guard sees it. A structured payload scanned as prose loses the labels the
+    detectors depend on, and the call goes out with the identifier intact: the
+    same declared-but-not-wired shape as the separator defects, one layer up.
+    """
+    problems: list[str] = []
+
+    canonical = ROOT / "formats/admission.py"
+    if "def classify_text(" not in canonical.read_text(encoding="utf-8"):
+        problems.append("  formats/admission.py no longer defines classify_text")
+
+    # Nobody else may keep a private copy of the decision.
+    for path in sorted(ROOT.rglob("*.py")):
+        relative = path.relative_to(ROOT)
+        if path == canonical or relative.parts[0] in {".git", ".agent-trash", "tests"}:
+            continue
+        if re.search(r"^def _?classify\w*\(", path.read_text(encoding="utf-8"), re.MULTILINE):
+            problems.append(
+                f"  {relative}: defines its own classifier; use formats.admission "
+                "so the entry points cannot drift"
+            )
+
+    # Both entry points must go through the shared rule.
+    for entry in ("cli/main.py", "adapters/ingress.py"):
+        if "payload_for_text" not in (ROOT / entry).read_text(encoding="utf-8"):
+            problems.append(f"  {entry}: does not classify through formats.admission")
+
+    # Behavioural check: a structured call must not reach ALLOW.
+    from adapters.ingress import payload_for as ingress_payload
+
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    for name, content in STRUCTURED_CALL_SAMPLES:
+        result = guard.evaluate(
+            ingress_payload(content), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        if result.decision.verdict is Verdict.ALLOW:
+            problems.append(f"  {name}: reached ALLOW; a structured call was scanned as prose")
+    return problems
+
+
 def main() -> int:
     sections = collections.OrderedDict(
         (
@@ -192,6 +249,7 @@ def main() -> int:
             ("Fact types vs policy tables", fact_type_coverage()),
             ("Detection vs transformation", transformation_coverage()),
             ("Read-only leaves vs verdict", read_only_leaf_coverage()),
+            ("Admission contract (CLI and adapters)", admission_contract()),
         )
     )
     failed = False

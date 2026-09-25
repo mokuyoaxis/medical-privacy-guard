@@ -48,7 +48,8 @@ hardening contract, not proof of complete anonymization. See
 
 | Component | Responsibility | Output |
 |---|---|---|
-| `medical_privacy_guard/guard.py`, `cli/main.py` | Accept caller-declared text / check CLI file admission | `Payload` |
+| `medical_privacy_guard/guard.py`, `cli/main.py` | Evaluate a caller-declared payload and decide | `Decision` |
+| `formats/admission.py` | Decide what content is *before* it is scanned; shared by the CLI and the adapters | `Payload` |
 | `detectors` | Output sensitive-entity facts, not policy decisions | `DetectedFact` |
 | `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
@@ -58,7 +59,7 @@ hardening contract, not proof of complete anonymization. See
 | `formats/` | Flatten a JSON or CSV payload into string leaves and rebuild it | `StructuredPayload` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats/` (pending) | Parse XLSX / FHIR / DICOM | format-specific representation |
-| `adapters/` | Translate external calls and enforce decisions before sending | `Payload` (via `release_or_raise`) |
+| `adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
 
 ## Component boundaries
 
@@ -223,8 +224,8 @@ medical-privacy-guard/
 ├── cli/
 │   ├── __init__.py
 │   └── main.py
-├── formats/                   # csv / json implemented; xlsx / fhir / dicom pending
-├── adapters/                  # v0.4 skeleton: release semantics; vendor transports pending
+├── formats/                   # admission + csv / json; xlsx / fhir / dicom pending
+├── adapters/                  # v0.4 skeleton: ingress + egress; vendor transports pending
 ├── tools/
 │   └── generate_synthetic_cn_notes.py
 ├── skills/

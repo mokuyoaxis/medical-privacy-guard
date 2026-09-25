@@ -156,11 +156,18 @@ Explicit non-text `Payload.kind` values return BLOCK. `str` and
 `Payload(kind="text")` are caller declarations: the API caller is responsible
 for supplying plain text, not encoded JSON, CSV or binary content.
 
-The CLI admission contract blocks known unsupported extensions, NUL and other
+The admission contract blocks known unsupported extensions, NUL and other
 unsupported control characters, and JSON-container content before detection.
 UTF-8 decoding is necessary but is not format validation. Extension/content
 checks cannot reliably recognize arbitrary disguised formats: a renamed CSV
 or encoded structured value is not made supported by escaping those checks.
+
+The classification itself is shared: ``formats/admission.py`` holds the rule used
+by both the CLI and the adapters, so a payload cannot be plain text to one entry
+point and a structured document to the other. An adapter does not accept the
+caller's word for what its content is — ``adapters.ingress`` classifies it,
+because a JSON document scanned as prose loses the key-derived field labels and
+the label-driven detectors then see nothing at all.
 
 CLI output must not alias its input or the configured audit log, including
 existing hard-link aliases. Collision checks must happen before writes. These

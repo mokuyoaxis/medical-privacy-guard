@@ -117,11 +117,14 @@ detectors and is not a build gate — it exists to show which real note shapes t
 baseline misses.
 
 Plain text, JSON objects/arrays and CSV files are supported. Other explicitly
-typed non-text API payloads return BLOCK. CLI admission checks reject known
+typed non-text API payloads return BLOCK. Admission checks reject known
 unsupported extensions, NUL and other unsupported control characters, and
 containers that do not parse; they do not reliably identify every disguised
-format. Callers using `str` or `Payload(kind="text")` are responsible for
-supplying plain text, not serialized structured/binary data.
+format. One rule serves both entry points (`formats/admission.py`), so a
+document cannot be plain text to the CLI and structured to an adapter. Callers
+using `str` or `Payload(kind="text")` are responsible for supplying plain text,
+not serialized structured/binary data — `adapters.ingress` exists so an adapter
+never has to make that call itself.
 Medical-content classification is a rule baseline, not full medical NER or
 proof of anonymity.
 
@@ -199,10 +202,11 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
 - **v0.4 — LLM SDK wrapper + MCP gateway**: **skeleton in place**. The
-  `adapters/` package carries the shared release contract
-  (`release_or_raise`) and the caller-facing exception family
-  (`DisclosureBlocked`, `HumanApprovalRequired`, `VerificationFailed`). Vendor
-  transports (OpenAI-compatible, Anthropic, MCP stdio) are not started.
+  `adapters/` package carries both halves of the contract — `payload_for`,
+  `evaluate_call` and `sanitize_call` on the way in, `release_or_raise` on the
+  way out — plus the caller-facing exception family (`DisclosureBlocked`,
+  `HumanApprovalRequired`, `VerificationFailed`). Vendor transports
+  (OpenAI-compatible, Anthropic, MCP stdio) are not started.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.
 - **v1.0 — Medical AI egress privacy gateway**: target.

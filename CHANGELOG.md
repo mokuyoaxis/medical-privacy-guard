@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ``adapters.ingress``: ``payload_for``, ``evaluate_call`` and ``sanitize_call``,
+  the entry half of the adapter contract, so an adapter classifies the call
+  rather than trusting the caller's guess. A JSON document arriving as a string
+  is declared a JSON payload. Scanned as prose it loses the key-derived field
+  labels, and ``{"name": "张三"}`` yields no fact at all — the key is not a
+  Chinese label and a bare name is deliberately not detected — so the call would
+  have been released with the name in it.
+- ``formats/admission.py``: the classification the CLI already had, extracted so
+  both entry points share one implementation instead of two that drift. The CLI
+  now calls it rather than owning it. ``tools/audit_contracts.py`` gains a fifth
+  section that fails when a second classifier appears or when a structured call
+  reaches ALLOW; it was confirmed to fail with the adapter degraded to treating
+  strings as prose.
+
 ## [0.3.3] - 2026-09-24
 
 ### Fixed
