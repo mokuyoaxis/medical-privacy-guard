@@ -26,7 +26,7 @@ from typing import Mapping, Sequence
 
 from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
-from core.errors import AuditError, GuardError, ParserError
+from core.errors import AuditError, GuardError
 from core.model import (
     Decision,
     DetectedFact,
@@ -35,6 +35,12 @@ from core.model import (
     Recipient,
     TrustLevel,
     Verdict,
+)
+from formats.admission import (
+    UnsupportedInput,
+    classify_text,
+    payload_for_text,
+    read_text_file,
 )
 from medical_privacy_guard import Guard
 
@@ -158,95 +164,15 @@ def _add_common(
 # -- context helpers ---------------------------------------------------------
 
 
-_UNSUPPORTED_SUFFIXES = {
-    ".jsonl", ".ndjson", ".tsv", ".xls", ".xlsx", ".xlsm",
-    ".ods", ".pdf", ".doc", ".docx", ".odt", ".rtf", ".fhir", ".xml",
-    ".hl7", ".dcm", ".dicom", ".bin", ".zip", ".gz", ".png", ".jpg",
-    ".jpeg", ".gif", ".tif", ".tiff", ".wav", ".mp3", ".mp4",
-}
-
-
-class _UnsupportedInput(ParserError):
-    pass
-
-
-def _read_text(path: str, encoding: str = "utf-8-sig") -> str:
-    """Reject known formats, not arbitrary formats disguised as clinical text.
-
-    The encoding is stated by the caller and never guessed. A wrong codec is
-    reported rather than silently retried with another one: mojibake that
-    reaches a model is worse than an error that reaches the operator.
-    """
-    source = Path(path)
-    try:
-        suffixes = source.suffixes + source.resolve().suffixes
-        if any(suffix.lower() in _UNSUPPORTED_SUFFIXES for suffix in suffixes):
-            raise _UnsupportedInput("unsupported input format; UTF-8 plain text required")
-        data = source.read_bytes()
-    except (OSError, RuntimeError) as exc:
-        raise ParserError("cannot read input file") from exc
-    try:
-        text = data.decode(encoding)
-    except LookupError as exc:
-        raise ParserError(f"unknown encoding {encoding!r}") from exc
-    except UnicodeDecodeError as exc:
-        raise _UnsupportedInput(
-            f"cannot decode input as {encoding}; state the correct --encoding"
-        ) from exc
-    if (
-        any((ord(char) < 32 and char not in "\t\r\n") or 127 <= ord(char) <= 159
-            for char in text)
-        or text.lstrip().startswith(("%PDF-", "{\\rtf", "<?xml", "<fhir:"))
-        or data.startswith((b"PK\x03\x04", b"GIF87a", b"GIF89a"))
-        or data[128:132] == b"DICM"
-    ):
-        raise _UnsupportedInput("unsupported binary or document format")
-    return text
-
-
-def _classify(text: str) -> str:
-    """Classify the input as ``json``, ``text`` or ``unsupported``.
-
-    Something that looks like a container but does not parse as one is not
-    quietly demoted to prose: a truncated or double-wrapped JSON file is a
-    format problem, and treating it as clinical text would release its
-    contents as if they had been inspected properly.
-    """
-    stripped = text.lstrip()
-    if not stripped.startswith(("{", "[")):
-        return "text"
-    try:
-        container = json.loads(stripped)
-    except (json.JSONDecodeError, RecursionError, ValueError):
-        # Not a complete document. It is only a broken payload if a valid JSON
-        # value parses and leaves content behind (a truncated or double-wrapped
-        # file); otherwise the braces are ordinary text, and "[随访] 记录"
-        # must not be blocked merely for starting with a bracket.
-        try:
-            value, end = json.JSONDecoder().raw_decode(stripped)
-        except (json.JSONDecodeError, RecursionError, ValueError):
-            return "text"
-        if isinstance(value, (dict, list)) and stripped[end:].strip():
-            return "unsupported"
-        return "text"
-    return "json" if isinstance(container, (dict, list)) else "unsupported"
-
-
-def _payload_for(text: str, path: str) -> str | Payload:
-    """Build the payload a classified input should take through the guard.
+def _payload_for_path(text: str, path: str) -> Payload:
+    """Build the payload for one file's contents.
 
     CSV is recognised by suffix rather than by content: no byte pattern marks a
-    CSV file, and any text can be read as one. JSON is recognised by content,
-    because a container is unambiguous.
+    CSV file, and any text can be read as one. Everything else is classified by
+    content, and that classification lives in ``formats.admission`` so this CLI
+    and the adapters cannot disagree about what a document is.
     """
-    if Path(path).suffix.lower() == ".csv":
-        return Payload(kind="csv", content=text)
-    kind = _classify(text)
-    if kind == "json":
-        return Payload(kind="json", content=text)
-    if kind == "unsupported":
-        return Payload(kind="unsupported", content="")
-    return text
+    return payload_for_text(text, is_csv=Path(path).suffix.lower() == ".csv")
 
 
 def _check_paths(input_file: str, output: str | None, audit_dir: str | None) -> None:
@@ -345,15 +271,15 @@ def _counts(facts: Sequence[DetectedFact]) -> dict[str, int]:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    text = _read_text(args.file, args.encoding)
+    text = read_text_file(args.file, args.encoding)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
-    if _classify(text) == "unsupported":
+    if classify_text(text) == "unsupported":
         # Admission failure, not a policy verdict: keep it off stdout so the
         # two are distinguishable, exactly as sanitize does.
         print("BLOCK: unsupported structured input", file=sys.stderr)
         return EXIT_BLOCK
-    payload = _payload_for(text, args.file)
+    payload = _payload_for_path(text, args.file)
     result = Guard(
         profile=args.profile, dictionary_path=args.dictionary
     ).evaluate(payload, recipient, purpose)
@@ -372,14 +298,14 @@ def _cmd_sanitize(args: argparse.Namespace) -> int:
     _check_paths(args.file, args.output, args.audit_dir)
     admission_error: str | None = None
     try:
-        text = _read_text(args.file, args.encoding)
-    except _UnsupportedInput as exc:
+        text = read_text_file(args.file, args.encoding)
+    except UnsupportedInput as exc:
         # Keep the reason: "cannot decode as utf-8-sig" tells the operator what
         # to do, where a generic block message does not.
         admission_error = str(exc)
         payload: str | Payload = Payload(kind="unsupported", content="")
     else:
-        payload = _payload_for(text, args.file)
+        payload = _payload_for_path(text, args.file)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
     # Guard owns detect → decide → transform → verify → audit.  In particular,
@@ -572,7 +498,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"unknown command: {args.command}")
     except SystemExit:
         raise
-    except _UnsupportedInput as exc:
+    except UnsupportedInput as exc:
         print(f"BLOCK: {exc}", file=sys.stderr)
         return EXIT_BLOCK
     except AuditError as exc:
