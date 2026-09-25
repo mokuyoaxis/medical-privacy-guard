@@ -25,8 +25,10 @@ import re
 from dataclasses import dataclass
 
 from core.errors import ParserError
+from core.textnorm import strip_invisible
 
-from .leaf import Leaf, StructuredPayload, label_for
+from .admission import reject_if_binary
+from .leaf import Leaf, StructuredPayload, label_for, probe_labels_for
 
 #: ``row[3].col[2]`` — indices only, so rebuilding needs no header.
 _PATH_RE = re.compile(r"^row\[(\d+)\]\.col\[(\d+)\]$")
@@ -59,23 +61,33 @@ def parse_csv_payload(text: str) -> StructuredPayload:
         # a table that was never inspected.
         raise ParserError("CSV payload is empty")
 
+    # Cells are normalised and admitted exactly as a JSON leaf is: a CSV file
+    # read straight from disk passes ``reject_if_binary`` at the text entry,
+    # but a caller handing over CSV text does not go through that check, and a
+    # zero-width character would blind the column-label-driven detectors just
+    # as it does everywhere else.
     header: tuple[str, ...] | None = None
     data = raw
     if any(label_for(cell) for cell in raw[0]):
-        header = raw[0]
+        header = tuple(strip_invisible(cell) for cell in raw[0])
         data = raw[1:]
+    # One probe tuple per column, resolved once rather than per cell.
+    column_probes: tuple[tuple[str, ...], ...] = (
+        tuple(probe_labels_for(name) for name in header) if header is not None else ()
+    )
 
     leaves: list[Leaf] = []
     for row_index, row in enumerate(data):
         for col_index, cell in enumerate(row):
-            label = None
-            if header is not None and col_index < len(header):
-                label = label_for(header[col_index])
+            text = strip_invisible(cell)
+            reject_if_binary(text)
+            probes = column_probes[col_index] if col_index < len(column_probes) else ()
             leaves.append(
                 Leaf(
                     path=f"row[{row_index}].col[{col_index}]",
-                    text=cell,
-                    label=label,
+                    text=text,
+                    label=probes[0] if probes else None,
+                    probes=probes,
                 )
             )
     return StructuredPayload(

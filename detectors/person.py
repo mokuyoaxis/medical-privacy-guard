@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 
 from core.model import DetectedFact
+from core.textnorm import INVISIBLE_CLASS
 
 from .base import Detector
 from .field_syntax import FIELD_SEP_REQUIRED
@@ -29,6 +30,7 @@ from .surnames import (
     COMPOUND_SURNAME_CLASS,
     GIVEN_NAME_CLASS,
     NAME_FOLLOW_BOUNDARY,
+    NAME_MARKS,
     NUMERAL_GIVEN_CLASS,
     SURNAME_CLASS,
 )
@@ -44,9 +46,9 @@ _CN_SEPARATED_RE = re.compile(
     r"(?:患者姓名|病人姓名|患者名字|患者|病人|姓名|名字)"
     r"(?:" + FIELD_SEP_REQUIRED + r"|(?=[（(]))"
     r"[（(]?"
-    r"(?P<name>[\u3400-\u9fff·]{2,20}?)"
+    r"(?P<name>[" + NAME_MARKS + r"]{2,20}?)"
     r"(?=\s*[）)]|(?:电话|手机|邮箱|身份证号?|证件号?|病历号|住院号|就诊号|"
-    r"地址|住址|诊断|症状|用药|治疗)\s*[:：]?|[,，。；;\s]|$)"
+    r"地址|住址|诊断|症状|用药|治疗)\s*[:：]?|[,，。；;\s" + INVISIBLE_CLASS + r"\u2e2f]|$)"
 )
 
 # Adjacent form: a field label directly followed by a known surname and no
@@ -61,7 +63,7 @@ _CN_ADJACENT_RE = re.compile(
     r"|" + SURNAME_CLASS + GIVEN_NAME_CLASS +
     r"|" + SURNAME_CLASS + NUMERAL_GIVEN_CLASS +
     r")"
-    r"(?=[,，。；;、\s]|$|" + NAME_FOLLOW_BOUNDARY + r")"
+    r"(?=[,，。；;、\s" + INVISIBLE_CLASS + r"\u2e2f]|$|" + NAME_FOLLOW_BOUNDARY + r")"
 )
 
 # English: support multi-part and hyphenated names, but stop at field

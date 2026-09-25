@@ -127,11 +127,13 @@ Plain text, JSON objects/arrays and CSV files are supported. Other explicitly
 typed non-text API payloads return BLOCK. Admission checks reject known
 unsupported extensions, NUL and other unsupported control characters, and
 containers that do not parse; they do not reliably identify every disguised
-format. One rule serves both entry points (`formats/admission.py`), so a
-document cannot be plain text to the CLI and structured to an adapter. Callers
-using `str` or `Payload(kind="text")` are responsible for supplying plain text,
-not serialized structured/binary data — `adapters.ingress` exists so an adapter
-never has to make that call itself.
+format. One rule serves every entry point (`formats/admission.py`) — the CLI, the
+adapters and the guard's own string entry — so a document cannot be plain text to
+one of them and structured to another. A `str` is classified rather than trusted:
+`{"name": "张三"}` is a JSON document whether it arrives as text or as a decoded
+mapping, and scanning it as prose would release the name. `Payload(kind="text")`
+skips classification but not normalisation, and characters that render as
+nothing are removed before anything is read.
 Medical-content classification is a rule baseline, not full medical NER or
 proof of anonymity.
 

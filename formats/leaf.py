@@ -95,6 +95,33 @@ def label_for(key: str) -> str | None:
     return LABEL_KEYS.get(key.strip())
 
 
+def probe_labels_for(key: str) -> tuple[str, ...]:
+    """Every label spelling the detectors should be offered for *key*.
+
+    Translating an English key to a Chinese label is what makes the
+    label-driven detectors apply at all, but the translation alone *disables*
+    the English rules: they look for ``name:``/``patient:``, and a probe built
+    from ``姓名`` contains neither, so ``{"name": "John Smith"}`` produced no
+    fact and was released. Both spellings are therefore tried, and whichever
+    fires produces the fact.
+
+    The English form is the key with its separators turned into spaces, because
+    ``_EN_FIELD_RE`` anchors on a word boundary and ``patient_name`` has none
+    around ``patient``.
+    """
+    stripped = key.strip()
+    label = label_for(stripped)
+    if label is None:
+        return ()
+    english = stripped.lower()
+    for separator in ("_", "-", " "):
+        english = english.replace(separator, " ")
+    english = " ".join(english.split())
+    if not english.isascii() or english == label:
+        return (label,)
+    return (label, english)
+
+
 @dataclass(frozen=True)
 class Leaf:
     """One string value inside a structured payload."""
@@ -103,6 +130,10 @@ class Leaf:
     text: str
     #: Field label implied by the key or column holding this value, if any.
     label: str | None = None
+    #: Every label spelling the detectors are offered for this value: the
+    #: Chinese label and, for an English key, the key's own words. Empty when
+    #: the key implies no label.
+    probes: tuple[str, ...] = ()
     #: True when the value can be inspected but not rewritten, because writing
     #: a string back would change its type (a JSON number). Detection still
     #: runs over it; the transformation layer must leave it alone.

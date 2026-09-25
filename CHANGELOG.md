@@ -33,6 +33,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaches ALLOW; it was confirmed to fail with the adapter degraded to treating
   strings as prose.
 
+### Fixed
+
+- **An invisible character switched name detection off entirely.** The name
+  detectors end a captured value on punctuation, whitespace or a boundary word,
+  and Unicode's format characters are none of those. One U+200B after — or
+  inside — a name made ``PERSON_NAME``, ``DOCTOR_NAME``, ``NURSE_NAME`` and
+  ``RELATIVE_NAME`` miss, while verification re-ran the same detectors and
+  reported success: ``患者姓名：张伟<U+200B>，联系电话13800000000`` was released
+  with the name intact, and ``{"name": "张伟<U+200B>"}`` likewise.
+  ``core/textnorm.strip_invisible`` now removes format characters, variation
+  selectors and the tag block once, at the entry to the pipeline, so the string
+  that is detected, transformed, verified and released is one string throughout
+  and no span offset has to be remapped. The detectors' end conditions accept
+  the same characters as boundaries as a second layer, so a rule that reads text
+  without passing through the entry points cannot be blinded either. A sweep of
+  all 23 detectors against 29 invisible characters found only those four
+  affected; the contract check now pins every one of them.
+- **A JSON escape carried a control character past the admission check.**
+  ``"\u0000"`` and ``"\u200b"`` are legal JSON escapes, so a file whose bytes
+  contain no control character at all still reached the detectors with a NUL
+  inside a leaf — and the leaf-internal NUL broke the same end conditions.
+  Structured leaves are now admitted exactly as text is:
+  ``formats/json_payload.py`` and ``formats/csv_payload.py`` put every leaf
+  through ``strip_invisible`` and ``reject_if_binary``, so a NUL in a JSON
+  escape is a BLOCK instead of a silent release.
+- **The guard's string entry did not classify its input.** ``Guard.evaluate``
+  and ``Guard.sanitize`` declared every ``str`` plain text, so one document was
+  a structured payload to the CLI and to the adapters and prose to a library
+  caller — the divergence ``docs/scope.md`` states cannot happen.
+  ``{"患者姓名": "张伟"}`` reached ALLOW and was released untouched, and
+  ``{"phone": 13800000000}`` was rewritten into ``{"phone": [REDACTED]}``,
+  which is not JSON. The entry now classifies through ``formats.admission``,
+  and a decoded ``dict``/``list`` is accepted as a JSON payload, the way the
+  adapters accept it.
+- **``inspect`` and ``sanitize`` reached different conclusions about one file.**
+  ``inspect`` ran the content classifier over a CSV file, where it has no
+  meaning: a first cell that looked like a JSON container was refused with exit
+  code 2, while ``sanitize`` read the same file as CSV and released it. Both
+  commands now admit input through ``_payload_for_path``.
+- **A rebuild could release a value verification never saw.** Verification reads
+  the flattened text; the released string is the rebuilt document, and the two
+  are different strings. The rebuilt document is now re-decided before release,
+  so a rebuild that dropped, mis-keyed or reintroduced a value produces a
+  verdict that is not releasable and the payload is withheld instead of being
+  reported as a verified sanitization.
+- **A non-string object key was written back as a second key.** Leaf paths are
+  JSON Pointers built from ``str(key)``, so replacing a value held under an
+  ``int`` key added a key rather than overwriting one: ``{1: "姓名：张伟"}``
+  released a document carrying the original, unredacted value under a duplicate
+  ``"1"``. A non-string key is now an admission failure, as is a value JSON
+  cannot carry (``bytes``, ``set``, an arbitrary object), which used to surface
+  as a ``TypeError`` from inside the transformation rather than as a verdict.
+- ``Guard`` no longer registers a second ``DictionaryDetector`` when a caller's
+  own detector set already contains one.
+- **An English key disabled the English rules.** ``{"name": "John Smith"}`` was
+  probed as ``姓名：John Smith``: the Chinese rules need ideographs to capture,
+  the English rules look for ``name:``/``patient:``, and neither fired, so the
+  document reached ALLOW and was released with the name intact. A leaf now
+  carries every label spelling its key implies (``probes`` in
+  ``formats/leaf.py``), each spelling is probed, and the passes are merged into
+  one non-overlapping fact set, so the same value matched under both spellings
+  is still one fact. The probe separator is a half-width colon, which every
+  label-driven rule accepts and the English rules require.
+- The interpunct that joins the parts of a transliterated name was accepted in
+  one encoding only: ``阿依古丽·买买提`` (U+00B7) was detected, the same name
+  written with U+30FB — the mark a Chinese IME produces — or U+2027 was not.
+  ``detectors/surnames.NAME_MARKS`` holds the closed list of what may stand
+  inside a name, and all name captures use it.
+
 ## [0.3.3] - 2026-09-24
 
 ### Fixed

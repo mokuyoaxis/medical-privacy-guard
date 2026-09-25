@@ -38,19 +38,28 @@ from core.model import (
     Verdict,
     VerificationResult,
 )
-from core.policy import PolicyEvaluator, PolicyProfile, load_builtin_profile
+from core.policy import (
+    CONTEXT_ONLY_TYPES,
+    PolicyEvaluator,
+    PolicyProfile,
+    load_builtin_profile,
+)
+from core.textnorm import strip_invisible
 from core.verify import verify_sanitized
 from detectors import detect_all
 from detectors import registry as detector_registry
 from detectors.dictionary import DictionaryDetector
 from formats import (
+    UnsupportedInput,
     dumps,
     dumps_csv,
     from_document,
     parse_csv_payload,
     parse_json_payload,
+    payload_for_text,
     rebuild,
     rebuild_csv,
+    reject_if_binary,
 )
 from transformers import apply_plan
 
@@ -58,9 +67,15 @@ __all__ = ["Guard"]
 
 
 #: Separator between leaf values when a structured payload is flattened for the
-#: text pipeline. NUL cannot occur in a JSON string, and no detector's character
-#: classes or whitespace escapes match it, so two adjacent leaves can never form
-#: a pattern that exists in neither of them.
+#: text pipeline. Two things make it safe to join leaves with it:
+#:
+#: - Detection runs one leaf at a time (see ``_detect_leaves``), so no rule is
+#:   ever given the joined text and no pattern can span the separator. The
+#:   character class a detector happens to use is therefore irrelevant; a NUL
+#:   that reaches a leaf is refused before the leaf exists, by
+#:   ``formats.admission.reject_if_binary``.
+#: - A NUL cannot occur in a JSON string, so a value the caller sent cannot be
+#:   mistaken for the join.
 _LEAF_SEPARATOR = "\x00"
 
 #: Environment variable holding the optional audit HMAC key. Read from the
@@ -79,11 +94,51 @@ def _env_audit_key() -> bytes | None:
 
 
 def _coerce_payload(payload: str | Payload) -> Payload:
+    """Turn a caller's payload into the form the guard will actually scan.
+
+    A string is *classified*, never trusted. The detectors are label-driven, so
+    a JSON document scanned as prose loses the keys that supply its field
+    labels: ``{"name": "张三"}`` yields no fact at all, reaches ALLOW and is
+    released with the name intact. The rule is the shared one in
+    ``formats.admission`` -- the same rule the CLI and the adapters use -- so
+    one piece of content cannot be plain text to this entry point and a
+    structured document to the others.
+
+    Content that is recognisably not text the guard can read is declared
+    unsupported rather than guessed at, which fails closed.
+    """
     if isinstance(payload, Payload):
         return payload
     if isinstance(payload, str):
-        return Payload(kind="text", content=payload)
+        try:
+            reject_if_binary(payload)
+        except UnsupportedInput:
+            return Payload(kind="unsupported", content="")
+        return payload_for_text(strip_invisible(payload))
+    if isinstance(payload, (dict, list)):
+        # A decoded document is already structured, so it is declared as such.
+        # The adapters accept this shape; an entry point that refused it would
+        # be the divergence this module exists to prevent.
+        return Payload(kind="json", content=payload)
     raise TypeError(f"payload must be str or Payload, got {type(payload).__name__}")
+
+
+def _strip_text_payload(payload: Payload) -> Payload:
+    """Remove characters that render as nothing from a declared text payload.
+
+    An explicit ``Payload(kind="text")`` bypasses classification but not the
+    normalisation: a caller that declares plain text is still describing text a
+    human would read, and a zero-width character is not part of what that
+    reader sees. The strip happens here, before any detection, so the string
+    that is scanned, transformed, verified and released is the same one
+    throughout.
+    """
+    if payload.kind != "text" or not isinstance(payload.content, str):
+        return payload
+    stripped = strip_invisible(payload.content)
+    if stripped == payload.content:
+        return payload
+    return Payload(kind="text", content=stripped, provenance=payload.provenance)
 
 
 def _coerce_recipient(recipient: str | Recipient) -> Recipient:
@@ -133,9 +188,12 @@ def _flatten(leaves) -> tuple[str, list[tuple[int, int, object]]]:
 def _rebuild_payload(parsed, replacements: dict[str, str]):
     """Write replacements back into the document and re-read the result.
 
-    The re-read is what verification runs over, so a rebuild that lost or
-    mangled a value cannot pass: the check sees the document as it would be
-    released, not as the transformer intended it.
+    The re-read is *not* what verification runs over: verification sees the
+    flattened text, which is a different string from the serialised document
+    that would be released. That is why the caller re-decides policy on the
+    rebuilt document before releasing it -- the gap between "the text we
+    checked" and "the document we send" has to be closed by a check, not by an
+    assumption about the rebuild being faithful.
     """
     if parsed.kind == "csv":
         serialized = dumps_csv(rebuild_csv(parsed.document, replacements))
@@ -153,28 +211,82 @@ def _detect_leaves(
     label-driven detectors apply, and the label's own span is discarded. The
     flattened text itself carries no labels, so the transformation never sees
     them.
+
+    Every spelling the key implies is probed, not only the Chinese label. An
+    English key is translated so the Chinese rules apply, but the translation
+    would otherwise hide the value from the English rules -- they look for
+    ``name:``/``patient:`` and find neither in ``姓名：John Smith`` -- and
+    ``{"name": "John Smith"}`` was released with the name intact. The passes are
+    merged, so a value that both spellings match is still one fact.
     """
     from dataclasses import replace as _replace
 
     facts: list[DetectedFact] = []
     for leaf, (start, end, _) in zip(leaves, spans):
-        if leaf.label:
-            probe = f"{leaf.label}：{leaf.text}"
-            offset = len(leaf.label) + 1
-        else:
-            probe, offset = leaf.text, 0
-        for fact in detect_all(probe, detectors):
-            if fact.start < offset:
-                continue
-            facts.append(
-                _replace(
-                    fact,
-                    start=fact.start - offset + start,
-                    end=fact.end - offset + start,
-                    read_only=leaf.read_only,
+        probes = leaf.probes or ((leaf.label,) if leaf.label else ())
+        if not probes:
+            # No label to prepend, so the offsets are the leaf's own -- but the
+            # leaf still starts somewhere in the flattened text, and a fact left
+            # at its leaf-local offset lands on an unrelated value: it is then
+            # either merged away as an overlap or transformed in the wrong place.
+            for fact in detect_all(leaf.text, detectors):
+                facts.append(
+                    _replace(
+                        fact,
+                        start=fact.start + start,
+                        end=fact.end + start,
+                        read_only=leaf.read_only,
+                    )
                 )
-            )
-    return tuple(facts)
+            continue
+        for probe_label in probes:
+            # A half-width colon: every label-driven rule accepts it
+            # (``field_syntax.FIELD_SEP`` matches ``[:：=]``), and the English
+            # rules accept only it or a space. The full-width form used here
+            # before meant an English key's probe could not reach the English
+            # rules at all.
+            probe = f"{probe_label}:{leaf.text}"
+            offset = len(probe_label) + 1
+            for fact in detect_all(probe, detectors):
+                if fact.start < offset:
+                    continue
+                facts.append(
+                    _replace(
+                        fact,
+                        start=fact.start - offset + start,
+                        end=fact.end - offset + start,
+                        read_only=leaf.read_only,
+                    )
+                )
+    return detector_registry.merge_facts(facts)
+
+
+#: Actions that leave a fact in the output on purpose. A residual of one of
+#: these types was produced by the plan and was verified against its execution
+#: evidence; every other type is a value the transformation failed to remove.
+_REBUILD_TRANSFORM_ACTIONS = frozenset({"GENERALIZE", "DATE_SHIFT"})
+
+
+def _rebuilt_document_releasable(
+    profile: PolicyProfile, decision: Decision, residual: tuple[DetectedFact, ...]
+) -> bool:
+    """True when the rebuilt document may still be released.
+
+    ALLOW is releasable. SANITIZE is releasable only when every residual fact is
+    either a context-only signal or one whose configured action leaves it in
+    place by design (a generalised date or age band, a shifted date). ASK and
+    BLOCK never are. This mirrors the policy re-run inside verification, so the
+    two checks cannot disagree about what "releasable" means.
+    """
+    if decision.verdict is Verdict.ALLOW:
+        return True
+    if decision.verdict is not Verdict.SANITIZE or not residual:
+        return False
+    return all(
+        profile.action_for(fact.type) in _REBUILD_TRANSFORM_ACTIONS
+        for fact in residual
+        if fact.type not in CONTEXT_ONLY_TYPES
+    )
 
 
 def _split(
@@ -260,7 +372,15 @@ class Guard:
             if detectors is not None
             else tuple(detector_registry.DEFAULT_DETECTORS)
         )
-        if self.dictionary is not None and not self.dictionary.is_empty():
+        if (
+            self.dictionary is not None
+            and not self.dictionary.is_empty()
+            and not any(isinstance(d, DictionaryDetector) for d in base)
+        ):
+            # A caller that supplied its own detector set may already carry a
+            # dictionary detector. Registering a second one would only duplicate
+            # every fact it reports, and the registry's merge would then have to
+            # pick between two identical claims.
             base = base + (DictionaryDetector(self.dictionary),)
         self._detectors = base
 
@@ -278,7 +398,15 @@ class Guard:
             except ParserError:
                 return None
         if isinstance(content, (dict, list)):
-            return from_document(content)
+            # A decoded document is inspected here rather than at rebuild time.
+            # A value the guard cannot read or address (a non-string key, a
+            # value JSON cannot carry) is an admission failure, not a crash
+            # from inside the transformation: the three routes into this method
+            # must fail the same way.
+            try:
+                return from_document(content)
+            except ParserError:
+                return None
         if not isinstance(content, str):
             return None
         try:
@@ -289,10 +417,15 @@ class Guard:
     # -- detection ----------------------------------------------------------
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
-        """Run all detectors; returns internal facts (may contain raw values)."""
+        """Run all detectors; returns internal facts (may contain raw values).
+
+        Invisible format characters are removed first, so a caller reaching for
+        this method directly gets the same reading as one going through
+        :meth:`evaluate`.
+        """
         if not isinstance(text, str):
             raise TypeError(f"detect expects str, got {type(text).__name__}")
-        return detect_all(text, self._detectors)
+        return detect_all(strip_invisible(text), self._detectors)
 
     # -- evaluation ---------------------------------------------------------
 
@@ -308,7 +441,7 @@ class Guard:
         The returned EvaluationResult carries DetectedFact objects which may
         contain raw values; use `result.public_facts` for logging or audit.
         """
-        request_payload = _coerce_payload(payload)
+        request_payload = _strip_text_payload(_coerce_payload(payload))
         recipient_obj = _coerce_recipient(recipient)
         purpose_obj = _coerce_purpose(purpose)
         env = _coerce_environment(environment)
@@ -361,7 +494,7 @@ class Guard:
         Returns a SanitizationResult; `sanitized_payload` is None when the
         verdict is BLOCK/ASK or verification failed (nothing to release).
         """
-        request_payload = _coerce_payload(payload)
+        request_payload = _strip_text_payload(_coerce_payload(payload))
         recipient_obj = _coerce_recipient(recipient)
         purpose_obj = _coerce_purpose(purpose)
         env = _coerce_environment(environment)
@@ -491,12 +624,29 @@ class Guard:
             if verification.passed:
                 replacements = _split(text, outcome.text, spans, outcome._evidence)
                 serialized, reparsed = _rebuild_payload(parsed, replacements)
-                sanitized = Payload(
-                    kind=payload.kind, content=serialized, provenance=payload.provenance
-                )
                 residual_spans = _flatten(reparsed.leaves)[1]
                 residual = _detect_leaves(reparsed.leaves, residual_spans, self._detectors)
                 decision_after = self._evaluator.evaluate(residual, recipient, purpose, env)
+                # The document that would be released is the rebuilt one, and
+                # it is a different string from the flattened text verification
+                # approved. Re-deciding on it turns "the transformation ran" and
+                # "the payload is releasable" into the same claim: a rebuild
+                # that dropped, mis-keyed or reintroduced a value shows up here
+                # as a verdict that is not releasable, and the release is
+                # withheld rather than reported as verified.
+                if _rebuilt_document_releasable(self.profile, decision_after, residual):
+                    sanitized = Payload(
+                        kind=payload.kind, content=serialized, provenance=payload.provenance
+                    )
+                else:
+                    verification = VerificationResult(
+                        passed=False,
+                        reason_codes=(ReasonCode.VERIFICATION_FAILED,),
+                        details=(
+                            "the rebuilt document does not satisfy policy "
+                            f"({decision_after.verdict.value}); release withheld"
+                        ),
+                    )
 
         self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification)
         return SanitizationResult(

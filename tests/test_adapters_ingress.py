@@ -75,19 +75,22 @@ class TestPayloadFor:
 
 class TestLabelsSurviveTheBoundary:
     def test_a_json_string_keeps_its_field_labels(self, guard, approved):
-        """The same document, two routes, two different verdicts.
+        """The same document, two routes, one verdict.
 
         Scanning the string as prose yields no fact at all: the key is not a
-        Chinese label and a bare name is deliberately not detected. The naive
-        route is pinned here so the fix cannot regress without a red test.
+        Chinese label and a bare name is deliberately not detected, so that
+        route used to release the document. The Guard's own string entry now
+        classifies with the same shared rule the adapter uses, so the two agree.
+        The assertion is written as an agreement rather than as one hard-coded
+        verdict, because a divergence in either direction is the defect.
         """
         as_string = '{"name": "张三"}'
-        naive = guard.evaluate(as_string, approved, Purpose.EXTERNAL_AI_ASSISTANCE)
-        assert naive.decision.verdict is Verdict.ALLOW
-        assert naive.facts == ()
-
+        direct = guard.evaluate(as_string, approved, Purpose.EXTERNAL_AI_ASSISTANCE)
         adapted = evaluate_call(guard, as_string, approved, Purpose.EXTERNAL_AI_ASSISTANCE)
-        assert adapted.decision.verdict is Verdict.SANITIZE
+
+        assert direct.decision.verdict is adapted.decision.verdict
+        assert direct.decision.verdict is Verdict.SANITIZE
+        assert any(f.type == "PERSON_NAME" for f in direct.facts)
         assert any(f.type == "PERSON_NAME" for f in adapted.facts)
 
     @pytest.mark.parametrize(

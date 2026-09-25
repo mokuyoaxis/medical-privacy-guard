@@ -25,6 +25,18 @@ SURNAMES: str = (
 #: Character class matching one surname: ``[赵钱孙李…]``.
 SURNAME_CLASS: str = f"[{SURNAMES}]"
 
+#: What may stand *inside* a Chinese personal name besides the ideographs: the
+#: interpunct that joins the parts of a transliterated or multi-part name
+#: (``阿依古丽·买买提``). The same mark has several encodings, and a note copied
+#: out of another system carries whichever one that system used. Only U+00B7 was
+#: accepted, so the name written with U+30FB — the mark a Chinese IME produces —
+#: was not detected at all and was released intact.
+#:
+#: Deliberately a short, closed list rather than "any non-ideograph": a bullet
+#: or a slash between two names ("张伟 • 随访") is punctuation the author typed,
+#: and reading across it would invent one name out of two fields.
+NAME_MARKS: str = "\u3400-\u9fff\u00b7\u30fb\u2027"
+
 #: Characters commonly used in Chinese given names.
 #:
 #: A plain ``[\u4e00-\u9fff]{1,2}`` for the given name cannot be bounded

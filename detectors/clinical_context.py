@@ -27,6 +27,7 @@ from __future__ import annotations
 import re
 
 from core.model import DetectedFact
+from core.textnorm import INVISIBLE_CLASS
 
 from .base import Detector
 from .field_syntax import FIELD_SEP_REQUIRED, label_with_value
@@ -34,6 +35,7 @@ from .surnames import (
     COMPOUND_SURNAME_CLASS,
     GIVEN_NAME_CLASS,
     NAME_FOLLOW_BOUNDARY,
+    NAME_MARKS,
     NUMERAL_GIVEN_CLASS,
     SURNAME_CLASS,
 )
@@ -59,10 +61,11 @@ from .surnames import (
 _NAME_AFTER_LABEL = (
     r"[（(【\[]?"
     r"(?P<name>"
-    r"(?:" + COMPOUND_SURNAME_CLASS + r")[\u3400-\u9fff]{0,2}?"
-    r"|" + SURNAME_CLASS + r"[\u3400-\u9fff]{0,2}?"
+    r"(?:" + COMPOUND_SURNAME_CLASS + r")[" + NAME_MARKS + r"]{0,2}?"
+    r"|" + SURNAME_CLASS + r"[" + NAME_MARKS + r"]{0,2}?"
     r")"
-    r"(?=[，,。；;、\s）)】\]（(【\[]|$|" + NAME_FOLLOW_BOUNDARY + r")"
+    r"(?=[，,。；;、\s" + INVISIBLE_CLASS + r"\u2e2f）)】\]（(【\[]|$|"
+    + NAME_FOLLOW_BOUNDARY + r")"
 )
 
 _NAME_ADJACENT = (
@@ -97,8 +100,8 @@ _DOCTOR_TITLES = (
 # outside it, while the same names behind a labelled field were captured.
 _DOCTOR_SUFFIX_RE = re.compile(
     rf"(?<!主)(?<!责)(?P<name>"
-    rf"(?:{COMPOUND_SURNAME_CLASS})[\u3400-\u9fff]{{0,2}}?"
-    rf"|{SURNAME_CLASS}[\u3400-\u9fff]{{0,2}}?"
+    rf"(?:{COMPOUND_SURNAME_CLASS})[{NAME_MARKS}]{{0,2}}?"
+    rf"|{SURNAME_CLASS}[{NAME_MARKS}]{{0,2}}?"
     r")(?:医生|医师|大夫)"
 )
 _DOCTOR_TITLE_SEP_RE = re.compile(

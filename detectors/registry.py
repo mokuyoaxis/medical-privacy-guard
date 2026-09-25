@@ -106,6 +106,17 @@ def _rank(fact: DetectedFact) -> tuple[int, float, int]:
     )
 
 
+def merge_facts(facts: Iterable[DetectedFact]) -> tuple[DetectedFact, ...]:
+    """Merge facts from several passes into one ordered, non-overlapping tuple.
+
+    The public counterpart of the merge ``detect_all`` performs, for callers
+    that run the detectors over more than one probe of the same value: a
+    structured leaf is offered under its Chinese label and, when its key is
+    English, under the key's own words as well.
+    """
+    return _merge(facts)
+
+
 def _merge(facts: Iterable[DetectedFact]) -> tuple[DetectedFact, ...]:
     ordered = sorted(
         facts,

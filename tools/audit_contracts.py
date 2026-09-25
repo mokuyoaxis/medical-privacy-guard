@@ -223,22 +223,116 @@ def admission_contract() -> list[str]:
                 "so the entry points cannot drift"
             )
 
-    # Both entry points must go through the shared rule.
-    for entry in ("cli/main.py", "adapters/ingress.py"):
+    # Every entry point must go through the shared rule. The guard's own string
+    # entry is one of them: it used to declare every string plain text, so the
+    # same document was a structured payload to the CLI and prose to a library
+    # caller.
+    for entry in (
+        "cli/main.py",
+        "adapters/ingress.py",
+        "medical_privacy_guard/guard.py",
+    ):
         if "payload_for_text" not in (ROOT / entry).read_text(encoding="utf-8"):
             problems.append(f"  {entry}: does not classify through formats.admission")
 
-    # Behavioural check: a structured call must not reach ALLOW.
+    # Behavioural check: a structured call must not reach ALLOW, whether an
+    # adapter classified it first or the content went straight to the guard.
     from adapters.ingress import payload_for as ingress_payload
 
     guard = Guard(profile="external-ai-strict")
     recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
     for name, content in STRUCTURED_CALL_SAMPLES:
+        for route, value in (("via adapter", ingress_payload(content)), ("direct", content)):
+            result = guard.evaluate(value, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+            if result.decision.verdict is Verdict.ALLOW:
+                problems.append(
+                    f"  {name} ({route}): reached ALLOW; a structured call was scanned as prose"
+                )
+    return problems
+
+
+#: A character that renders as nothing, placed where it would otherwise end a
+#: labelled value. Each of these blinded the name detectors: the end condition
+#: was punctuation, whitespace or a boundary word, and a format character is
+#: none of them. The value was then released with the name intact, and
+#: verification -- which re-runs the same detectors -- agreed.
+#: Only characters that render as nothing belong here. A *visible* separator
+#: inserted inside a value (``张ⸯ伟``) is not a bypass: it changes what the
+#: reader sees, exactly as ``张-伟`` does, and a detector that reported a name
+#: across it would be guessing. The end conditions do accept a visible
+#: separator after the value, which is what ``\u2e2f`` covers.
+INVISIBLE_TAIL_SAMPLES: tuple[tuple[str, str], ...] = (
+    ("zero-width space", "\u200b"),
+    ("zero-width joiner", "\u200d"),
+    ("word joiner", "\u2060"),
+    ("byte order mark", "\ufeff"),
+    ("soft hyphen", "\u00ad"),
+    ("variation selector", "\ufe0f"),
+    ("tag character", "\U000e0001"),
+)
+
+
+def invisible_character_coverage() -> list[str]:
+    """A character nobody can see must not change what the guard detects."""
+    problems: list[str] = []
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    for name, char in INVISIBLE_TAIL_SAMPLES:
+        for shape, text in (
+            ("after the value", f"患者姓名：张伟{char}"),
+            ("inside the value", f"患者姓名：张{char}伟"),
+        ):
+            facts = {f.type for f in guard.detect(text)}
+            if "PERSON_NAME" not in facts:
+                problems.append(
+                    f"  {name} {shape}: the name was not detected"
+                )
         result = guard.evaluate(
-            ingress_payload(content), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+            f"患者姓名：张伟{char}", recipient, Purpose.EXTERNAL_AI_ASSISTANCE
         )
         if result.decision.verdict is Verdict.ALLOW:
-            problems.append(f"  {name}: reached ALLOW; a structured call was scanned as prose")
+            problems.append(f"  {name}: a payload with a name reached ALLOW")
+
+    # A visible separator after the value must also end it: it is punctuation
+    # the note's author typed, not an invisible character.
+    if "PERSON_NAME" not in {f.type for f in guard.detect("患者姓名：张伟\u2e2f")}:
+        problems.append("  visible separator after the value: the name was not detected")
+
+    # The same character inside a structured leaf, where the file's own bytes
+    # carry no control character at all (a JSON escape).
+    for name, char in INVISIBLE_TAIL_SAMPLES[:1]:
+        escaped = f'{{"name": "张伟{char}"}}'
+        result = guard.evaluate(escaped, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        if result.decision.verdict is Verdict.ALLOW:
+            problems.append(f"  {name} in a JSON leaf: reached ALLOW")
+    return problems
+
+
+def unreadable_leaf_coverage() -> list[str]:
+    """A leaf the guard cannot read or address must be withheld, not released.
+
+    A NUL inside a JSON escape leaves the file's bytes clean, so the text-path
+    admission check never sees it; a non-string key cannot be addressed by the
+    JSON Pointer built from it, so writing a replacement back would add a key
+    and release the original value; a value JSON cannot carry would surface as
+    a serialisation error from inside the transformation.
+    """
+    problems: list[str] = []
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    samples: dict[str, object] = {
+        "NUL inside a JSON escape": '{"name": "张伟\u0000"}',
+        "control character in a leaf": {"name": "张伟\u0001"},
+        "non-string object key": {1: "姓名：张伟"},
+        "value JSON cannot carry": {"name": "姓名：张伟", "blob": b"x"},
+    }
+    for name, content in samples.items():
+        result = guard.sanitize(content, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        verdict = result.decision_before.verdict.value
+        if verdict not in {"BLOCK", "ASK"}:
+            problems.append(f"  {name}: released as {verdict}")
+        elif result.sanitized_payload is not None:
+            problems.append(f"  {name}: verdict {verdict} but a payload was released")
     return problems
 
 
@@ -249,7 +343,9 @@ def main() -> int:
             ("Fact types vs policy tables", fact_type_coverage()),
             ("Detection vs transformation", transformation_coverage()),
             ("Read-only leaves vs verdict", read_only_leaf_coverage()),
-            ("Admission contract (CLI and adapters)", admission_contract()),
+            ("Admission contract (CLI, adapters, guard)", admission_contract()),
+            ("Invisible characters vs detection", invisible_character_coverage()),
+            ("Unreadable leaves vs verdict", unreadable_leaf_coverage()),
         )
     )
     failed = False

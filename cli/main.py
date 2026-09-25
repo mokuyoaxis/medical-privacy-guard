@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from adapters.mcp_gateway import GatewaySettings, McpGateway
-
 from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
 from core.errors import AuditError, GuardError
@@ -44,7 +43,6 @@ from core.model import (
 )
 from formats.admission import (
     UnsupportedInput,
-    classify_text,
     payload_for_text,
     read_text_file,
 )
@@ -161,6 +159,7 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="Upstream MCP server command, after --",
     )
+
     p_audit = sub.add_parser(
         "audit-verify",
         help="Verify the integrity chain of an audit log.",
@@ -308,15 +307,23 @@ def _counts(facts: Sequence[DetectedFact]) -> dict[str, int]:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
+    """Detect and decide without modifying data.
+
+    Admission is the same rule ``sanitize`` applies (``_payload_for_path``), so
+    the two commands cannot reach different conclusions about one file. A CSV
+    file whose first cell happens to look like a JSON container used to be
+    refused here -- a content classifier has no meaning for a table -- while
+    ``sanitize`` read it as CSV and released it.
+    """
     text = read_text_file(args.file, args.encoding)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
-    if classify_text(text) == "unsupported":
+    payload = _payload_for_path(text, args.file)
+    if payload.kind == "unsupported":
         # Admission failure, not a policy verdict: keep it off stdout so the
         # two are distinguishable, exactly as sanitize does.
         print("BLOCK: unsupported structured input", file=sys.stderr)
         return EXIT_BLOCK
-    payload = _payload_for_path(text, args.file)
     result = Guard(
         profile=args.profile, dictionary_path=args.dictionary
     ).evaluate(payload, recipient, purpose)
@@ -550,7 +557,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_audit_verify(args)
         if args.command == "mcp-gateway":
             return _cmd_mcp_gateway(args)
-        parser.error(f"unknown command: {args.command}")
+        # Unreachable while the subparsers are ``required``, and deliberately
+        # not ``parser.error``: that exits 2, which this CLI reserves for BLOCK.
+        parser.print_usage(sys.stderr)
+        print(f"error: unknown command: {args.command}", file=sys.stderr)
+        return EXIT_ERROR
     except SystemExit:
         raise
     except UnsupportedInput as exc:

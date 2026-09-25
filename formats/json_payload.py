@@ -25,8 +25,10 @@ import json
 from typing import Any, Mapping
 
 from core.errors import ParserError
+from core.textnorm import strip_invisible
 
-from .leaf import LABEL_KEYS, Leaf, StructuredPayload, label_for
+from .admission import reject_if_binary
+from .leaf import LABEL_KEYS, Leaf, StructuredPayload, label_for, probe_labels_for
 
 
 def escape_token(token: str) -> str:
@@ -40,20 +42,51 @@ def _collect_leaves(document: Any) -> list[Leaf]:
     Deliberately not recursive: nesting depth is attacker-controlled, and a
     payload of a few thousand brackets overflows Python's recursion limit
     before any size limit applies. The stack preserves document order.
+
+    Each string leaf is normalised and admitted before it becomes a leaf:
+
+    - Characters that render as nothing are removed. ``"\u0000"`` and
+      ``"\u200b"`` are both legal JSON escapes, so a file whose bytes contain
+      no control character at all can still hide a name from a label-anchored
+      detector -- the value is bounded by punctuation, whitespace or a boundary
+      word, and neither character is any of those.
+    - Control characters are refused. A NUL arriving inside a leaf is a value
+      the caller did not intend to send, exactly as it is on the text path;
+      there it is refused by ``reject_if_binary``, and a structured payload
+      must not be the way around that check.
+    - Object keys must be strings, and every value must be something JSON can
+      represent. A key of another type is not addressable by a JSON Pointer
+      (the pointer is built from ``str(key)``), so writing a replacement back
+      would add a key instead of replacing the value and release the original
+      untouched.
     """
     leaves: list[Leaf] = []
-    stack: list[tuple[Any, str, str | None]] = [(document, "", None)]
+    stack: list[tuple[Any, str, tuple[str, ...]]] = [(document, "", ())]
     while stack:
         node, path, inherited = stack.pop()
         if isinstance(node, str):
-            leaves.append(Leaf(path=path, text=node, label=inherited))
+            text = strip_invisible(node)
+            reject_if_binary(text)
+            leaves.append(
+                Leaf(
+                    path=path,
+                    text=text,
+                    label=inherited[0] if inherited else None,
+                    probes=inherited,
+                )
+            )
         elif isinstance(node, dict):
             # Every child goes on the stack, strings included: appending a
             # string leaf here would place it before the descendants of an
             # earlier key and break document order.
             for key, value in reversed(list(node.items())):
+                if not isinstance(key, str):
+                    raise ParserError(
+                        "JSON object keys must be strings; a key of another type "
+                        "cannot be addressed for replacement"
+                    )
                 stack.append(
-                    (value, f"{path}/{escape_token(str(key))}", label_for(str(key)))
+                    (value, f"{path}/{escape_token(key)}", probe_labels_for(key))
                 )
         elif isinstance(node, list):
             for index in range(len(node) - 1, -1, -1):
@@ -65,9 +98,30 @@ def _collect_leaves(document: Any) -> list[Leaf]:
         elif isinstance(node, (int, float)):
             # ``str`` is exact for the integers a JSON document actually
             # carries: Python ints are arbitrary precision, so an 18-digit ID
-            # survives the round trip unmangled.
-            leaves.append(Leaf(path=path, text=str(node), label=inherited, read_only=True))
-        # Null has no text to inspect.
+            # survives the round trip unmangled. The probes come from the key
+            # exactly as they do for a string leaf: a number under ``mrn`` is
+            # still an MRN, and that is what sends it to human review instead of
+            # releasing it.
+            leaves.append(
+                Leaf(
+                    path=path,
+                    text=str(node),
+                    label=inherited[0] if inherited else None,
+                    probes=inherited,
+                    read_only=True,
+                )
+            )
+        elif node is None:
+            # Null has no text to inspect.
+            continue
+        else:
+            # A value the guard can neither inspect nor serialise. Detecting
+            # nothing in it and rebuilding the document anyway would report a
+            # sanitization that never looked at that value.
+            raise ParserError(
+                f"JSON payload contains a value the guard cannot inspect "
+                f"({type(node).__name__})"
+            )
     return leaves
 
 
@@ -89,7 +143,10 @@ def from_document(document: Any) -> StructuredPayload:
     """Build a structured payload from an already-parsed object or array.
 
     Callers that hold a decoded document should not have to serialise it just
-    to hand it back to the guard.
+    to hand it back to the guard. The document is inspected here rather than at
+    rebuild time, so a value the guard cannot read is reported as an admission
+    failure (a BLOCK) instead of surfacing later as a serialisation error from
+    inside the transformation.
     """
     if not isinstance(document, (dict, list)):
         raise ParserError("JSON payload must be an object or an array")

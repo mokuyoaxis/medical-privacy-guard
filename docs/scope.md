@@ -78,6 +78,16 @@ when they disagree, this file wins and the other two are updated.
   chain does not cover is stated in [evaluation.md](evaluation.md) and the
   design note: tail truncation, whole-chain rewriting without a key, and
   timestamp authenticity;
+- an MCP stdio gateway (``medical-privacy-guard mcp-gateway -- <server command>``):
+  a transparent proxy that spawns an MCP server and mediates one stdio session
+  with it. Newline-delimited JSON-RPC is forwarded byte for byte, except for
+  ``tools/call``, which is forwarded, rewritten or refused according to the
+  verdict — a SANITIZE verdict rewrites ``params.arguments`` (and
+  ``params.inputResponses``) before forwarding, and an ASK/BLOCK verdict returns
+  a JSON-RPC error and never reaches the server. It does not participate in
+  protocol negotiation: a modern client's ``server/discover`` probe and a legacy
+  client's ``initialize`` are forwarded untouched, because the server's era is
+  the server's business. The wrapped server's exit code is propagated;
 - BLOCK for explicitly typed unsupported payloads and failed verification;
 - an evaluation harness over 175 synthetic Chinese clinical notes (140 with
   labelled identifiers, 1474 spans, and 35 identifier-free notes). Expected
@@ -152,22 +162,59 @@ No parsers or sanitization support exist for:
 - multimodal content (images / audio / video)
 - streaming request inspection (planned v0.4 with explicit semantics)
 
-Explicit non-text `Payload.kind` values return BLOCK. `str` and
-`Payload(kind="text")` are caller declarations: the API caller is responsible
-for supplying plain text, not encoded JSON, CSV or binary content.
+The MCP gateway's boundaries are narrower than "traffic through it is
+inspected", and the gap is worth naming precisely:
+
+- **Responses are not inspected.** This is an egress guard; what a server returns
+  is out of scope.
+- **Only ``tools/call`` requests are inspected.** ``prompts/get`` takes an
+  argument map of the same shape and ``resources/read`` takes a URI that can name
+  a record, so both are egress paths this version does not cover.
+- **A JSON-RPC batch carrying a ``tools/call`` is refused whole**, because a batch
+  cannot be rewritten in part. MCP does not define batching, so any batch is
+  already outside the protocol. A batch without a tool call is forwarded.
+- **The MRTR ``requestState`` field cannot be examined.** The specification
+  forbids a client from inspecting, parsing or modifying it, and the gateway
+  stands in the client's position.
+- **The server's ``stderr`` is passed through** untouched; if a server logs PHI
+  there, the gateway does not see it.
+- **Only stdio is supported.** HTTP transports are not.
+
+See [architecture.md](architecture.md) for the trust boundary.
+
+Explicit non-text `Payload.kind` values return BLOCK. A `str` is *classified*,
+not trusted: the guard decides what it is looking at rather than accepting the
+caller's word for it, because a JSON document scanned as prose loses the
+key-derived field labels and the label-driven detectors then see nothing at all.
+`Payload(kind="text")` is a caller declaration that skips classification but not
+normalisation — the caller states the content is text, and the guard still reads
+what a human would read.
 
 The admission contract blocks known unsupported extensions, NUL and other
 unsupported control characters, and JSON-container content before detection.
-UTF-8 decoding is necessary but is not format validation. Extension/content
-checks cannot reliably recognize arbitrary disguised formats: a renamed CSV
-or encoded structured value is not made supported by escaping those checks.
+Every string leaf of a structured payload passes the same check, so a control
+character that arrives as a JSON escape (`"\u0000"`, whose bytes are ordinary
+ASCII) is refused rather than reaching the detectors. UTF-8 decoding is necessary
+but is not format validation. Extension/content checks cannot reliably recognize
+arbitrary disguised formats: a renamed CSV or encoded structured value is not
+made supported by escaping those checks.
+
+Characters that render as nothing — format characters, variation selectors and
+the tag block — are removed before detection, once, at the entry to the
+pipeline. The name detectors end a value on punctuation, whitespace or a
+boundary word, and a zero-width character is none of those: a single U+200B
+after or inside a name used to make every name detector miss while verification,
+which re-runs the same detectors, reported success. Removing them is not a loss
+of content: they are formatting controls with no rendered glyph, and their only
+effect here was to hide a value from the rules meant to find it. The detectors'
+end conditions accept them as boundaries as well, so a rule that reads text
+without going through an entry point cannot be blinded either.
 
 The classification itself is shared: ``formats/admission.py`` holds the rule used
-by both the CLI and the adapters, so a payload cannot be plain text to one entry
-point and a structured document to the other. An adapter does not accept the
-caller's word for what its content is — ``adapters.ingress`` classifies it,
-because a JSON document scanned as prose loses the key-derived field labels and
-the label-driven detectors then see nothing at all.
+by the CLI, the adapters and the guard's own string entry, so a payload cannot be
+plain text to one entry point and a structured document to another. An adapter
+does not accept the caller's word for what its content is — ``adapters.ingress``
+classifies it.
 
 CLI output must not alias its input or the configured audit log, including
 existing hard-link aliases. Collision checks must happen before writes. These
