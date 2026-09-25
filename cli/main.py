@@ -6,6 +6,7 @@ Commands:
               [--audit-dir DIR]
     benchmark <corpus_dir> [--json] [--profile P] [--limit N]
     audit-verify <audit_dir> [--json] [--key-env VAR]
+    mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
 
 Exit codes:
     0  ALLOW, or SANITIZE that passed verification; for audit-verify, an intact chain
@@ -13,6 +14,9 @@ Exit codes:
        audit-verify, a broken chain
     3  ASK
     4  internal / parser / configuration error
+    mcp-gateway is the exception: it runs until the wrapped server exits and
+    propagates that server's exit code, because the client is waiting on the
+    server's lifecycle rather than on a verdict.
 """
 
 from __future__ import annotations
@@ -23,6 +27,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Mapping, Sequence
+
+from adapters.mcp_gateway import GatewaySettings, McpGateway
 
 from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
@@ -124,6 +130,37 @@ def _build_parser() -> argparse.ArgumentParser:
     # the benchmark would report a pass over zero measurements.
     _add_common(p_benchmark, recipient_default=DEFAULT_BENCHMARK_RECIPIENT)
 
+    p_gateway = sub.add_parser(
+        "mcp-gateway",
+        help="Run a stdio MCP server behind the privacy guard.",
+        description=(
+            "Spawn an MCP server and mediate one stdio session with it. "
+            "Newline-delimited JSON-RPC is forwarded untouched, except for "
+            "tools/call: those are forwarded, rewritten, or refused according "
+            "to the guard's verdict. The command to wrap follows --."
+        ),
+        epilog=(
+            "Responses are not inspected: this is an egress guard. The upstream "
+            "exit code is propagated. See docs/scope.md for the boundaries, "
+            "including the fields the specification forbids inspecting."
+        ),
+    )
+    _add_common(p_gateway)
+    p_gateway.add_argument(
+        "--audit-dir",
+        default=None,
+        help="Write a metadata-only JSONL audit event per decision",
+    )
+    p_gateway.add_argument(
+        "--dictionary-path",
+        default=None,
+        help="Optional local institution vocabulary (.csv or .json)",
+    )
+    p_gateway.add_argument(
+        "server",
+        nargs="+",
+        help="Upstream MCP server command, after --",
+    )
     p_audit = sub.add_parser(
         "audit-verify",
         help="Verify the integrity chain of an audit log.",
@@ -412,6 +449,22 @@ def _cmd_audit_verify(args: argparse.Namespace) -> int:
     return EXIT_OK if report.verified else EXIT_BLOCK
 
 
+def _cmd_mcp_gateway(args: argparse.Namespace) -> int:
+    """Run the guard in front of an MCP server.
+
+    Returns the wrapped server's exit code, not a verdict code: the caller is a
+    protocol client waiting on the server's lifecycle.
+    """
+    settings = GatewaySettings(
+        profile=args.profile,
+        recipient=args.recipient,
+        purpose=args.purpose,
+        dictionary_path=args.dictionary_path,
+        audit_dir=args.audit_dir,
+    )
+    return McpGateway(args.server, settings).run()
+
+
 def _human_benchmark(report) -> str:
     lines = [
         f"Corpus: {report.documents} documents "
@@ -495,6 +548,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_benchmark(args)
         if args.command == "audit-verify":
             return _cmd_audit_verify(args)
+        if args.command == "mcp-gateway":
+            return _cmd_mcp_gateway(args)
         parser.error(f"unknown command: {args.command}")
     except SystemExit:
         raise

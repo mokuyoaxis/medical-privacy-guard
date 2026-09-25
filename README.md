@@ -100,6 +100,13 @@ has a deterministic operation; only the verified output may be released.
 - metadata-only JSONL audit when configured, with each event chained by hash so
   a deleted, reordered or edited record is detectable, and an `audit-verify`
   command to check it;
+- an MCP stdio gateway (`medical-privacy-guard mcp-gateway -- <server command>`):
+  a transparent proxy in front of an MCP server. `tools/call` is forwarded,
+  rewritten or refused according to the verdict — a sanitization rewrites
+  `params.arguments` before forwarding, and a refusal returns a JSON-RPC error
+  without reaching the server. Everything else, including a modern client's
+  `server/discover` probe, is forwarded byte for byte. See
+  [scope](docs/scope.md) for what it deliberately does not cover;
 - an evaluation harness (`benchmark`) over a synthetic corpus of 175 Chinese
   clinical notes — 140 with labelled identifiers (1474 spans, 24 types) and 35
   identifier-free documents. The declared outcomes are **135 SANITIZE, 5 ASK,
@@ -141,7 +148,6 @@ deploying organization.
 - FHIR
 - DICOM
 - PDF / DOCX
-- MCP gateway
 - HTTP egress proxy
 - LLM SDK wrappers
 - Dataset-level re-identification risk metrics
@@ -201,12 +207,16 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   (`v0.3.1`); XLSX deferred (CSV covers the need).
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
-- **v0.4 — LLM SDK wrapper + MCP gateway**: **skeleton in place**. The
-  `adapters/` package carries both halves of the contract — `payload_for`,
-  `evaluate_call` and `sanitize_call` on the way in, `release_or_raise` on the
-  way out — plus the caller-facing exception family (`DisclosureBlocked`,
-  `HumanApprovalRequired`, `VerificationFailed`). Vendor transports
-  (OpenAI-compatible, Anthropic, MCP stdio) are not started.
+- **v0.4 — LLM SDK wrapper + MCP gateway**: **MCP gateway working**. Point an
+  MCP client at `medical-privacy-guard mcp-gateway --recipient <trust> -- <your
+  server command>` and the guard sits between the client and the server: a tool
+  call whose arguments it refuses never reaches the server, and one it can
+  sanitize is rewritten before forwarding. The `adapters/` package carries both
+  halves of the contract (`payload_for`, `evaluate_call`, `sanitize_call` in;
+  `release_or_raise` out) plus the caller-facing exception family
+  (`DisclosureBlocked`, `HumanApprovalRequired`, `VerificationFailed`). The
+  vendor SDK wrappers (OpenAI-compatible, Anthropic) are not started, and
+  responses are not inspected — see [scope](docs/scope.md) for the boundaries.
 - **v0.5 — FHIR minimal resource set**: not started.
 - **v0.6 — DICOM metadata scanner**: not started.
 - **v1.0 — Medical AI egress privacy gateway**: target.

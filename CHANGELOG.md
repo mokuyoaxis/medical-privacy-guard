@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP stdio gateway**: ``medical-privacy-guard mcp-gateway -- <server command>``
+  spawns an MCP server and mediates one stdio session with it, so an MCP client
+  can be pointed at the guard instead of at the server. Newline-delimited
+  JSON-RPC is forwarded byte for byte except for ``tools/call``: ALLOW forwards,
+  SANITIZE rewrites ``params.arguments`` and ``params.inputResponses``, and
+  ASK/BLOCK return a JSON-RPC error without reaching the server. Byte streams are
+  used throughout, because text mode would translate newlines and corrupt the
+  framing. The wrapped server's exit code is propagated, and Ctrl+C terminates
+  it rather than orphaning it.
+
 - ``adapters.ingress``: ``payload_for``, ``evaluate_call`` and ``sanitize_call``,
   the entry half of the adapter contract, so an adapter classifies the call
   rather than trusting the caller's guess. A JSON document arriving as a string
@@ -74,6 +84,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   separator or Chinese numerals, so ``日期：20260921`` is missed as text too.
   Recorded here because a number is exactly where the separator-less spelling
   appears in practice.
+- Five defects were found by adversarial review of the gateway **while every
+  test was green**, which is the point of doing it:
+  - a JSON-RPC **batch** carrying a ``tools/call`` was forwarded whole, so its
+    arguments crossed the boundary unchecked. MCP does not define batching, and
+    a batch cannot be rewritten in part, so one carrying a tool call is now
+    refused entirely;
+  - a **missing server command** raised an uncaught ``FileNotFoundError``: a
+    traceback and exit 1 instead of the documented configuration-error code 4.
+    It is now a ``GatewayError``;
+  - the **reader thread died with a traceback** when the client disconnected,
+    which reads like a crash rather than a disconnect;
+  - a ``tools/call`` sent as a **notification** (no ``id``) was answered with a
+    JSON-RPC error, which the specification forbids — a receiver must not reply
+    to a notification. The call is still not forwarded, but no reply is sent;
+  - **SIGTERM left the wrapped server running** as an orphan (PPID 1), because
+    only Ctrl+C was handled and SIGTERM's default action skips cleanup. This
+    leaks a server per stop under systemd or docker. SIGTERM now routes through
+    the same path, and shutdown has a bounded wait before escalating to kill.
+- The gateway's first draft treated SANITIZE as permission. A call whose
+  arguments carried a phone number was forwarded with the number intact — visible
+  only because the probe's upstream server echoed back what it had received.
+  SANITIZE means "may proceed only with the identifiers removed", so the decision
+  is three-way.
+- Refusals use JSON-RPC code ``4001``. The specification reserves
+  ``-32020..-32099`` for itself and marks ``-32000..-32019`` legacy, saying new
+  codes SHOULD be allocated outside the reserved range entirely; ``-32001`` would
+  have been wrong.
+- Not inspected, and recorded in ``docs/scope.md``: responses (this is an egress
+  guard), methods other than ``tools/call``, the server's ``stderr``, and the
+  MRTR ``requestState`` blob, which the specification forbids a client from
+  examining or modifying.
 - ``ROADMAP.md``'s v0.3 section still described the plan — XLSX,
   ``sanitize_file()``, a file-scoped token map, a dataset-level uniqueness check
   — while its status row said XLSX was deferred. The section now separates what

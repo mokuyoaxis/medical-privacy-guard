@@ -60,6 +60,7 @@ hardening contract, not proof of complete anonymization. See
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `formats/` (pending) | Parse XLSX / FHIR / DICOM | format-specific representation |
 | `adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
+| `adapters/mcp_gateway.py` | Proxy a stdio MCP session, holding back `tools/call` the guard refuses | rewritten / refused JSON-RPC |
 
 ## Component boundaries
 
@@ -225,7 +226,7 @@ medical-privacy-guard/
 │   ├── __init__.py
 │   └── main.py
 ├── formats/                   # admission + csv / json; xlsx / fhir / dicom pending
-├── adapters/                  # v0.4 skeleton: ingress + egress; vendor transports pending
+├── adapters/                  # mcp_gateway works; SDK wrappers pending
 ├── tools/
 │   └── generate_synthetic_cn_notes.py
 ├── skills/
