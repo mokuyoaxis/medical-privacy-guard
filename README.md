@@ -100,6 +100,7 @@ has a deterministic operation; only the verified output may be released.
 - metadata-only JSONL audit when configured, with each event chained by hash so
   a deleted, reordered or edited record is detectable, and an `audit-verify`
   command to check it;
+- an OpenAI-compatible client wrapper (`adapters.openai_compat`)
 - an MCP stdio gateway (`medical-privacy-guard mcp-gateway -- <server command>`):
   a transparent proxy in front of an MCP server. `tools/call` is forwarded,
   rewritten or refused according to the verdict — a sanitization rewrites
@@ -209,7 +210,7 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   (`v0.3.1`); XLSX deferred (CSV covers the need).
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
-- **v0.4 — LLM SDK wrapper + MCP gateway**: **MCP gateway working**. Point an
+- **v0.4 — LLM SDK wrapper + MCP gateway**: **OpenAI-compatible wrapper and MCP gateway working**. Point an
   MCP client at `medical-privacy-guard mcp-gateway --recipient <trust> -- <your
   server command>` and the guard sits between the client and the server: a tool
   call whose arguments it refuses never reaches the server, and one it can

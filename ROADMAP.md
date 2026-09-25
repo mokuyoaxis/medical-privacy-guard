@@ -20,9 +20,9 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
-| v0.4 | LLM SDK wrapper + MCP gateway | **MCP stdio gateway working**; SDK wrappers not started |
-| v0.5 | FHIR minimal resource set | Not started |
-| v0.6 | DICOM metadata scanner | Not started |
+| v0.4 | LLM SDK wrapper + MCP gateway | **OpenAI-compatible wrapper + MCP stdio gateway working**; Anthropic wrapper not started |
+| v0.5 | DICOM metadata scanner | Not started |
+| v0.6 | FHIR minimal resource set | Not started (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 ## Non-goals
@@ -247,28 +247,7 @@ README status flip.
 
 ---
 
-## v0.5 — FHIR minimal
-
-**Goal**: minimal usable FHIR support without promising full
-de-identification.
-
-**Scope**:
-
-- Patient, Observation, DiagnosticReport, Condition, MedicationRequest,
-  Encounter, ImagingStudy, Bundle;
-- path-level transformation plans; JSON structure preserved;
-- unsupported resources fail closed (ASK/BLOCK);
-- FHIR synthetic fixtures; FHIR-specific audit events (resource type + path,
-  never raw values).
-
-**Acceptance criteria**: path-level reports; JSON structure intact; no raw
-field values in audit; unsupported resources default to ASK/BLOCK.
-
-**Docs**: scope.md; README status flip.
-
----
-
-## v0.6 — DICOM metadata scanner
+## v0.5 — DICOM metadata scanner
 
 **Goal**: enter medical imaging privacy with an explicit, conservative
 boundary.
@@ -291,6 +270,27 @@ boundary.
 - reports clearly separate metadata risk from pixel risk.
 
 **Docs**: scope.md; threat-model.md; README status flip.
+
+---
+
+## v0.6 — FHIR minimal
+
+**Goal**: minimal usable FHIR support without promising full
+de-identification.
+
+**Scope**:
+
+- Patient, Observation, DiagnosticReport, Condition, MedicationRequest,
+  Encounter, ImagingStudy, Bundle;
+- path-level transformation plans; JSON structure preserved;
+- unsupported resources fail closed (ASK/BLOCK);
+- FHIR synthetic fixtures; FHIR-specific audit events (resource type + path,
+  never raw values).
+
+**Acceptance criteria**: path-level reports; JSON structure intact; no raw
+field values in audit; unsupported resources default to ASK/BLOCK.
+
+**Docs**: scope.md; README status flip.
 
 ---
 

@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **OpenAI-compatible client wrapper** (``adapters.openai_compat``): wrap a
+  configured client with ``OpenAIGuard(client, guard)`` and every egress field
+  is evaluated before the SDK call goes out — ``messages[].content`` (strings,
+  content-part lists, tool-call arguments), ``metadata``, ``tools[].function``
+  descriptions and the ``user`` identifier. SANITIZE rewrites in place, BLOCK
+  and ASK raise, non-text content parts fail closed, responses are not
+  inspected. The wrapper holds no credentials; the transport is duck-typed
+  (``client.chat.completions.create``).
+
 ## [0.3.4] - 2026-09-25
 
 ### Added

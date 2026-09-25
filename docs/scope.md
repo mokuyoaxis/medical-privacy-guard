@@ -165,8 +165,9 @@ No parsers or sanitization support exist for:
 The MCP gateway's boundaries are narrower than "traffic through it is
 inspected", and the gap is worth naming precisely:
 
-- **Responses are not inspected.** This is an egress guard; what a server returns
-  is out of scope.
+- **Responses are not inspected.** This is an egress guard; what a server or a
+  model returns is out of scope, for the MCP gateway and the OpenAI-compatible
+  wrapper alike.
 - **Only ``tools/call`` requests are inspected.** ``prompts/get`` takes an
   argument map of the same shape and ``resources/read`` takes a URI that can name
   a record, so both are egress paths this version does not cover.
@@ -178,7 +179,14 @@ inspected", and the gap is worth naming precisely:
   stands in the client's position.
 - **The server's ``stderr`` is passed through** untouched; if a server logs PHI
   there, the gateway does not see it.
-- **Only stdio is supported.** HTTP transports are not.
+- **Only stdio is supported; the OpenAI-compatible wrapper reaches the API
+  through the caller's own client.** The wrapper never holds credentials: it
+  receives a configured client and rewrites the kwargs mapping before the SDK
+  sends it. ``messages[].content``, ``metadata`` and tool-call arguments are
+  sanitized; ``tools[].function`` descriptions are evaluated but never
+  rewritten, because a caller-authored interface cannot be safely paraphrased;
+  ``user`` is evaluated and only ever refused, never rewritten, because the
+  field is an opaque identifier. Non-text content parts fail closed.
 
 See [architecture.md](architecture.md) for the trust boundary.
 

@@ -13,12 +13,14 @@ result; it does not decide, widen or re-derive it.
 from .egress import release_or_raise, verification_details
 from .ingress import evaluate_call, payload_for, sanitize_call
 from .mcp_gateway import REFUSED_CODE, GatewayError, GatewaySettings, McpGateway
+from .openai_compat import OpenAIGuard
 
 __all__ = [
     "REFUSED_CODE",
     "GatewayError",
     "GatewaySettings",
     "McpGateway",
+    "OpenAIGuard",
     "evaluate_call",
     "payload_for",
     "release_or_raise",
