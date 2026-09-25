@@ -19,6 +19,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.2.6 | Remaining detection gaps (numeral dates, out-of-inventory names) | Released (`v0.2.6`) |
 | v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
+| v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | LLM SDK wrapper + MCP gateway | **MCP stdio gateway working**; SDK wrappers not started |
 | v0.5 | FHIR minimal resource set | Not started |
 | v0.6 | DICOM metadata scanner | Not started |
