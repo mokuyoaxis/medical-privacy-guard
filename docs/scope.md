@@ -179,14 +179,18 @@ inspected", and the gap is worth naming precisely:
   stands in the client's position.
 - **The server's ``stderr`` is passed through** untouched; if a server logs PHI
   there, the gateway does not see it.
-- **Only stdio is supported; the OpenAI-compatible wrapper reaches the API
-  through the caller's own client.** The wrapper never holds credentials: it
+- **Only stdio is supported; the OpenAI-compatible and Anthropic wrappers
+  reach their APIs through the caller's own client.** The wrapper never holds credentials: it
   receives a configured client and rewrites the kwargs mapping before the SDK
   sends it. ``messages[].content``, ``metadata`` and tool-call arguments are
   sanitized; ``tools[].function`` descriptions are evaluated but never
   rewritten, because a caller-authored interface cannot be safely paraphrased;
   ``user`` is evaluated and only ever refused, never rewritten, because the
-  field is an opaque identifier. Non-text content parts fail closed.
+  field is an opaque identifier. Non-text content parts fail closed. The
+  Anthropic wrapper handles the same fields under the Messages API's shape: a
+  top-level ``system`` (a data channel in medical deployments, and sanitized as
+  one), per-block content with ``tool_use.input`` as JSON and ``tool_result``
+  replayed output as text, and ``metadata.user_id`` as an opaque identifier.
 
 See [architecture.md](architecture.md) for the trust boundary.
 

@@ -20,7 +20,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
-| v0.4 | LLM SDK wrapper + MCP gateway | **OpenAI-compatible wrapper + MCP stdio gateway working**; Anthropic wrapper not started |
+| v0.4 | LLM SDK wrapper + MCP gateway | Released |
 | v0.5 | DICOM metadata scanner | Not started |
 | v0.6 | FHIR minimal resource set | Not started (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
 | v1.0 | Medical AI egress privacy gateway | Target |
@@ -214,7 +214,7 @@ tested, because the file-scoped token map it would rely on is not implemented.
 
 ---
 
-## v0.4 — LLM SDK wrapper + MCP gateway
+## v0.4 — LLM SDK wrapper + MCP gateway (released)
 
 **Goal**: put the guard inside real AI call chains.
 

@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inspected. The wrapper holds no credentials; the transport is duck-typed
   (``client.chat.completions.create``).
 
+- **Anthropic Messages client wrapper** (``adapters.anthropic_compat``): the
+  same verdict semantics under the Messages API's shape. A top-level ``system``
+  is sanitized as the data channel it is; ``tool_use.input`` goes through the
+  JSON path and ``tool_result`` content through the text path; ``image`` and
+  ``document`` blocks fail closed; ``tools[].description`` is evaluated but
+  never rewritten; ``metadata.user_id`` is an opaque identifier that is only
+  ever refused, never rewritten.
+
 ## [0.3.4] - 2026-09-25
 
 ### Added

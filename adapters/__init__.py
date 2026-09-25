@@ -10,6 +10,7 @@ An adapter must not contain privacy rules. It translates and enforces the core
 result; it does not decide, widen or re-derive it.
 """
 
+from .anthropic_compat import AnthropicGuard
 from .egress import release_or_raise, verification_details
 from .ingress import evaluate_call, payload_for, sanitize_call
 from .mcp_gateway import REFUSED_CODE, GatewayError, GatewaySettings, McpGateway
@@ -19,6 +20,7 @@ __all__ = [
     "REFUSED_CODE",
     "GatewayError",
     "GatewaySettings",
+    "AnthropicGuard",
     "McpGateway",
     "OpenAIGuard",
     "evaluate_call",
