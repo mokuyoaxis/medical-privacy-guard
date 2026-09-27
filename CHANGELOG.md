@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never rewritten; ``metadata.user_id`` is an opaque identifier that is only
   ever refused, never rewritten.
 
+- **DICOM metadata scanner** (``formats.dicom_inspect``, ``dicom-inspect``
+  CLI; optional ``dicom`` extra): a read-only report of identifying metadata —
+  known-PHI tags, detector matches over free-text values, private tags counted
+  and marked HIGH, and pixel risk left UNKNOWN so `safe_to_release` is false
+  for every file. The scanner never writes a DICOM file; write-back is
+  deferred with the DATE_SHIFT it would need. Chinese values under
+  ``SpecificCharacterSet: ISO_IR 192`` are decoded and detected.
+
 ## [0.3.4] - 2026-09-25
 
 ### Added

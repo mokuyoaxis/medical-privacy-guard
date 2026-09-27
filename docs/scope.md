@@ -150,13 +150,36 @@ whether the value is attributed to *this patient*:
 These are measured, not assumed: the benchmark's 35 identifier-free documents
 contain them, and a detector firing on one of them fails the precision gate.
 
+## DICOM scanner boundary (v0.5)
+
+`dicom-inspect` reads a DICOM file and reports identifying metadata; it never
+writes. The report separates metadata findings, private tags and pixel risk:
+
+- metadata findings come from two signals: a closed list of known-PHI tags
+  (``PatientName``, ``PatientID``, ``PatientBirthDate``, ``AccessionNumber``,
+  study dates, institution and staff names...), and, for free-text values, the
+  guard's own text detectors run over the decoded value. A ``PN`` element is a
+  personal name by construction -- the tag is the label -- so its components
+  are probed with the name rules directly rather than guessed at;
+- private tags are counted and marked HIGH, never decoded: their meaning is
+  unknowable by construction, and claiming otherwise would be a guess;
+- pixel risk (`pixel_annotation_risk`, `recognizable_visual_features_risk`) is
+  UNKNOWN because no check is implemented, so `safe_to_release` is false for
+  every file. A metadata-only pass cannot clear pixel risk, and a claim that
+  it can is a prohibited claim;
+- raw element values never enter the report: findings carry the tag, the
+  category and (for detector matches) the detector types, not the value.
+
+pydicom is an optional extra (`medical-privacy-guard[dicom]`). A missing extra
+is a parser error, not a degraded scan.
+
 ## Unsupported
 
 No parsers or sanitization support exist for:
 
 - XLSX (deferred: CSV covers the need), TSV (needs a delimiter choice)
 - FHIR (planned v0.5)
-- DICOM (planned v0.6)
+- DICOM write-back / de-identification (the v0.5 scanner reads and reports only)
 - PDF / DOCX
 - arbitrary binary files
 - multimodal content (images / audio / video)

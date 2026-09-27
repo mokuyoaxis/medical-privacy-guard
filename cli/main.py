@@ -7,6 +7,7 @@ Commands:
     benchmark <corpus_dir> [--json] [--profile P] [--limit N]
     audit-verify <audit_dir> [--json] [--key-env VAR]
     mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
+    dicom-inspect <file> [--json]
 
 Exit codes:
     0  ALLOW, or SANITIZE that passed verification; for audit-verify, an intact chain
@@ -31,7 +32,7 @@ from typing import Mapping, Sequence
 from adapters.mcp_gateway import GatewaySettings, McpGateway
 from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
-from core.errors import AuditError, GuardError
+from core.errors import AuditError, GuardError, ParserError
 from core.model import (
     Decision,
     DetectedFact,
@@ -176,6 +177,19 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Environment variable holding the HMAC key (kept out of argv)",
     )
+    p_dicom = sub.add_parser(
+        "dicom-inspect",
+        help="Inspect DICOM metadata for identifiers and report.",
+        description=(
+            "Read a DICOM file and report the identifying metadata it carries: "
+            "one row per PHI-bearing element, private tags, and the pixel-risk "
+            "status. The scanner reads only -- it never writes a DICOM file -- "
+            "and pixel risk stays UNKNOWN, so safe_to_release is false. "
+            "Requires the optional pydicom extra."
+        ),
+    )
+    p_dicom.add_argument("file", help="DICOM file to inspect")
+    p_dicom.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     return parser
 
 
@@ -472,6 +486,39 @@ def _cmd_mcp_gateway(args: argparse.Namespace) -> int:
     return McpGateway(args.server, settings).run()
 
 
+def _cmd_dicom_inspect(args: argparse.Namespace) -> int:
+    """Inspect a DICOM file and print the report; exit 2 when not releasable.
+
+    The scanner never writes. A file whose metadata carries identifiers, or
+    whose pixel risk is UNKNOWN, is not releasable and exits 2 -- the same
+    code as BLOCK, because that is what the report means: this file must not
+    leave the boundary.
+    """
+    try:
+        from formats.dicom_inspect import inspect_dicom_file, report_to_json
+
+        report = inspect_dicom_file(args.file)
+    except ParserError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.json:
+        print(report_to_json(report))
+    else:
+        d = report.to_dict()
+        print(f"File: {d['file']}")
+        print(f"Transfer syntax: {d['transfer_syntax']}")
+        print(f"Character set: {d['specific_character_set']}")
+        print(f"Metadata risk: {d['metadata_risk']}")
+        for f in d["findings"]:
+            detail = f" ({f['detail']})" if f["detail"] else ""
+            print(f"  - {f['tag']} {f['category']} [{f['risk']}]{detail}")
+        print(f"Private tags: {d['private_tag_count']} ({d['private_tags_risk']})")
+        print(f"Pixel annotation risk: {d['pixel_annotation_risk']}")
+        print(f"Recognizable features risk: {d['recognizable_visual_features_risk']}")
+        print(f"Safe to release: {d['safe_to_release']}")
+    return EXIT_OK if report.safe_to_release and report.metadata_risk == "LOW" else EXIT_BLOCK
+
+
 def _human_benchmark(report) -> str:
     lines = [
         f"Corpus: {report.documents} documents "
@@ -557,6 +604,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_audit_verify(args)
         if args.command == "mcp-gateway":
             return _cmd_mcp_gateway(args)
+        if args.command == "dicom-inspect":
+            return _cmd_dicom_inspect(args)
         # Unreachable while the subparsers are ``required``, and deliberately
         # not ``parser.error``: that exits 2, which this CLI reserves for BLOCK.
         parser.print_usage(sys.stderr)

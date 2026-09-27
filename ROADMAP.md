@@ -21,7 +21,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | LLM SDK wrapper + MCP gateway | Released |
-| v0.5 | DICOM metadata scanner | Not started |
+| v0.5 | DICOM metadata scanner | **In progress** (read-only `dicom-inspect`; pydicom as an optional extra) |
 | v0.6 | FHIR minimal resource set | Not started (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
@@ -254,20 +254,37 @@ boundary.
 
 **Scope**:
 
-- `dicom-inspect` CLI; metadata PHI detection (PatientName, PatientID,
-  PatientBirthDate, AccessionNumber, StudyDate / SeriesDate, InstitutionName,
-  referring physician / operator names); private tags default REMOVE unless
-  allowlisted;
-- metadata de-identification with DATE_SHIFT for study/series dates;
+- `dicom-inspect` CLI producing a JSON report: one row per PHI-bearing
+  metadata element (tag, name, category, risk), private-tag count and risk,
+  transfer syntax and character set, pixel risk status;
+- metadata PHI detection (PatientName, PatientID, PatientBirthDate,
+  AccessionNumber, StudyDate / SeriesDate, InstitutionName, referring
+  physician / operator names), reusing the guard's existing detectors over
+  decoded element values where a value is free text;
+- **private tags are reported, not removed** — the report names their count
+  and marks `private_tags_risk: HIGH`; removal implies writing a new file,
+  which this version does not do;
+- **no write-back**: the scanner reads and reports only. De-identification
+  (and the DATE_SHIFT it would need) is deferred until a real write-back
+  requirement exists, because writing a valid DICOM file means rewriting
+  group lengths, the MediaStorage/SOP Instance UIDs and every Sequence's
+  delimiters — a scope the read-only boundary deliberately excludes;
 - explicit pixel-risk status: `pixel_annotation_risk` and
   `recognizable_visual_features_risk` are UNKNOWN unless an implemented check
-  exists; `safe_to_release = false` while UNKNOWN.
+  exists; `safe_to_release = false` while UNKNOWN;
+- pydicom is an **optional dependency** (`[project.optional-dependencies]
+  dicom = ["pydicom>=3.0"]`): pure Python, no transitive dependencies. The
+  core package stays dependency-light (pyyaml only), and the CLI reports a
+  missing-extras error (fail closed) instead of guessing at byte streams.
 
 **Acceptance criteria**:
 
-- metadata PHI detected; private tags reported high-risk by default;
+- metadata PHI detected, including Chinese values under GB18030 /
+  ISO_IR 192 `SpecificCharacterSet`;
+- private tags reported high-risk by default;
 - `safe_to_release = false` when pixel risk is UNKNOWN;
-- reports clearly separate metadata risk from pixel risk.
+- reports clearly separate metadata risk from pixel risk;
+- the scanner never writes a DICOM file.
 
 **Docs**: scope.md; threat-model.md; README status flip.
 
