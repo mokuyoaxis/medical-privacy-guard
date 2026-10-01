@@ -8,6 +8,7 @@ Coverage:
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -334,11 +335,29 @@ class TestUnsupportedInputAudit:
 
 
 class TestPathSafety:
-    @pytest.mark.parametrize("alias", ["same", "relative", "symlink", "hardlink"])
+    # A hard link is one way two paths name one file, and the collision check
+    # must treat it like "same path" rather than silently overwriting the
+    # input. os.link is not available on every Python platform (Android/Termux
+    # raises AttributeError), so that alias is skipped where it cannot be
+    # created. The other three aliases still run, and a platform without
+    # os.link has no hard links to alias, so nothing is left untested there.
+    @pytest.mark.parametrize(
+        "alias",
+        [
+            "same",
+            "relative",
+            "symlink",
+            pytest.param(
+                "hardlink",
+                marks=pytest.mark.skipif(
+                    not hasattr(os, "link"),
+                    reason="os.link is unavailable on this platform",
+                ),
+            ),
+        ],
+    )
     @pytest.mark.parametrize("pair", ["input-output", "input-log", "output-log"])
     def test_aliases_rejected_before_audit(self, tmp_path, capsys, alias, pair):
-        import os
-
         src = Path(write(tmp_path, "source.txt", PHONE))
         output = tmp_path / "output.txt"
         audit_dir = tmp_path / "audit"

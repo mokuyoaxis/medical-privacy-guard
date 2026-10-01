@@ -99,5 +99,15 @@ NAME_FOLLOW_BOUNDARY: str = (
     r"告知|交代|说明|询问|签署|确认|办理|准备|安排|护送|转运|接收|进入|"
     r"离开|返回|因|于|诉|在|自|伴|拟|系|之|由|"
     r"电话|手机|邮箱|身份证|证件|病历号|住院号|就诊号|地址|住址|诊断|"
-    r"症状|用药|医生|医师|大夫|护士|护师)"
+    r"症状|用药|医生|医师|大夫|护士|护师|"
+    # Academic, professional and administrative ranks. A note routinely
+    # writes them after a name ("主治医师：李国强教授"), and before this they
+    # explained no boundary at all: the capture could not end, so the whole
+    # match collapsed and the doctor form was released with the name intact
+    # ("主治医师：李国强" was detected, "主治医师：李国强教授" reached ALLOW).
+    # A rank is not part of the name, so it must end the capture the same way
+    # a clinical title (医生, 医师) already does.
+    r"教授|副教授|讲师|助教|院士|博导|研究员|副研究员|"
+    r"博士|硕士|学士|专家|技师|主管技师|药师|主管药师|检验师|"
+    r"护士长|院长|副院长|主任|副主任|科主任|主任医师|副主任医师)"
 )

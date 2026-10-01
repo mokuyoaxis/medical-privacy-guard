@@ -6,8 +6,7 @@ precise" means different things for a date, an age and an institution:
 
 - EXACT_DATE      → drop the day (2026-08-29 → 2026-08 / 2026年8月)
 - PRECISE_LOCATION→ replace with a non-identifying marker
-- AGE             → map to a band (67岁 → 60-69岁)
-- AGE_90_PLUS     → collapse to a single band marker
+- AGE             → map to a band (67岁 → 60-69岁, 95岁 → 90岁及以上)
 - HOSPITAL_NAME   → institution-type marker
 - DEPARTMENT      → department-type marker
 - WARD            → ward-type marker
@@ -72,6 +71,10 @@ class GeneralizeTransformer(Transformer):
         if fact_type in _TYPE_MARKERS:
             return _TYPE_MARKERS[fact_type]
         if fact_type == "AGE_90_PLUS":
+            # Reachable only from a caller-supplied detector: the built-in age
+            # detector emits AGE, and _band already collapses 90+ into the same
+            # marker. Kept so a deployment that reports the two age categories
+            # separately still gets a band rather than a pass-through.
             return "90岁及以上"
         if fact_type == "AGE":
             return self._band(fact.value or "")

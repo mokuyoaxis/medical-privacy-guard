@@ -29,6 +29,19 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: Directory subtrees that are never project code. Kept out of the source scans
+#: below so a local virtualenv or a build tree cannot produce a finding: the
+#: audit is about the project's own modules drifting apart, and a vendored
+#: dependency's ``classify`` is not that.
+_SCAN_EXCLUDED: frozenset[str] = frozenset(
+    {
+        ".git", ".agent-trash", "tests",
+        ".venv", "venv", ".tox", ".nox", ".mypy_cache", ".ruff_cache",
+        ".pytest_cache", "build", "dist", ".eggs", "site-packages",
+        "__pycache__",
+    }
+)
 sys.path.insert(0, str(ROOT))
 
 from core.errors import GuardError  # noqa: E402
@@ -212,10 +225,14 @@ def admission_contract() -> list[str]:
     if "def classify_text(" not in canonical.read_text(encoding="utf-8"):
         problems.append("  formats/admission.py no longer defines classify_text")
 
-    # Nobody else may keep a private copy of the decision.
+    # Nobody else may keep a private copy of the decision. Non-project
+    # directories are skipped so a checkout carrying a virtualenv, a build or
+    # an editor's scratch tree cannot fail this check on a file that is not
+    # ours: a vendored dependency defining ``classify`` would otherwise read as
+    # drift in the guard's own entry points.
     for path in sorted(ROOT.rglob("*.py")):
         relative = path.relative_to(ROOT)
-        if path == canonical or relative.parts[0] in {".git", ".agent-trash", "tests"}:
+        if path == canonical or relative.parts[0] in _SCAN_EXCLUDED:
             continue
         if re.search(r"^def _?classify\w*\(", path.read_text(encoding="utf-8"), re.MULTILINE):
             problems.append(

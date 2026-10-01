@@ -145,20 +145,17 @@ class OpenAIGuard:
 
     def _mapping_field(self, name: str, value: Mapping[str, Any]) -> dict[str, Any]:
         result = self._sanitize(Payload(kind="json", content=copy.deepcopy(dict(value))))
-        release_or_raise(result)
-        assert result.sanitized_payload is not None
-        return json.loads(result.sanitized_payload.content)
+        released = release_or_raise(result)
+        return json.loads(released.content)
 
     def _json_field(self, name: str, value: str) -> str:
         result = self._sanitize(Payload(kind="json", content=value))
         released = release_or_raise(result)
-        assert released.content is not None
         return released.content
 
     def _text_field(self, name: str, value: str) -> str:
         result = self._sanitize(payload_for(value))
         released = release_or_raise(result)
-        assert released.content is not None
         return released.content
 
     def _opaque(self, name: str, value: str) -> None:

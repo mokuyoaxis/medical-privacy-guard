@@ -186,6 +186,33 @@ class TestDoctorNameDetector:
         """主任医师 contains 任医师, which must not be read as a name."""
         assert values_of("主任医师每周查房两次。", "DOCTOR_NAME") == []
 
+    def test_academic_rank_after_the_name(self):
+        """A rank after a labelled name must end the capture, not erase it.
+
+        主治医师：李国强 was detected while 主治医师：李国强教授 was not: the
+        capture is bounded by NAME_FOLLOW_BOUNDARY, which listed clinical
+        titles (医生, 医师) but no academic or administrative rank. The match
+        could not end, so it collapsed entirely and the whole note reached
+        ALLOW with the physician's name intact.
+        """
+        for rank in (
+            "教授", "副教授", "讲师", "助教", "院士", "博导",
+            "研究员", "博士", "硕士", "专家", "技师", "药师",
+            "院长", "副院长", "主任", "副主任", "护士长",
+        ):
+            text = f"主治医师：李国强{rank}，今日查房。"
+            assert values_of(text, "DOCTOR_NAME") == ["李国强"], (rank, text)
+
+    def test_rank_is_not_part_of_the_name(self):
+        """The rank ends the capture, so it must never be reported as name text."""
+        text = "主任医师：张伟教授，今日查房。"
+        assert values_of(text, "DOCTOR_NAME") == ["张伟"]
+
+    def test_negative_rank_word_alone(self):
+        """A rank word with no name in front of it yields no fact."""
+        assert values_of("请教授会诊。", "DOCTOR_NAME") == []
+        assert values_of("副主任医师每周查房。", "DOCTOR_NAME") == []
+
 
 class TestNurseNameDetector:
     def test_suffix_form(self):

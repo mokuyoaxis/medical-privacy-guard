@@ -219,10 +219,15 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   halves of the contract (`payload_for`, `evaluate_call`, `sanitize_call` in;
   `release_or_raise` out) plus the caller-facing exception family
   (`DisclosureBlocked`, `HumanApprovalRequired`, `VerificationFailed`). The
-  vendor SDK wrappers (OpenAI-compatible, Anthropic) are not started, and
-  responses are not inspected — see [scope](docs/scope.md) for the boundaries.
-- **v0.5 — FHIR minimal resource set**: not started.
-- **v0.6 — DICOM metadata scanner**: not started.
+  vendor SDK wrappers (OpenAI-compatible, Anthropic) are **done**: every egress
+  field is evaluated before the SDK call goes out. Responses are not inspected
+  — see [scope](docs/scope.md) for the boundaries.
+- **v0.5 — DICOM metadata scanner**: **In progress** — read-only `dicom-inspect`
+  reports identifying metadata (known-PHI tags, detector matches over free-text
+  values, private tags marked HIGH) and leaves pixel risk UNKNOWN, so
+  `safe_to_release` is false for every file. pydicom is an optional extra. The
+  scanner never writes a DICOM file; write-back is deferred.
+- **v0.6 — FHIR minimal resource set**: not started.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---

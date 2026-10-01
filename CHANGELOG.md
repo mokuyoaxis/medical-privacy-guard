@@ -34,6 +34,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deferred with the DATE_SHIFT it would need. Chinese values under
   ``SpecificCharacterSet: ISO_IR 192`` are decoded and detected.
 
+### Fixed
+
+- **An academic or administrative rank after a labelled name switched the name
+  off entirely.** ``NAME_FOLLOW_BOUNDARY`` lists the words that may follow a
+  captured name; it named the clinical titles (``医生``, ``医师``, ``大夫``,
+  ``护士``, ``护师``) but no rank, so the capture could not end and the whole
+  match collapsed: ``主治医师：李国强`` was detected while
+  ``主治医师：李国强教授`` produced no fact at all and the note reached ALLOW
+  with the physician's name intact. Sixteen of seventeen common ranks behaved
+  this way (``教授``, ``副教授``, ``讲师``, ``院士``, ``博士``, ``技师``,
+  ``药师``, ``院长``, ``主任``, ``副主任``, ``护士长``, …). The ranks are now
+  boundary words, so the capture ends at the name and the rank stays in the
+  released text as the context it is. A rank with no name in front of it still
+  yields no fact.
+
+- **Vendor SDK wrappers used ``assert`` for a guarantee that must survive
+  ``python -O``.** ``release_or_raise`` already raises when nothing verified
+  exists to send; the five ``assert`` statements after it only narrowed the
+  type, and are replaced by using the payload it returns.
+
+### Changed
+
+- ``tools/audit_contracts.py`` no longer scans non-project directories, so a
+  checkout carrying a virtualenv or a build tree cannot fail the drift check
+  on a vendored dependency's own ``classify``.
+
+- ``tests/test_cli.py`` skips the hard-link alias of the path-collision test
+  where ``os.link`` does not exist (Android/Termux), instead of erroring with
+  ``AttributeError``. The same, relative and symlink aliases still run, and a
+  platform without ``os.link`` has no hard links to alias.
+
+### Documentation
+
+- **README status tables were stale and contradicted the roadmap.** Both the
+  English and the Chinese README swapped v0.5 and v0.6, listing FHIR as v0.5
+  and DICOM as v0.6 while the code, the roadmap and the changelog have DICOM
+  as v0.5; both marked the delivered DICOM scanner "not started", and the
+  English README said the OpenAI-compatible and Anthropic wrappers were "not
+  started" though both ship. The Chinese status list also still showed v0.3
+  and v0.4 as not started.
+
 ## [0.3.4] - 2026-09-25
 
 ### Added

@@ -43,6 +43,11 @@ when they disagree, this file wins and the other two are updated.
   staff or relative label carrying no name (``责任护士每班交接``) yields no fact,
   and verification withholds release when a name span stops inside a name or is
   followed by text no boundary word explains;
+  the boundary word list (``detectors/surnames.py``) therefore carries the
+  clinical titles *and* the academic, professional and administrative ranks a
+  note writes after a name — ``主治医师：李国强教授`` captures ``李国强`` and
+  releases the rank as the context it is. A rank with no name in front of it
+  yields no fact; a bare name with no label and no rank is still not detected;
 - mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
   and day, and fully Chinese-numeral dates (``二〇二六年九月二十一日``). Detection retains original source spans; these are bounded format
