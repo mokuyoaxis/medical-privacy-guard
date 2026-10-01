@@ -8,6 +8,7 @@ optional extra is absent -- a missing feature is not a broken one.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -80,6 +81,46 @@ class TestReportShape:
 
     def test_transfer_syntax_is_recorded(self, report):
         assert "1.2.840.10008.1.2.1" in report.transfer_syntax
+
+
+class TestTagTableIntegrity:
+    """The tag table is a hand-written constant, so it can drift.
+
+    A category name is what an operator reads in the report and what a policy
+    would match on, so a tag filed under the wrong one is a wrong report
+    rather than a cosmetic typo: 0008,0023 was filed as ``acquisition_time``
+    when the standard (and pydicom's own dictionary) calls it ContentDate.
+    """
+
+    def test_every_tag_maps_to_the_standard_keyword(self):
+        """Each category must name the element the tag actually is.
+
+        Compared after folding case and separators, because DICOM keywords
+        compound acronyms that no single snake_case rule renders the same way
+        (PatientID, OtherPatientIDs, AcquisitionDateTime). Folding still
+        separates every genuine mislabel: PatientAge from patient_occupation,
+        MilitaryRank from patient_address, CountryOfResidence from
+        phone_number_home.
+        """
+        from formats.dicom_inspect import _PHI_TAGS
+
+        from pydicom.datadict import keyword_for_tag
+
+        def fold(value: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", value.lower())
+
+        for tag, category in _PHI_TAGS.items():
+            keyword = keyword_for_tag(tag)
+            assert keyword, f"{tag:08X} is not a standard DICOM tag"
+            assert fold(keyword) == fold(category), (
+                f"{tag:08X} is {keyword} but filed as {category!r}"
+            )
+
+    def test_series_date_is_covered(self):
+        """ROADMAP names SeriesDate; a date-only series must not report clean."""
+        from formats.dicom_inspect import _PHI_TAGS
+
+        assert _PHI_TAGS.get(0x00080021) == "series_date"
 
 
 class TestFailClosed:

@@ -36,39 +36,62 @@ __all__ = ["DicomFinding", "DicomReport", "inspect_dicom_file", "report_to_json"
 
 #: Known-PHI metadata tags. The value is the report category; every one of
 #: these identifies the patient, a person, an institution or an encounter.
+#:
+#: The category is the snake_case of the element's DICOM keyword, and
+#: ``tests/test_dicom_inspect.py`` asserts that against pydicom's own
+#: dictionary. It has to be pinned: this list was written by hand and fifteen
+#: of its entries named the wrong element, including PatientAge filed as
+#: "patient_occupation", MilitaryRank as "patient_address",
+#: CountryOfResidence as "phone_number_home" and PerformingPhysicianName as
+#: "referring_physician_name". An operator reading that report would have
+#: looked for a home phone number and found a country.
 _PHI_TAGS: dict[int, str] = {
+    # -- patient demographics -------------------------------------------
     0x00100010: "patient_name",
     0x00100020: "patient_id",
     0x00100030: "patient_birth_date",
+    0x00100032: "patient_birth_time",
     0x00100040: "patient_sex",
-    0x00100050: "patient_insurance",
     0x00101000: "other_patient_ids",
-    0x00101010: "patient_occupation",
-    0x00101080: "patient_address",
-    0x00101041: "patient_state",
-    0x00102150: "phone_number_home",
-    0x00102154: "phone_number_mobile",
+    0x00101010: "patient_age",
+    0x00101040: "patient_address",
+    0x00101080: "military_rank",
+    0x00102150: "country_of_residence",
+    0x00102152: "region_of_residence",
+    0x00102154: "patient_telephone_numbers",
+    0x00102180: "occupation",
     0x00104000: "patient_comments",
+    # -- institution and staff -------------------------------------------
     0x00080080: "institution_name",
     0x00080081: "institution_address",
     0x00081040: "institutional_department_name",
-    0x00081048: "physician_of_record",
-    0x00081050: "referring_physician_name",
+    0x00081048: "physicians_of_record",
+    0x00081050: "performing_physician_name",
     0x00081060: "name_of_physicians_reading_study",
     0x00081070: "operators_name",
-    0x00081090: "manufacturing_model",  # device, not PHI, but identifying
-    0x00080090: "referring_physician_address",
-    0x00080092: "referring_phone",
+    0x00081090: "manufacturer_model_name",  # device, not PHI, but identifying
+    0x00080090: "referring_physician_name",
+    0x00080092: "referring_physician_address",
+    0x00080094: "referring_physician_telephone_numbers",
+    # -- de-identification markers ---------------------------------------
     0x00120062: "patient_identity_removed",
     0x00120063: "deidentification_method",
+    # -- dates and times -------------------------------------------------
+    0x00080012: "instance_creation_date",
+    0x00080013: "instance_creation_time",
     0x00080020: "study_date",
-    0x00080030: "study_time",
+    0x00080021: "series_date",
     0x00080022: "acquisition_date",
-    0x00080023: "acquisition_time",
+    0x00080023: "content_date",
+    0x0008002A: "acquisition_datetime",
+    0x00080030: "study_time",
+    0x00080031: "series_time",
+    0x00080032: "acquisition_time",
+    0x00080033: "content_time",
+    # -- encounter identifiers -------------------------------------------
     0x00080050: "accession_number",
     0x00200010: "study_id",
     0x0008103E: "series_description",
-    0x0008103F: "study_description",
 }
 
 #: Categories whose detection reuses the guard's text detectors over the

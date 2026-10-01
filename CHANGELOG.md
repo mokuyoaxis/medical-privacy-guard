@@ -65,6 +65,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``AttributeError``. The same, relative and symlink aliases still run, and a
   platform without ``os.link`` has no hard links to alias.
 
+### Fixed
+
+- **Fifteen of the DICOM scanner's 38 known-PHI tags named the wrong
+  element.** The category is what an operator reads in the report, so these
+  were wrong reports rather than cosmetic typos: ``PatientAge`` was filed as
+  ``patient_occupation``, ``MilitaryRank`` as ``patient_address``,
+  ``CountryOfResidence`` as ``phone_number_home``,
+  ``PerformingPhysicianName`` as ``referring_physician_name`` (while the real
+  ``ReferringPhysicianName`` was filed as ``referring_physician_address``),
+  ``0x00080023`` as ``acquisition_time`` when it is ``ContentDate``, and
+  ``0x00101041`` was not a DICOM tag at all. Categories are now the
+  snake_case of the element's DICOM keyword, and
+  ``tests/test_dicom_inspect.py`` asserts every one against pydicom's own
+  dictionary so the table cannot drift again.
+- **SeriesDate was missing from the scanner entirely**, though ROADMAP names
+  it in the v0.5 acceptance criteria: a file whose only date was
+  ``0008,0021`` reported no date finding. Added, with the other encounter
+  date/time elements (``SeriesTime``, ``ContentTime``, ``AcquisitionTime``,
+  ``InstanceCreation*``, ``PatientBirthTime``).
+
 ### Documentation
 
 - **README status tables were stale and contradicted the roadmap.** Both the
