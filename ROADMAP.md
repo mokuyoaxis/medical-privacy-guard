@@ -22,7 +22,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | LLM SDK wrapper + MCP gateway | Released |
 | v0.5 | DICOM metadata scanner | **In progress** (read-only `dicom-inspect`; pydicom as an optional extra) |
-| v0.6 | FHIR minimal resource set | Not started (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
+| v0.6 | FHIR minimal resource set | **Done** (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 ## Non-goals

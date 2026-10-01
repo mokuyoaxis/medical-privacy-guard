@@ -81,6 +81,29 @@ LABEL_KEYS: Mapping[str, str] = {
     "医生": "医生",
     "医师": "医师",
     "护士": "护士",
+    # FHIR element names. A FHIR document names its fields in English and
+    # splits a person's name across HumanName components, so "family" and
+    # "given" are names even though no general-purpose header would say so.
+    # Without these a Patient.name.family value is bare prose to the
+    # label-driven detectors, and a bare name is deliberately not detected --
+    # the resource would reach ALLOW with the surname in it.
+    "family": "姓名",
+    "given": "姓名",
+    "surname": "姓名",
+    "prefix": "姓名",
+    "fullname": "姓名",
+    "identifier": "病历号",
+    "identifier_value": "病历号",
+    "telecom": "电话",
+    "birthdate": "出生日期",
+    "deceaseddatetime": "日期",
+    "onsetdatetime": "日期",
+    "effectivedatetime": "日期",
+    "recordeddate": "日期",
+    "authoredon": "日期",
+    "period": "日期",
+    "servicecode": "科室",
+    "dispenseRequest": "用药",
 }
 
 
@@ -134,6 +157,14 @@ class Leaf:
     #: Chinese label and, for an English key, the key's own words. Empty when
     #: the key implies no label.
     probes: tuple[str, ...] = ()
+    #: A whole value this leaf is only part of, when the format splits one
+    #: value across several leaves. FHIR writes ``Patient.name.family`` and
+    #: ``Patient.name.given`` separately, and neither component alone is a
+    #: name the detectors can see: ``姓名：张`` and ``姓名：伟`` match nothing,
+    #: while ``姓名：张伟`` does. Set on a FHIR payload, empty everywhere else.
+    #: It is a probe only -- the replacement is still written back through the
+    #: leaf's own path, so the document keeps its structure.
+    completed: str | None = None
     #: True when the value can be inspected but not rewritten, because writing
     #: a string back would change its type (a JSON number). Detection still
     #: runs over it; the transformation layer must leave it alone.

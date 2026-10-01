@@ -83,6 +83,18 @@ when they disagree, this file wins and the other two are updated.
   chain does not cover is stated in [evaluation.md](evaluation.md) and the
   design note: tail truncation, whole-chain rewriting without a key, and
   timestamp authenticity;
+- FHIR resources (``Payload(kind="fhir")``, or a ``.fhir``/``.json`` file whose
+  content declares a ``resourceType``): a minimal set — ``Patient``,
+  ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
+  ``Encounter``, ``ImagingStudy`` and ``Bundle``. A resource outside that set is
+  withheld (BLOCK), including one nested in an otherwise supported Bundle,
+  because its fields mean something the pipeline was never taught and an
+  identifier in one of them would never be looked for. A FHIR name split across
+  ``Patient.name.family`` and ``Patient.name.given`` is completed to a whole
+  name before detection, since neither component alone is detectable; the
+  replacement is still written through each component's own path, so the
+  document keeps its shape. This is not FHIR de-identification: no value-domain
+  or reference-integrity claim is made;
 - an MCP stdio gateway (``medical-privacy-guard mcp-gateway -- <server command>``):
   a transparent proxy that spawns an MCP server and mediates one stdio session
   with it. Newline-delimited JSON-RPC is forwarded byte for byte, except for

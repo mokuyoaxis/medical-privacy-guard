@@ -153,11 +153,35 @@ class TestSanitize:
         assert rc == EXIT_ERROR
 
 
+class TestFhirInput:
+    """A .fhir file is admitted as of v0.6, and a supported resource is walked."""
+
+    def test_a_patient_resource_is_inspected(self, tmp_path, capsys):
+        doc = {
+            "resourceType": "Patient",
+            "name": [{"family": "张", "given": ["伟"]}],
+            "birthDate": "1990-03-07",
+        }
+        src = write(tmp_path, "patient.fhir", json.dumps(doc, ensure_ascii=False))
+        assert main(["inspect", str(src), "--json"]) == EXIT_OK
+        out = json.loads(capsys.readouterr().out)
+        assert out["decision"] == "SANITIZE"
+        assert "PERSON_NAME" in out["counts"]
+
+    def test_an_unsupported_resource_blocks(self, tmp_path, capsys):
+        doc = {"resourceType": "Provenance", "agent": [{"who": {"display": "张伟"}}]}
+        src = write(tmp_path, "prov.fhir", json.dumps(doc, ensure_ascii=False))
+        assert main(["inspect", str(src), "--json"]) == EXIT_BLOCK
+        assert "张伟" not in capsys.readouterr().out
+
+
 class TestInputFormats:
     @pytest.mark.parametrize("command", ["inspect", "sanitize"])
+    # ".fhir" is not in this list: FHIR resources are admitted as of v0.6, so
+    # a .fhir file is inspected rather than refused.
     @pytest.mark.parametrize("suffix", [
         ".jsonl", ".ndjson", ".tsv", ".xlsx",
-        ".xls", ".pdf", ".docx", ".fhir", ".xml", ".dcm", ".dicom", ".bin",
+        ".xls", ".pdf", ".docx", ".xml", ".dcm", ".dicom", ".bin",
         ".csv.gz",
     ])
     def test_known_unsupported_suffix_blocks(self, tmp_path, capsys, command, suffix):

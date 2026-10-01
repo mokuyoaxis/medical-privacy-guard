@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **FHIR minimal resource set** (``formats.fhir``, ``Payload(kind="fhir")``,
+  ``.fhir`` / ``.json`` files declaring a ``resourceType``): ``Patient``,
+  ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
+  ``Encounter``, ``ImagingStudy`` and ``Bundle`` are walked; any other resource
+  is withheld (BLOCK), including one nested inside an otherwise supported
+  Bundle. A document with no ``resourceType`` is an unsupported format, not
+  ordinary JSON -- a caller cannot reach the JSON path by misdeclaring an
+  object as FHIR. Leaf collection, normalisation and rebuild are the shared
+  JSON ones, so FHIR gets the same control-character refusal and the same
+  read-only numeric leaves as any other structured payload.
+- **FHIR name completion.** A FHIR name is split across
+  ``Patient.name.family`` and ``Patient.name.given``, and neither component
+  alone is a name the detectors can see: ``姓名：张`` and ``姓名：伟`` match
+  nothing, while ``姓名：张伟`` does, so a Patient resource was released with
+  the surname intact. The components are now also offered joined, as a probe
+  only -- the replacement is still written through each component's own path.
+  ``name.text`` and the narrative ``text`` key are told apart, so narrative
+  prose is not read as a person.
+- FHIR element labels (``family``, ``given``, ``birthDate``, ``telecom``,
+  ``identifier`` ...) so a resource's English field names reach the
+  label-driven detectors at all.
+- FHIR synthetic fixtures under ``tests/fixtures/fhir/``.
+
 - **OpenAI-compatible client wrapper** (``adapters.openai_compat``): wrap a
   configured client with ``OpenAIGuard(client, guard)`` and every egress field
   is evaluated before the SDK call goes out — ``messages[].content`` (strings,

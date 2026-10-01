@@ -108,7 +108,10 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 - **v0.3 — CSV / XLSX / JSON**：**JSON 已完成**（`v0.3.0`）、**CSV 已完成**（`v0.3.1`）；XLSX 推迟（CSV 已覆盖该需求）。`v0.3.2` 修复六个泛化缺口，`v0.3.4` 修复准入、不可见字符与重建文档闸门。
 - **v0.4 — LLM SDK wrapper + MCP 网关**：**已交付** —— OpenAI 兼容与 Anthropic 封装、MCP stdio 网关。出站前逐字段评估；响应不做检查。
 - **v0.5 — DICOM metadata scanner**：**进行中** —— 只读的 `dicom-inspect` 报告可识别元数据（已知 PHI 标签、自由文本值上的检测器命中、私有标签标记为 HIGH），像素风险保持 UNKNOWN，因此每个文件的 `safe_to_release` 均为 false。pydicom 为可选依赖。扫描器从不写入 DICOM 文件；回写推迟。
-- **v0.6 — FHIR 最小资源集**：尚未开始。
+- **v0.6 — FHIR 最小资源集**：**已完成** —— `Patient`、`Observation`、
+  `DiagnosticReport`、`Condition`、`MedicationRequest`、`Encounter`、
+  `ImagingStudy`、`Bundle`；其他资源一律不予放行（BLOCK）。姓名被拆到
+  `Patient.name.family` / `.given` 时先拼接再检测。
 - **v1.0 — 医疗 AI 出站隐私网关**：目标。
 
 ---

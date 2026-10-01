@@ -15,6 +15,7 @@ pipelines and agents:
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Sequence
 
@@ -61,6 +62,7 @@ from formats import (
     rebuild_csv,
     reject_if_binary,
 )
+from formats.fhir import inspect_fhir, parse_fhir_payload
 from transformers import apply_plan
 
 __all__ = ["Guard"]
@@ -77,6 +79,20 @@ __all__ = ["Guard"]
 #: - A NUL cannot occur in a JSON string, so a value the caller sent cannot be
 #:   mistaken for the join.
 _LEAF_SEPARATOR = "\x00"
+#: Payload kinds that are walked as structured documents. A FHIR resource is
+#: JSON on the wire, and the traversal, the leaf normalisation and the rebuild
+#: are the shared ones. Only the admission differs: a FHIR document is also
+#: asked which resource it is, and a resource outside the supported set is
+#: withheld rather than walked.
+#: Returned by :meth:`Guard._parse_structured` when a FHIR document parsed but
+#: names a resource outside the supported set. Distinct from ``None`` because
+#: the two are different failures to report: an unreadable file is a parser
+#: failure, while a resource the guard was never taught is an unsupported
+#: format, and the audit distinguishes them.
+_UNSUPPORTED_RESOURCE = "<unsupported-fhir-resource>"
+
+_STRUCTURED_KINDS = frozenset({"json", "csv", "fhir"})
+
 
 #: Environment variable holding the optional audit HMAC key. Read from the
 #: environment rather than a parameter default so a key never lands in argv.
@@ -258,6 +274,31 @@ def _detect_leaves(
                         read_only=leaf.read_only,
                     )
                 )
+        # A format that splits one value across leaves offers the whole value
+        # here. The fact it yields covers the completed string, not the leaf's
+        # own text, so it is clamped to the leaf: the leaf is what can be
+        # rewritten, and a span wider than it would overwrite its neighbours.
+        if leaf.completed:
+            for probe_label in probes or ("姓名",):
+                probe = f"{probe_label}:{leaf.completed}"
+                offset = len(probe_label) + 1
+                for fact in detect_all(probe, detectors):
+                    if fact.start < offset:
+                        continue
+                    facts.append(
+                        _replace(
+                            fact,
+                            # Span and value are the leaf's own: the leaf is
+                            # what the transformer can rewrite, and it must
+                            # agree with the text it is replacing or the
+                            # transformation refuses the span.
+                            start=start,
+                            end=start + len(leaf.text),
+                            value=leaf.text,
+                            confidence=fact.confidence,
+                            read_only=leaf.read_only,
+                        )
+                    )
     return detector_registry.merge_facts(facts)
 
 
@@ -389,6 +430,11 @@ class Guard:
 
         Accepts either serialised text or an already-decoded object, so a caller
         holding a document does not have to serialise it to hand it back.
+
+        ``None`` means the payload is refused. ``_UNSUPPORTED_RESOURCE`` is the
+        narrower reason: the document parsed, but as a FHIR resource the guard
+        does not support, which is a format the guard declines rather than a
+        file it could not read.
         """
         if kind == "csv":
             if not isinstance(content, str):
@@ -397,13 +443,43 @@ class Guard:
                 return parse_csv_payload(content)
             except ParserError:
                 return None
+        if kind == "fhir" and isinstance(content, str):
+            # A serialised resource is decoded first, so the resource check
+            # sees the same document whether the caller sent text or an object.
+            try:
+                content = json.loads(content)
+            except (json.JSONDecodeError, RecursionError, ValueError):
+                return None
+        if kind == "fhir":
+            # A payload declared FHIR is held to FHIR's shape. A document with
+            # no resourceType, or one whose resource is outside the supported
+            # set, is not "unknown JSON that happens to be safe": its fields
+            # mean something this pipeline was never taught, and an identifier
+            # in one of them would never be looked for. Withheld before any
+            # leaf exists, which is why this is checked here rather than after
+            # detection -- and why a caller cannot route around it by
+            # declaring FHIR and sending an untyped object, which would
+            # otherwise fall through to the JSON path and be sanitized.
+            try:
+                resources = inspect_fhir(content)
+            except ParserError:
+                # Not FHIR at all, despite being declared as such. The document
+                # itself is readable -- it simply is not the thing the caller
+                # said it was -- so this is an unsupported format rather than a
+                # parse failure, and a caller cannot reach the JSON path by
+                # misdeclaring an object as FHIR.
+                return _UNSUPPORTED_RESOURCE
+            if not resources or any(not res.supported for res in resources):
+                return _UNSUPPORTED_RESOURCE
         if isinstance(content, (dict, list)):
             # A decoded document is inspected here rather than at rebuild time.
             # A value the guard cannot read or address (a non-string key, a
             # value JSON cannot carry) is an admission failure, not a crash
-            # from inside the transformation: the three routes into this method
-            # must fail the same way.
+            # from inside the transformation: the routes into this method must
+            # fail the same way.
             try:
+                if kind == "fhir":
+                    return parse_fhir_payload(content)
                 return from_document(content)
             except ParserError:
                 return None
@@ -447,11 +523,15 @@ class Guard:
         env = _coerce_environment(environment)
 
         text = request_payload.content
-        if request_payload.kind in {"json", "csv"}:
+        if request_payload.kind in _STRUCTURED_KINDS:
             parsed = self._parse_structured(text, request_payload.kind)
             if parsed is None:
                 return EvaluationResult(
                     decision=self._decision_fail_closed(ReasonCode.PARSER_FAILURE), facts=()
+                )
+            if parsed is _UNSUPPORTED_RESOURCE:
+                return EvaluationResult(
+                    decision=self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT), facts=()
                 )
             _, spans = _flatten(parsed.leaves)
             facts = _detect_leaves(parsed.leaves, spans, self._detectors)
@@ -500,7 +580,7 @@ class Guard:
         env = _coerce_environment(environment)
         text = request_payload.content
 
-        if request_payload.kind in {"json", "csv"}:
+        if request_payload.kind in _STRUCTURED_KINDS:
             return self._sanitize_structured(
                 request_payload,
                 recipient_obj,
@@ -588,8 +668,12 @@ class Guard:
         cross-field quasi-identifiers do their damage.
         """
         parsed = self._parse_structured(payload.content, payload.kind)
-        if parsed is None:
-            decision = self._decision_fail_closed(ReasonCode.PARSER_FAILURE)
+        if parsed is None or parsed is _UNSUPPORTED_RESOURCE:
+            decision = self._decision_fail_closed(
+                ReasonCode.PARSER_FAILURE
+                if parsed is None
+                else ReasonCode.UNSUPPORTED_FORMAT
+            )
             self._maybe_audit(audit_dir, decision, (), recipient, purpose, None)
             return SanitizationResult(
                 decision_before=decision,

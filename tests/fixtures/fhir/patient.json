@@ -1,0 +1,31 @@
+{
+  "resourceType": "Patient",
+  "id": "syn-001",
+  "identifier": [
+    {
+      "system": "urn:synthetic",
+      "value": "MRN-9001"
+    }
+  ],
+  "name": [
+    {
+      "family": "张",
+      "given": [
+        "伟"
+      ]
+    }
+  ],
+  "telecom": [
+    {
+      "system": "phone",
+      "value": "13800000000"
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1990-03-07",
+  "address": [
+    {
+      "text": "北京市朝阳区建国路1号"
+    }
+  ]
+}

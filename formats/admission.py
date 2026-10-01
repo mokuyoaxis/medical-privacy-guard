@@ -38,7 +38,7 @@ __all__ = [
 UNSUPPORTED_SUFFIXES = frozenset(
     {
         ".jsonl", ".ndjson", ".tsv", ".xls", ".xlsx", ".xlsm",
-        ".ods", ".pdf", ".doc", ".docx", ".odt", ".rtf", ".fhir", ".xml",
+        ".ods", ".pdf", ".doc", ".docx", ".odt", ".rtf", ".xml",
         ".hl7", ".dcm", ".dicom", ".bin", ".zip", ".gz", ".png", ".jpg",
         ".jpeg", ".gif", ".tif", ".tiff", ".wav", ".mp3", ".mp4",
     }
@@ -77,8 +77,31 @@ def reject_if_binary(text: str) -> None:
         raise UnsupportedInput("unsupported binary or document format")
 
 
+def _declares_fhir(container: object) -> bool:
+    """True when a parsed JSON document declares a FHIR resource type.
+
+    A FHIR resource is JSON, and the traversal underneath is the shared JSON
+    one. What makes it FHIR is the declaration, so that is what is looked for
+    -- not a filename, which a caller controls, and not a guess at the fields.
+    A Bundle whose entries are all resources is recognised too, since that is
+    the shape a search returns.
+    """
+    if isinstance(container, dict):
+        return isinstance(container.get("resourceType"), str) and bool(
+            container["resourceType"]
+        )
+    if isinstance(container, list):
+        return bool(container) and all(
+            isinstance(item, dict)
+            and isinstance(item.get("resourceType"), str)
+            and item["resourceType"]
+            for item in container
+        )
+    return False
+
+
 def classify_text(text: str) -> str:
-    """Return ``"json"``, ``"text"`` or ``"unsupported"`` for *text*.
+    """Return ``"json"``, ``"fhir"``, ``"text"`` or ``"unsupported"`` for *text*.
 
     Something that looks like a container but does not parse as one is not
     quietly demoted to prose: a truncated or double-wrapped JSON file is a
@@ -102,7 +125,11 @@ def classify_text(text: str) -> str:
         if isinstance(value, (dict, list)) and stripped[end:].strip():
             return "unsupported"
         return "text"
-    return "json" if isinstance(container, (dict, list)) else "unsupported"
+    if not isinstance(container, (dict, list)):
+        return "unsupported"
+    if _declares_fhir(container):
+        return "fhir"
+    return "json"
 
 
 def payload_for_text(text: str, *, is_csv: bool = False) -> Payload:
@@ -116,6 +143,8 @@ def payload_for_text(text: str, *, is_csv: bool = False) -> Payload:
     kind = classify_text(text)
     if kind == "json":
         return Payload(kind="json", content=text)
+    if kind == "fhir":
+        return Payload(kind="fhir", content=text)
     if kind == "unsupported":
         return Payload(kind="unsupported", content="")
     return Payload(kind="text", content=text)

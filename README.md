@@ -227,7 +227,10 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   values, private tags marked HIGH) and leaves pixel risk UNKNOWN, so
   `safe_to_release` is false for every file. pydicom is an optional extra. The
   scanner never writes a DICOM file; write-back is deferred.
-- **v0.6 — FHIR minimal resource set**: not started.
+- **v0.6 — FHIR minimal resource set**: **Done** — `Patient`, `Observation`,
+  `DiagnosticReport`, `Condition`, `MedicationRequest`, `Encounter`,
+  `ImagingStudy` and `Bundle`; any other resource is withheld. A name split
+  across `Patient.name.family` / `.given` is completed before detection.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---
