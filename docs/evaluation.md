@@ -415,8 +415,10 @@ Two fixes followed (regression tests in `tests/test_blindspot_fixes.py`):
    ``父亲：张伟`` did not.
 2. **Independent recall guard** (`detectors/recall_guard.py`). The verifier
    re-runs the same detectors, so it cannot see first-pass misses. A second,
-   differently-anchored rule now covers the `姓名，性别` opener and references a
-   shared surname inventory.
+   differently-anchored rule now covers the `姓名，性别` opener, a bare name
+   before a complaint verb (`陈曦诉头晕`) and a bare name before a connective
+   at a clause boundary (`陈曦因胸痛入院`), all against a shared surname
+   inventory.
 
 The guard is deliberately bounded: only patterns measured at **zero
 false-positive on the whole corpus** were admitted, because a recall guard that
@@ -449,10 +451,13 @@ more synonyms. It is pinned by a test so it is not mistaken for a regression.
 Important limitations include:
 
 - **Names depend on markers and a surname inventory.** Labelled patient names,
-  title/suffix staff names, and the narrative ``姓名，性别`` opener
-  (``张伟，男，67岁``) are supported; arbitrary narrative names, uncommon
-  surnames, and names carried only by surrounding prose remain outside the
-  documented baseline.
+  title/suffix staff names, the ``姓名，性别`` opener (``张伟，男，67岁``), a bare
+  name before a complaint verb (``陈曦诉头晕``) and a bare name before a
+  connective at a clause boundary (``陈曦因胸痛入院``) are supported. A bare
+  name in ordinary prose, uncommon surnames, and names whose given characters
+  are outside the inventory remain outside the documented baseline. The
+  connective anchor also reads a clause-initial common word of the same shape
+  (``文明因交流``) as a person.
 - **Institution vocabulary is bounded.** Built-in department names do not cover
   every hospital's local unit names or abbreviations.
 - **Record identifiers depend on known labels.** Specimen/accession/bed numbers
@@ -490,9 +495,9 @@ survive both initial detection and verification.
 | Per-document verification/release and audit-integrity gates | Hardened acceptance contract; fault-injection validation required |
 | Marked or adjacent patient names (`患者：张三`, `患者张三`) | Implemented |
 | Grouped/full-width mobile numbers and valid non-padded dates | Implemented; independent challenge results not asserted here |
-| Unlabelled narrative names and uncommon surnames | Partly covered: the `姓名，性别` opener is detected by the recall guard; other narrative forms remain outside the baseline |
+| Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb and a clause-boundary connective; a bare name in ordinary prose is still missed |
 | Department mentions outside labelled/movement context | Not detected by design |
-| Local institution dictionaries | Planned |
+| Local institution dictionaries | Implemented (`v0.2.5`): local CSV/JSON vocabulary, detected and used as an independent verification signal |
 | Dataset-level quasi-identifier combination risk | Planned |
 | Real-world clinical text | Not measured |
 

@@ -22,7 +22,9 @@ when they disagree, this file wins and the other two are updated.
   as values;
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
   ID candidates (GB 11643-1999 check digit), email, social-media handles,
-  exact dates, labelled patient names, narrative ``姓名，性别`` openers,
+  exact dates, labelled patient names, narrative names anchored on a gender
+  marker (``张伟，男，67岁``), a complaint verb (``陈曦诉头晕``) or a connective
+  at a clause boundary (``陈曦因胸痛入院``),
   staff names (title, suffix, signature or assistant form), relatives named in
   the history (including a kinship term repeated after a label), medical
   record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
@@ -124,8 +126,12 @@ The corpus also cannot see forms its templates never produce: every document
 carries a medical-content label and writes names after an explicit field label,
 so a narrative opener (``张伟，男，67岁``) was invisible to every gate until an
 independent probe found it reaching release with the name intact. The
-`姓名，性别` opener is now covered; other narrative forms remain outside the
-baseline. See [evaluation.md](evaluation.md).
+`姓名，性别` opener, a bare name before a complaint verb (``陈曦诉头晕``) and a
+bare name before a connective at a clause boundary (``陈曦因胸痛入院``) are now
+covered. A bare name in ordinary prose is still not detected, and a
+clause-initial common word shaped like a surname plus a given-name character
+(``文明因交流``) is read as a person; the connective anchor cannot tell the two
+apart without semantic knowledge. See [evaluation.md](evaluation.md).
 
 The challenge corpus under `tests/fixtures/challenge/` holds independent probes
 for these forms. Its `regression/` half runs in CI; its `exploratory/` half
@@ -167,7 +173,7 @@ whether the value is attributed to *this patient*:
 These are measured, not assumed: the benchmark's 35 identifier-free documents
 contain them, and a detector firing on one of them fails the precision gate.
 
-## DICOM scanner boundary (v0.5)
+## DICOM scanner boundary
 
 `dicom-inspect` reads a DICOM file and reports identifying metadata; it never
 writes. The report separates metadata findings, private tags and pixel risk:
@@ -195,12 +201,11 @@ is a parser error, not a degraded scan.
 No parsers or sanitization support exist for:
 
 - XLSX (deferred: CSV covers the need), TSV (needs a delimiter choice)
-- FHIR (planned v0.5)
-- DICOM write-back / de-identification (the v0.5 scanner reads and reports only)
 - PDF / DOCX
+- DICOM write-back / de-identification (the scanner reads and reports only)
 - arbitrary binary files
 - multimodal content (images / audio / video)
-- streaming request inspection (planned v0.4 with explicit semantics)
+- streaming request inspection
 
 The MCP gateway's boundaries are narrower than "traffic through it is
 inspected", and the gap is worth naming precisely:

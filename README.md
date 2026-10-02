@@ -8,7 +8,7 @@
 
 ## What is this?
 
-`medical-privacy-guard` is a lightweight, embeddable, fail-closed policy layer that sits between your medical data pipeline and external AI systems (LLMs, MCP tools, HTTP APIs). It detects sensitive identifiers, evaluates disclosure risk, transforms payloads when possible, verifies the result, and produces an auditable decision—**before** the data leaves your environment.
+`medical-privacy-guard` is a lightweight, embeddable, fail-closed policy layer that sits between your medical data pipeline and external AI systems (LLMs, MCP tools, HTTP APIs). It detects sensitive identifiers, evaluates disclosure risk, transforms payloads where it can, verifies the result, and produces an auditable decision before the data leaves your environment.
 
 The concept for this project grew partly out of the earlier
 [`agent-guard`](https://github.com/mokuyoaxis/agent-guard) project. They are
@@ -25,7 +25,7 @@ an audit trail.
 
 ---
 
-## Quickstart (Text MVP)
+## Quickstart
 
 ```bash
 python -m pip install -e ".[test]"
@@ -70,91 +70,84 @@ has a deterministic operation; only the verified output may be released.
 
 ### Implemented
 
-- UTF-8 plain text;
-- deterministic detection of CN mobile numbers and landlines, email,
-  social-media handles, CN ID candidates, exact dates, labelled patient names,
-  narrative ``姓名，性别`` openers,
-  staff names (title, suffix, signature or assistant form), relatives named in
-  the history (including a kinship term repeated after a label), medical
-  record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses,
-  labelled precise addresses (including 户籍地 / 工作单位), label-anchored
-  postal codes, institution names (including after function words), department
-  names, ward designations, bed numbers (suffix and labelled forms), ages in
-  years, months and Chinese numerals, clinical-context sex (adjacent or
-  comma-separated), addresses with a residence verb and no field label, and a
-  baseline medical-content signal covering encounter/action terms;
-- mobile-number variants with 3-4-4 grouping and ASCII/full-width digits;
-  real calendar dates in 1900–2099, including non-zero-padded YMD/MDY forms and
-  fully Chinese-numeral dates, retaining original source spans
-  (see [scope](docs/scope.md));
-- an optional local institution vocabulary (`.csv` / `.json`), supplying
-  institution, department, ward and staff terms that are detected alongside the
-  rules and give verification a signal independent of them;
-- REMOVE, MASK, TOKENIZE, GENERALIZE (dates to month, ages to bands,
-  location/institution/department/ward to type markers) and DATE_SHIFT;
-- JSON objects/arrays and CSV files, flattened to string leaves, sanitized and
-  rebuilt with their structure intact (a key or column name acts as a field
-  label for its value). JSON numbers are inspected but never rewritten — writing
-  a string over a number would change its type — so a number that matches an
-  identifier withholds the record instead of being released untouched;
-- metadata-only JSONL audit when configured, with each event chained by hash so
-  a deleted, reordered or edited record is detectable, and an `audit-verify`
-  command to check it;
-- OpenAI-compatible and Anthropic client wrappers (`adapters.openai_compat`,
-  `adapters.anthropic_compat`)
-- an MCP stdio gateway (`medical-privacy-guard mcp-gateway -- <server command>`):
-  a transparent proxy in front of an MCP server. `tools/call` is forwarded,
-  rewritten or refused according to the verdict — a sanitization rewrites
-  `params.arguments` before forwarding, and a refusal returns a JSON-RPC error
-  without reaching the server. Everything else, including a modern client's
-  `server/discover` probe, is forwarded byte for byte. See
-  [scope](docs/scope.md) for what it deliberately does not cover;
-- an evaluation harness (`benchmark`) over a synthetic corpus of 175 Chinese
-  clinical notes — 140 with labelled identifiers (1474 spans, 24 types) and 35
-  identifier-free documents. The declared outcomes are **135 SANITIZE, 5 ASK,
-  and 35 ALLOW**, not 140 sanitized releases. False positives are measured on
-  both labelled and identifier-free notes. The hardened benchmark contract adds
-  per-document lifecycle checks, verification-failure and missing/corrupt-audit
-  gates, and strict one-to-one exact-span detection metrics; historical overlap
-  scores are not evidence that those stronger checks passed.
-  See [docs/evaluation.md](docs/evaluation.md) for the baseline and validation status.
+**Detection.** Deterministic rules over Chinese clinical text: CN mobile and
+landline numbers, email, social-media handles, CN resident ID candidates
+(GB 11643-1999 check digit), exact dates, HTTP(S) URLs, IPv4 addresses, labelled
+patient names, staff and relative names, medical record / specimen / accession
+numbers, labelled addresses and postal codes, institution / department / ward
+names, bed numbers, ages in years, months and Chinese numerals,
+clinical-context sex, and a baseline medical-content signal.
 
-A separate hand-written corpus under `tests/fixtures/simulation/` measures
-**generalisation** rather than template agreement:
-`python tools/evaluate_simulation.py`. It is deliberately not tuned to the
-detectors and is not a build gate — it exists to show which real note shapes the
-baseline misses.
+Narrative names are covered in three shapes that carry no field label:
 
-Plain text, JSON objects/arrays and CSV files are supported. Other explicitly
-typed non-text API payloads return BLOCK. Admission checks reject known
-unsupported extensions, NUL and other unsupported control characters, and
-containers that do not parse; they do not reliably identify every disguised
-format. One rule serves every entry point (`formats/admission.py`) — the CLI, the
-adapters and the guard's own string entry — so a document cannot be plain text to
-one of them and structured to another. A `str` is classified rather than trusted:
-`{"name": "张三"}` is a JSON document whether it arrives as text or as a decoded
-mapping, and scanning it as prose would release the name. `Payload(kind="text")`
-skips classification but not normalisation, and characters that render as
-nothing are removed before anything is read.
-Medical-content classification is a rule baseline, not full medical NER or
-proof of anonymity.
+| Shape | Example | Anchor |
+|---|---|---|
+| gender opener | `张伟，男，67岁` | `男` / `女` |
+| complaint verb | `陈曦诉头晕`, `潘婷主诉腹痛` | `诉` / `主诉` / `自诉` / `自述` |
+| connective at a clause boundary | `陈曦因胸痛入院`, `汪洋由急诊科转入` | `因` / `由` / `以` |
 
-Medical content without a direct identifier is still sensitive. Under the
-strict profile it may remain local/internal, but disclosure to an
-`EXTERNAL_UNKNOWN` recipient returns `ASK`; callers must not treat a declared
-purpose as consent. Use `EXTERNAL_APPROVED` only for endpoints approved by the
-deploying organization.
+A bare name in ordinary prose is still not detected, and a clause-initial
+common word shaped like a surname plus a given-name character (`文明因…`) is
+read as a person. Both boundaries are recorded in [docs/scope.md](docs/scope.md).
+
+**Transformation.** REMOVE, MASK, TOKENIZE, GENERALIZE (dates to month, ages to
+bands, location / institution / department / ward to type markers) and
+DATE_SHIFT. Every SANITIZE is verified before release; a failed verification
+withholds the payload.
+
+**Structured input.** JSON objects/arrays, CSV files and a minimal FHIR resource
+set are flattened to string leaves, sanitized and rebuilt with their structure
+intact. A key or column name labels its value. JSON numbers are inspected but
+never rewritten, because writing a string over a number would change its type,
+so a number that matches an identifier withholds the record. A FHIR resource outside
+the supported set is withheld.
+
+**Egress adapters.** OpenAI-compatible and Anthropic client wrappers, and an MCP
+stdio gateway. In the gateway, `tools/call` is forwarded, rewritten or refused
+according to the verdict; everything else, including `server/discover`, is
+forwarded byte for byte. Responses are not inspected, and neither adapter covers
+every egress path; see [docs/scope.md](docs/scope.md).
+
+**Audit.** Metadata-only JSONL when configured, chained by hash so a deleted,
+reordered or edited record is detectable, with an optional HMAC key and an
+`audit-verify` command. Tail truncation and keyless whole-chain rewriting are
+not detectable.
+
+**Evaluation.** A synthetic corpus of 175 Chinese clinical notes (140 with 1474
+labelled spans across 24 types, 35 identifier-free) and a strict one-to-one
+benchmark with per-document lifecycle and audit gates. Declared outcomes are
+135 SANITIZE, 5 ASK and 35 ALLOW. A separate hand-written corpus under
+`tests/fixtures/simulation/` measures generalisation rather than template
+agreement (`python tools/evaluate_simulation.py`); it is deliberately not tuned
+to the detectors and is not a build gate.
+
+**Admission.** Plain text, JSON, CSV and FHIR are supported; other explicitly
+typed non-text payloads return BLOCK. Admission rejects known unsupported
+extensions, NUL and other unsupported control characters, and containers that do
+not parse, but it does not identify every disguised format. One rule
+(`formats/admission.py`) serves the CLI, the adapters and the guard's own string
+entry, so a document cannot be plain text to one of them and structured to
+another. A `str` is classified rather than trusted: `{"name": "张三"}` is a JSON
+document whether it arrives as text or as a decoded mapping, and scanning it as
+prose would release the name. `Payload(kind="text")` skips classification but
+not normalisation. Medical-content classification is a rule baseline, not
+medical NER and not proof of anonymity.
+
+Medical content without a direct identifier is still sensitive. Under the strict
+profile it may remain local/internal, but disclosure to an `EXTERNAL_UNKNOWN`
+recipient returns `ASK`; a declared purpose is not consent. Use
+`EXTERNAL_APPROVED` only for endpoints approved by the deploying organization.
 
 ### Not implemented yet
 
-- XLSX (CSV covers the same need)
-- TSV (needs a delimiter choice)
-- FHIR
-- DICOM
+- XLSX and TSV (CSV covers the same need)
 - PDF / DOCX
+- DICOM write-back and pixel-risk checking (the shipped scanner is read-only)
 - HTTP egress proxy
-- LLM SDK wrappers
-- Dataset-level re-identification risk metrics
+- ASK approval grants (scoped, expiring, one-time)
+- dataset-level re-identification and quasi-identifier combination metrics
+- multimodal content (images, audio, video)
+- `resources/read` and `prompts/get` inspection in the MCP gateway
 
 ### Never claim
 
@@ -174,14 +167,23 @@ requests, fixtures, or CI artifacts. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Honest Guarantees
 
-This project is **engineering infrastructure**, not legal or compliance certification.
+This project is engineering infrastructure. It is not legal advice and not a
+compliance certification.
 
-1. **Not legal advice or HIPAA/GDPR certification.** This tool helps reduce accidental disclosure risk; it does not replace legal review, institutional policy, or formal compliance audits.
-2. **Does not guarantee complete anonymization.** De-identification is risk reduction, not risk elimination. Residual quasi-identifiers may still allow re-identification under specific conditions.
-3. **Does not prevent malicious bypass by same-privilege actors.** A process that already has direct access to raw PHI can skip this guard. The tool protects against *accidental* or *unintentional* disclosure by agents and pipelines, not against intentional insider attacks.
-4. **Fail-closed for recognized failures.** Unsupported declared types, failed verification and configured audit failures withhold release; some CLI errors return a nonzero error exit rather than a policy verdict. Undetected identifiers can still pass. No detected facts is not proof of safety, and reusing the same detectors during verification does not eliminate shared blind spots.
-
----
+1. **No compliance certification.** It does not certify HIPAA, GDPR, PIPL or
+   any institutional policy, and does not replace legal review or a formal
+   audit.
+2. **No complete anonymization.** De-identification reduces risk; it does not
+   remove it. Residual quasi-identifiers can still allow re-identification in
+   some settings.
+3. **No protection against a same-privilege bypass.** A process that can already
+   read raw PHI can skip this guard. It protects against accidental disclosure
+   by agents and pipelines, not against an intentional insider.
+4. **Fail closed only for recognized failures.** Unsupported declared types,
+   failed verification and configured audit failures withhold release. A missed
+   identifier is not a recognized failure: no detected facts is not proof of
+   safety, and re-scanning with the same detectors does not remove their shared
+   blind spots.
 
 ## Status
 
@@ -211,26 +213,18 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   (`v0.3.1`); XLSX deferred (CSV covers the need).
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
-- **v0.4 — LLM SDK wrapper + MCP gateway**: **Delivered** — OpenAI-compatible and Anthropic wrappers, MCP stdio gateway. Point an
-  MCP client at `medical-privacy-guard mcp-gateway --recipient <trust> -- <your
-  server command>` and the guard sits between the client and the server: a tool
-  call whose arguments it refuses never reaches the server, and one it can
-  sanitize is rewritten before forwarding. The `adapters/` package carries both
-  halves of the contract (`payload_for`, `evaluate_call`, `sanitize_call` in;
-  `release_or_raise` out) plus the caller-facing exception family
-  (`DisclosureBlocked`, `HumanApprovalRequired`, `VerificationFailed`). The
-  vendor SDK wrappers (OpenAI-compatible, Anthropic) are **done**: every egress
-  field is evaluated before the SDK call goes out. Responses are not inspected
-  — see [scope](docs/scope.md) for the boundaries.
-- **v0.5 — DICOM metadata scanner**: **In progress** — read-only `dicom-inspect`
-  reports identifying metadata (known-PHI tags, detector matches over free-text
-  values, private tags marked HIGH) and leaves pixel risk UNKNOWN, so
-  `safe_to_release` is false for every file. pydicom is an optional extra. The
-  scanner never writes a DICOM file; write-back is deferred.
-- **v0.6 — FHIR minimal resource set**: **Done** — `Patient`, `Observation`,
-  `DiagnosticReport`, `Condition`, `MedicationRequest`, `Encounter`,
-  `ImagingStudy` and `Bundle`; any other resource is withheld. A name split
-  across `Patient.name.family` / `.given` is completed before detection.
+- **v0.4 — Structured formats + egress adapters**: **delivered in the working
+  tree, untagged**. Adds OpenAI-compatible and Anthropic client wrappers, an MCP
+  stdio gateway, a minimal FHIR resource set and a read-only DICOM scanner
+  (`dicom-inspect`). The work planned as separate v0.5/v0.6 releases is folded
+  here: three version numbers in a week were not earned by the release process.
+  DICOM is experimental — it reports identifying metadata, leaves pixel risk
+  UNKNOWN (so `safe_to_release` is false for every file) and never writes a
+  file. Responses are not inspected; see [scope](docs/scope.md) for the
+  boundaries.
+- **v0.5 — Approval and dataset risk**: planned. ASK approval grants (scoped,
+  expiring, one-time), a file-scoped token map and dataset-level
+  quasi-identifier combination risk.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---

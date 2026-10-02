@@ -20,10 +20,16 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
-| v0.4 | LLM SDK wrapper + MCP gateway | Released |
-| v0.5 | DICOM metadata scanner | **In progress** (read-only `dicom-inspect`; pydicom as an optional extra) |
-| v0.6 | FHIR minimal resource set | **Done** (moved ahead of DICOM: structured-leaf work in v0.3.4 made FHIR cheaper than expected) |
+| v0.4 | Structured formats + egress adapters | **Delivered in the working tree, untagged**; DICOM is read-only and experimental |
+| v0.5 | ASK approval grants + dataset risk | Planned |
 | v1.0 | Medical AI egress privacy gateway | Target |
+
+The newest tag is `v0.3.4`. The work that was planned as separate v0.5 (DICOM)
+and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
+Three version numbers in six days were not earned by the release process, and a
+read-only scanner that cannot clear pixel risk does not deserve its own minor
+version. `pyproject.toml` and `__version__` still read `0.3.4`; release
+engineering is the next step, not a claim that v0.4 has shipped.
 
 ## Non-goals
 
@@ -214,100 +220,85 @@ tested, because the file-scoped token map it would rely on is not implemented.
 
 ---
 
-## v0.4 — LLM SDK wrapper + MCP gateway (released)
+## v0.4 — Structured formats + egress adapters
 
-**Goal**: put the guard inside real AI call chains.
+**Goal**: carry the guard beyond plain text, into structured medical formats and
+the real call chains that send them.
 
-**Scope**:
+**Status**: implemented and tested in the working tree, not released. The work
+previously planned as separate v0.5 (DICOM) and v0.6 (FHIR) releases is included
+here. See the status note above for why the numbers were collapsed.
 
-- OpenAI-compatible and Anthropic wrappers (`adapters/`): message
-  content, tool arguments, file upload names, and metadata all pass through
-  the guard;
+### Delivered
+
+- OpenAI-compatible and Anthropic wrappers (`adapters/`): message content, tool
+  arguments, tool descriptions and metadata pass through the guard before the
+  SDK call goes out;
+- MCP stdio gateway: `tools/call` is forwarded, rewritten or refused; every
+  other method, including `server/discover`, is forwarded byte for byte;
 - `DisclosureBlocked` / `HumanApprovalRequired` / `VerificationFailed`
   exceptions with documented caller behavior;
-- ASK result schema with one-time, expiring grants; no permanent blanket
-  allows for high-risk content;
-- MCP gateway MVP: stdio transport only; tool arguments become
-  DisclosureRequest; high-risk tools (file_upload, email_send,
-  cloud_storage_upload) default to ASK/BLOCK;
-- multimodal content fails closed in this version.
+- FHIR minimal resource set: `Patient`, `Observation`, `DiagnosticReport`,
+  `Condition`, `MedicationRequest`, `Encounter`, `ImagingStudy` and `Bundle`.
+  A name split across `Patient.name.family` / `.given` is completed before
+  detection; any other resource is withheld (BLOCK);
+- read-only DICOM scanner (`dicom-inspect`, optional `dicom` extra): known-PHI
+  tags, detector matches over free-text values, private tags counted and marked
+  HIGH, pixel risk UNKNOWN so `safe_to_release` is false for every file. The
+  scanner never writes a DICOM file;
+- multimodal content fails closed.
 
-**Acceptance criteria**:
+### Deferred from the original v0.4 scope
 
-- raw PHI never reaches an external LLM request without a Guard decision;
+- **ASK approval grants** (scoped to a request, expiring, one-time). The
+  `HumanApprovalRequired` exception states that a scoped grant is required, not
+  how one is obtained; the current ASK result withholds content and nothing
+  more. This is the first item of v0.5.
+- **Tool-name risk classes** (`file_upload`, `email_send`,
+  `cloud_storage_upload`). The gateway evaluates the arguments of a call, not
+  the tool's name. A caller can add the classification without a protocol
+  change, so it is not a blocker for this release.
+
+### Acceptance criteria
+
+- raw PHI never reaches an external LLM request or MCP tool without a Guard
+  decision;
 - SANITIZE results are verified before send; BLOCK has no fallback;
 - wrapper behavior matches Guard API semantics;
+- DICOM metadata PHI is detected, including Chinese values under ISO_IR 192;
+  private tags are reported HIGH; `safe_to_release` is false while pixel risk is
+  UNKNOWN; the scanner never writes a file;
+- FHIR reports are path-level, the JSON structure is intact, unsupported
+  resources are withheld, and no raw field value enters the audit;
 - examples use environment variables for credentials, never literals.
 
-**Test requirements**: wrapper unit tests against a stubbed transport; MCP
-gateway integration test with a stub MCP server.
-
-**Docs**: scope.md; threat-model.md update for the new trust boundaries;
-README status flip.
-
----
-
-## v0.5 — DICOM metadata scanner
-
-**Goal**: enter medical imaging privacy with an explicit, conservative
-boundary.
-
-**Scope**:
-
-- `dicom-inspect` CLI producing a JSON report: one row per PHI-bearing
-  metadata element (tag, name, category, risk), private-tag count and risk,
-  transfer syntax and character set, pixel risk status;
-- metadata PHI detection (PatientName, PatientID, PatientBirthDate,
-  AccessionNumber, StudyDate / SeriesDate, InstitutionName, referring
-  physician / operator names), reusing the guard's existing detectors over
-  decoded element values where a value is free text;
-- **private tags are reported, not removed** — the report names their count
-  and marks `private_tags_risk: HIGH`; removal implies writing a new file,
-  which this version does not do;
-- **no write-back**: the scanner reads and reports only. De-identification
-  (and the DATE_SHIFT it would need) is deferred until a real write-back
-  requirement exists, because writing a valid DICOM file means rewriting
-  group lengths, the MediaStorage/SOP Instance UIDs and every Sequence's
-  delimiters — a scope the read-only boundary deliberately excludes;
-- explicit pixel-risk status: `pixel_annotation_risk` and
-  `recognizable_visual_features_risk` are UNKNOWN unless an implemented check
-  exists; `safe_to_release = false` while UNKNOWN;
-- pydicom is an **optional dependency** (`[project.optional-dependencies]
-  dicom = ["pydicom>=3.0"]`): pure Python, no transitive dependencies. The
-  core package stays dependency-light (pyyaml only), and the CLI reports a
-  missing-extras error (fail closed) instead of guessing at byte streams.
-
-**Acceptance criteria**:
-
-- metadata PHI detected, including Chinese values under GB18030 /
-  ISO_IR 192 `SpecificCharacterSet`;
-- private tags reported high-risk by default;
-- `safe_to_release = false` when pixel risk is UNKNOWN;
-- reports clearly separate metadata risk from pixel risk;
-- the scanner never writes a DICOM file.
+**Test requirements**: wrapper unit tests against a stubbed transport; an MCP
+gateway integration test with a stub MCP server; DICOM fixtures under pydicom;
+FHIR synthetic fixtures. All are in place.
 
 **Docs**: scope.md; threat-model.md; README status flip.
 
 ---
 
-## v0.6 — FHIR minimal
+## v0.5 — Approval and dataset risk
 
-**Goal**: minimal usable FHIR support without promising full
-de-identification.
+**Goal**: close the two gaps that make the ASK path a dead end and the dataset
+story unmeasured.
 
 **Scope**:
 
-- Patient, Observation, DiagnosticReport, Condition, MedicationRequest,
-  Encounter, ImagingStudy, Bundle;
-- path-level transformation plans; JSON structure preserved;
-- unsupported resources fail closed (ASK/BLOCK);
-- FHIR synthetic fixtures; FHIR-specific audit events (resource type + path,
-  never raw values).
+- ASK approval grants: scoped to a request, expiring, one-time; no permanent
+  blanket allow for high-risk content;
+- a file-scoped token map, so the same person receives one token across rows and
+  files instead of one per sanitization call;
+- dataset-level quasi-identifier combination risk.
 
-**Acceptance criteria**: path-level reports; JSON structure intact; no raw
-field values in audit; unsupported resources default to ASK/BLOCK.
+**Acceptance criteria** (to be refined before implementation): a grant cannot
+be replayed, does not outlive its scope, and cannot be issued by the payload it
+authorizes; a token is stable across a declared dataset; combination risk is
+reported per dataset, not per document.
 
-**Docs**: scope.md; README status flip.
+**Docs**: scope.md; threat-model.md; README status flip.
 
 ---
 

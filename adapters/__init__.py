@@ -2,9 +2,8 @@
 
 A vendor module has two jobs and no others: turn the call into a payload with
 :mod:`adapters.ingress`, and act on the decision with :mod:`adapters.egress`.
-:mod:`adapters.mcp_gateway` is the first working transport — a stdio proxy that
-sits between an MCP client and an MCP server. The vendor SDK wrappers
-(OpenAI-compatible, Anthropic) are not started.
+Three transports ship: the MCP stdio gateway and the OpenAI-compatible and
+Anthropic client wrappers. All three call the same ingress/egress pair.
 
 An adapter must not contain privacy rules. It translates and enforces the core
 result; it does not decide, widen or re-derive it.

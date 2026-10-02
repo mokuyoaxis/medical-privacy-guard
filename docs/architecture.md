@@ -8,9 +8,10 @@
 
 ## High-level pipeline
 
-The implemented path accepts plain text, JSON and CSV. XLSX, FHIR and DICOM
-parsers, the vendor SDK / MCP adapters and dataset-level re-identification
-analysis are future work.
+The implemented path accepts plain text, JSON, CSV and a minimal FHIR resource
+set. The MCP stdio gateway and the OpenAI-compatible and Anthropic wrappers
+ship; XLSX, DICOM write-back and dataset-level re-identification analysis are
+future work.
 
 ```text
 Plain text (caller-declared in API; admission checks in CLI)
@@ -56,11 +57,12 @@ hardening contract, not proof of complete anonymization. See
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
 | `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
-| `formats/` | Flatten a JSON or CSV payload into string leaves and rebuild it | `StructuredPayload` |
+| `formats/` | Flatten a JSON, CSV or FHIR payload into string leaves and rebuild it | `StructuredPayload` |
+| `formats/dicom_inspect.py` | Read DICOM metadata and report identifiers; never writes | `DicomReport` |
 | `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
-| `formats/` (pending) | Parse XLSX / FHIR / DICOM | format-specific representation |
 | `adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
 | `adapters/mcp_gateway.py` | Proxy a stdio MCP session, holding back `tools/call` the guard refuses | rewritten / refused JSON-RPC |
+| `adapters/openai_compat.py`, `adapters/anthropic_compat.py` | Evaluate every egress field of a vendor SDK call before it is sent | rewritten kwargs / raised verdict |
 
 ## Component boundaries
 
@@ -82,7 +84,7 @@ hardening contract, not proof of complete anonymization. See
   DATE_SHIFT needs the expected offset and interval consistency. An unchanged
   exact date is not exempt merely because its planned action is DATE_SHIFT or
   GENERALIZE. Context-only signals may remain only as permitted by policy.
-- **Future adapters do not contain privacy rules.** Their role is to translate
+- **Adapters do not contain privacy rules.** Their role is to translate
   external calls and enforce the core result, not to redefine policy.
 
 ## Trust boundary
@@ -109,9 +111,9 @@ hardening contract, not proof of complete anonymization. See
 ```
 
 Deployment objective: **route medical payloads through the Guard before
-external disclosure**. The diagram includes future integrations, not current
-FHIR/DICOM support or enforced network interception. The current library cannot
-prevent a caller from sending raw content directly.
+external disclosure**. The diagram shows the intended boundary, not network
+enforcement: the library cannot prevent a caller from sending raw content
+directly, and DICOM support is read-only inspection, not de-identification.
 
 ## Current security contract and hardening requirements
 
@@ -140,18 +142,25 @@ The hardening requirements above need code and fault-injection validation;
 historical corpus scores do not establish them. No-facts ALLOW and detector
 blind spots remain possible despite fail-closed handling of recognized errors.
 
-## Future integration requirements (not current enforced invariants)
+## Integration invariants
 
-- SDK/MCP adapters must call Guard before sending and must not reimplement policy.
+These hold for the shipped adapters and for anything built on top of them:
+
+- An adapter calls Guard before sending and does not reimplement policy.
 - Callers may supply their own detectors through ``Guard(detectors=...)``,
   including model-backed ones. They may only extend recall: they must return
   ``DetectedFact`` and must not decide verdicts, skip verification, or write
   audit records. The built-in rule set stays the default and the only path that
   requires no optional dependencies.
-- A deployment-controlled approval service must scope and expire ASK grants;
-  the current ASK result withholds content but does not implement such grants.
-- Future DICOM support must distinguish metadata cleaning from pixel risk.
-- A real egress boundary needs network/credential restrictions outside this library.
+- A real egress boundary still needs network and credential restrictions outside
+  this library.
+
+Not yet implemented:
+
+- A deployment-controlled approval service must scope and expire ASK grants. The
+  current ASK result withholds content but does not implement such grants.
+- DICOM write-back must keep metadata cleaning and pixel risk separate. The
+  read-only scanner already reports them separately; it does not write.
 
 ## Relationship to agent-guard
 
@@ -225,8 +234,8 @@ medical-privacy-guard/
 ├── cli/
 │   ├── __init__.py
 │   └── main.py
-├── formats/                   # admission + csv / json; xlsx / fhir / dicom pending
-├── adapters/                  # mcp_gateway works; SDK wrappers pending
+├── formats/                   # admission + json / csv / fhir; dicom_inspect (read-only)
+├── adapters/                  # mcp_gateway + openai_compat + anthropic_compat
 ├── tools/
 │   └── generate_synthetic_cn_notes.py
 ├── skills/
@@ -239,20 +248,22 @@ medical-privacy-guard/
     └── test_*.py
 ```
 
-## Current implemented scope (v0.1/v0.2 text baseline)
+## Current implemented scope
 
 - plain-text input through the Python API and UTF-8 CLI;
-- deterministic Chinese clinical identifier and context detectors;
+- deterministic Chinese clinical identifier and context detectors, including
+  narrative names anchored on a gender marker, a complaint verb or a connective;
 - policy-driven transformations followed by mandatory verification;
 - metadata-only JSONL audit before release when configured;
-- explicit non-text payloads BLOCK; CLI format admission has the bounded checks
+- JSON, CSV and a minimal FHIR resource set, plus a read-only DICOM scanner;
+- MCP stdio gateway and OpenAI-compatible / Anthropic client wrappers;
+- explicit non-text payloads BLOCK; format admission has the bounded checks
   described in [scope.md](scope.md), not universal format identification;
-- a synthetic evaluation corpus and benchmark, with historical results separate
-  from the stronger remediation contract in [evaluation.md](evaluation.md).
+- a synthetic evaluation corpus and benchmark with strict per-document gates,
+  plus a hand-written generalisation corpus that is not a build gate.
 
-v0.2.0 is released; v0.2.1 is a correctness fix to name-span completeness.
-FHIR, DICOM, MCP and provider egress adapters remain roadmap items. The library offers a guarded application path,
-not a network-level enforcement boundary or an anonymity guarantee.
+The library offers a guarded application path, not a network-level enforcement
+boundary or an anonymity guarantee.
 
 ## Authoritative scope
 

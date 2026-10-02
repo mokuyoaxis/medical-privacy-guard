@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Narrative names anchored on a complaint verb or a connective**
+  (``detectors/recall_guard.py``). The recall guard covered only the
+  ``姓名，性别`` opener, so a progress note that named the patient in a sentence —
+  ``今日查房，陈曦诉头晕`` / ``上午9时，潘婷主诉腹痛`` — matched nothing, reached
+  ALLOW and was released with the name intact under an approved recipient. Two
+  more anchors are now recognised: a complaint verb
+  (``诉``/``主诉``/``自诉``/``自述``) and a connective (``因``/``由``/``以``). The
+  connective is the weaker anchor, so the name must also sit at a clause
+  boundary; the complaint-verb form requires the given name to come from the
+  name-character inventory. Both constraints are measured at zero false
+  positives on the 175-document benchmark and on the hand-written simulation
+  corpus, which now reports no missed values. ``以`` joined
+  ``NAME_FOLLOW_BOUNDARY`` so verification accepts the new connective. Covered
+  by ``tests/test_narrative_verbs.py`` and four new challenge probes
+  (``narrative_025``–``narrative_028``).
+
 - **FHIR minimal resource set** (``formats.fhir``, ``Payload(kind="fhir")``,
   ``.fhir`` / ``.json`` files declaring a ``resourceType``): ``Patient``,
   ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
@@ -59,6 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **``UNSUPPORTED_RESOURCE_VERDICT`` was dead code that contradicted the
+  docs.** ``formats/fhir.py`` exported a constant saying an unsupported FHIR
+  resource should return ASK, but nothing read it. The guard has always mapped
+  an unsupported resource to ``UNSUPPORTED_FORMAT`` and BLOCK, which is what
+  ``docs/scope.md`` says; the constant is removed and the module docstring now
+  states the real verdict. An unreachable duplicate ``return`` in
+  ``parse_fhir_payload`` was removed in the same pass.
+
 - **An academic or administrative rank after a labelled name switched the name
   off entirely.** ``NAME_FOLLOW_BOUNDARY`` lists the words that may follow a
   captured name; it named the clinical titles (``医生``, ``医师``, ``大夫``,
@@ -79,6 +103,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The version numbers were collapsed before anything was pushed.** The work
+  planned as separate v0.5 (DICOM) and v0.6 (FHIR) releases was written in the
+  same week as v0.4, so it is folded into a single v0.4 release and the
+  v0.5/v0.6 numbers are retired. Three version numbers in six days were not
+  earned by the release process, and a read-only scanner that cannot clear pixel
+  risk does not deserve its own minor version. The ROADMAP, both READMEs and the
+  FHIR/DICOM docstrings now say v0.4; the next version after 0.4.0 is v0.5 (ASK
+  grants + dataset risk). No tag was created by this change.
+
+- ``formats/leaf.py`` declared ``birthdate`` twice: once in the general label
+  table and once in the FHIR element block, so the FHIR entry silently
+  overrode the general one. The duplicate is removed. A mis-sorted import
+  block in ``tests/test_dicom_inspect.py`` was fixed in the same pass. Both
+  were found by ``ruff`` during the review that closed this batch.
+
 - ``tools/audit_contracts.py`` no longer scans non-project directories, so a
   checkout carrying a virtualenv or a build tree cannot fail the drift check
   on a vendored dependency's own ``classify``.
@@ -87,8 +126,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where ``os.link`` does not exist (Android/Termux), instead of erroring with
   ``AttributeError``. The same, relative and symlink aliases still run, and a
   platform without ``os.link`` has no hard links to alias.
-
-### Fixed
 
 - **Fifteen of the DICOM scanner's 38 known-PHI tags named the wrong
   element.** The category is what an operator reads in the report, so these
@@ -103,12 +140,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``tests/test_dicom_inspect.py`` asserts every one against pydicom's own
   dictionary so the table cannot drift again.
 - **SeriesDate was missing from the scanner entirely**, though ROADMAP names
-  it in the v0.5 acceptance criteria: a file whose only date was
+  it in the DICOM scanner's acceptance criteria: a file whose only date was
   ``0008,0021`` reported no date finding. Added, with the other encounter
   date/time elements (``SeriesTime``, ``ContentTime``, ``AcquisitionTime``,
   ``InstanceCreation*``, ``PatientBirthTime``).
 
 ### Documentation
+
+- **Large documentation revision.** The README, Chinese README, architecture,
+  scope, evaluation and skill docs still described the project as a text-only
+  v0.1/v0.2 library: the English and Chinese "not implemented" lists named
+  CSV, JSON, FHIR, DICOM, the MCP gateway and the SDK wrappers although all
+  ship, and the architecture document marked FHIR, DICOM and the adapters
+  pending. Every stale claim is corrected against the code, the narrative
+  coverage and its known residual are recorded in ``docs/scope.md`` and
+  ``docs/evaluation.md``, and the ROADMAP now folds the DICOM and FHIR work into
+  a single untagged v0.4. Prose was tightened to remove duplicated caveats and
+  repeated rhetorical constructions.
 
 - **README status tables were stale and contradicted the roadmap.** Both the
   English and the Chinese README swapped v0.5 and v0.6, listing FHIR as v0.5
