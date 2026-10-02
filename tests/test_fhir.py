@@ -1,4 +1,4 @@
-"""FHIR minimal resource support (v0.6).
+"""FHIR minimal resource support (0.4.0).
 
 The acceptance criteria are: path-level reports, JSON structure preserved, no
 raw field values in audit, and unsupported resources defaulting to ASK/BLOCK.

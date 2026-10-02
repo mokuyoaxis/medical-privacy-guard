@@ -95,7 +95,6 @@ LABEL_KEYS: Mapping[str, str] = {
     "identifier": "病历号",
     "identifier_value": "病历号",
     "telecom": "电话",
-    "birthdate": "出生日期",
     "deceaseddatetime": "日期",
     "onsetdatetime": "日期",
     "effectivedatetime": "日期",

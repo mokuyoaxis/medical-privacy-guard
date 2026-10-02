@@ -154,7 +154,7 @@ class TestSanitize:
 
 
 class TestFhirInput:
-    """A .fhir file is admitted as of v0.6, and a supported resource is walked."""
+    """A .fhir file is admitted as of 0.4.0, and a supported resource is walked."""
 
     def test_a_patient_resource_is_inspected(self, tmp_path, capsys):
         doc = {
@@ -177,7 +177,7 @@ class TestFhirInput:
 
 class TestInputFormats:
     @pytest.mark.parametrize("command", ["inspect", "sanitize"])
-    # ".fhir" is not in this list: FHIR resources are admitted as of v0.6, so
+    # ".fhir" is not in this list: FHIR resources are admitted as of 0.4.0, so
     # a .fhir file is inspected rather than refused.
     @pytest.mark.parametrize("suffix", [
         ".jsonl", ".ndjson", ".tsv", ".xlsx",

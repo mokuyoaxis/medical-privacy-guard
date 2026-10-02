@@ -1,6 +1,6 @@
 """FHIR resource inspection and admission.
 
-v0.6 covers a minimal resource set and deliberately promises no more than it
+This module covers a minimal resource set and deliberately promises no more than it
 implements: this module says *which* resource a document is, whether that
 resource is one the guard can walk, and where its leaves are. It does not
 de-identify a FHIR document, and it does not claim that a released Bundle is
@@ -12,7 +12,7 @@ Two things make a FHIR payload different from the JSON it is written in:
   "Patient"}`` tells the guard what the fields mean before any value is read.
   A resource outside the supported set is not "unknown JSON that happens to be
   safe"; it is a document whose semantics the guard was never taught, so it
-  fails closed (ASK/BLOCK) instead of being walked as generic JSON where an
+  is withheld (BLOCK) instead of being walked as generic JSON where an
   unrecognised identifier would simply not be looked for.
 - **Paths are FHIR paths, not JSON Pointers.** The report names
   ``Patient.name.family`` rather than ``/name/0/family``, because that is what
@@ -36,7 +36,6 @@ from .json_payload import from_document
 
 __all__ = [
     "FHIR_RESOURCES",
-    "UNSUPPORTED_RESOURCE_VERDICT",
     "FhirResource",
     "fhir_path_for",
     "inspect_fhir",
@@ -63,9 +62,11 @@ FHIR_RESOURCES: frozenset[str] = frozenset(
     }
 )
 
-#: What an unsupported resource must do. ASK, not ALLOW: a human can decide a
-#: resource the guard was never taught is safe to send; the guard cannot.
-UNSUPPORTED_RESOURCE_VERDICT: str = "ASK"
+# An unsupported resource is reported as an unsupported format, which the
+# policy profiles turn into BLOCK. It used to carry a separate
+# ``UNSUPPORTED_RESOURCE_VERDICT = "ASK"`` constant that nothing read; the
+# constant said one thing and the guard did another, so it was removed. The
+# verdict is the policy's, not this module's, to state.
 
 #: The key a FHIR resource uses to declare its type.
 _RESOURCE_TYPE_KEY = "resourceType"
@@ -295,5 +296,4 @@ def parse_fhir_payload(document: Any):
         else leaf
         for leaf in payload.leaves
     )
-    return replace(payload, leaves=leaves)
     return replace(payload, leaves=leaves)

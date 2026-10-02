@@ -102,9 +102,9 @@ class TestTagTableIntegrity:
         MilitaryRank from patient_address, CountryOfResidence from
         phone_number_home.
         """
-        from formats.dicom_inspect import _PHI_TAGS
-
         from pydicom.datadict import keyword_for_tag
+
+        from formats.dicom_inspect import _PHI_TAGS
 
         def fold(value: str) -> str:
             return re.sub(r"[^a-z0-9]", "", value.lower())
