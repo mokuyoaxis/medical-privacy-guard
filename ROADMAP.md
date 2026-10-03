@@ -20,16 +20,15 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3 | CSV / JSON | **Done** (`v0.3.0` JSON, `v0.3.1` CSV); XLSX deferred (CSV covers the need) |
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
-| v0.4 | Structured formats + egress adapters | **Delivered in the working tree, untagged**; DICOM is read-only and experimental |
+| v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
 | v0.5 | ASK approval grants + dataset risk | Planned |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The newest tag is `v0.3.4`. The work that was planned as separate v0.5 (DICOM)
+The newest tag is `v0.4.0`. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
-Three version numbers in six days were not earned by the release process, and a
-read-only scanner that cannot clear pixel risk does not deserve its own minor
-version. `pyproject.toml` and `__version__` still read `0.3.4`; release
-engineering is the next step, not a claim that v0.4 has shipped.
+Three version numbers in six days would not have been earned by the release
+process, and a read-only scanner that cannot clear pixel risk does not deserve
+its own minor version.
 
 ## Non-goals
 
@@ -225,9 +224,9 @@ tested, because the file-scoped token map it would rely on is not implemented.
 **Goal**: carry the guard beyond plain text, into structured medical formats and
 the real call chains that send them.
 
-**Status**: implemented and tested in the working tree, not released. The work
-previously planned as separate v0.5 (DICOM) and v0.6 (FHIR) releases is included
-here. See the status note above for why the numbers were collapsed.
+**Status**: released as `v0.4.0`. The work previously planned as separate v0.5
+(DICOM) and v0.6 (FHIR) releases is included here; see the status note above for
+why the numbers were collapsed.
 
 ### Delivered
 

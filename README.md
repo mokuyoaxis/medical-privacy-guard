@@ -213,11 +213,12 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   (`v0.3.1`); XLSX deferred (CSV covers the need).
 - **v0.3.2 — Generalisation fixes**: released as `v0.3.2`. Six detection gaps
   found by an independent hand-written corpus, plus a contract audit tool.
-- **v0.4 — Structured formats + egress adapters**: **delivered in the working
-  tree, untagged**. Adds OpenAI-compatible and Anthropic client wrappers, an MCP
+- **v0.4 — Structured formats + egress adapters**: released as `v0.4.0`.
+  Adds OpenAI-compatible and Anthropic client wrappers, an MCP
   stdio gateway, a minimal FHIR resource set and a read-only DICOM scanner
   (`dicom-inspect`). The work planned as separate v0.5/v0.6 releases is folded
-  here: three version numbers in a week were not earned by the release process.
+  into this one: three version numbers in a week would not have been earned by
+  the release process.
   DICOM is experimental — it reports identifying metadata, leaves pixel risk
   UNKNOWN (so `safe_to_release` is false for every file) and never writes a
   file. Responses are not inspected; see [scope](docs/scope.md) for the

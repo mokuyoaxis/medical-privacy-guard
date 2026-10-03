@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
 ### Added
 
 - **Narrative names anchored on a complaint verb or a connective**
@@ -110,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earned by the release process, and a read-only scanner that cannot clear pixel
   risk does not deserve its own minor version. The ROADMAP, both READMEs and the
   FHIR/DICOM docstrings now say v0.4; the next version after 0.4.0 is v0.5 (ASK
-  grants + dataset risk). No tag was created by this change.
+  grants + dataset risk).
 
 - ``formats/leaf.py`` declared ``birthdate`` twice: once in the general label
   table and once in the FHIR element block, so the FHIR entry silently

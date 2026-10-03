@@ -106,10 +106,10 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 - **v0.1 — 文本核心 MVP**：已发布 `v0.1.0`（基线检测器、决策协议、转换、验证、仅元数据审计）。
 - **v0.2 — 中文医疗文本检测与评估体系**：已发布 `v0.2.0`。严格评测结果与故障注入证据见 [docs/evaluation.md](docs/evaluation.md)；语料由模板生成，严格 1.0 只证明内部一致性，不代表真实泛化。
 - **v0.3 — CSV / XLSX / JSON**：**JSON 已完成**（`v0.3.0`）、**CSV 已完成**（`v0.3.1`）；XLSX 推迟（CSV 已覆盖该需求）。`v0.3.2` 修复六个泛化缺口，`v0.3.4` 修复准入、不可见字符与重建文档闸门。
-- **v0.4 — 结构化格式 + 出站适配器**：**已交付，尚未打 tag**。包含 OpenAI 兼容与
+- **v0.4 — 结构化格式 + 出站适配器**：已发布 `v0.4.0`。包含 OpenAI 兼容与
   Anthropic 客户端封装、MCP stdio 网关、最小 FHIR 资源集，以及只读的 DICOM 扫描器
   `dicom-inspect`。原计划的 v0.5（DICOM）与 v0.6（FHIR）合并到此版本——一周内推进三个
-  版本号，并没有经过发布流程的验证。DICOM 为实验性：只报告可识别元数据，像素风险保持
+  版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
   UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
   边界见 [scope](docs/scope.md)。
 - **v0.5 — 审批与数据集风险**：计划中。ASK 授权凭证（有范围、会过期、一次性）、文件级
