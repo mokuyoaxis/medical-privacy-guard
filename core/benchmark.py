@@ -612,12 +612,17 @@ def _check_audit(
         "policy_version", "transformations", "verification",
         "prev_hash", "event_hash",
         "dictionary_loaded", "dictionary_entries",
+        # Set only when a release happened because a human approved it. Both are
+        # empty strings on an ungranted release, which is why they are listed in
+        # the exemption below: empty is the ordinary case, not a broken record.
+        "grant_id", "grant_issuer",
     }
     # Non-string fields are excluded from the "must be a non-empty string" check
     # below; the two dictionary fields are a bool and an int.
     string_fields = fields - {
         "reason_codes", "entity_counts", "risk_score", "transformations",
         "dictionary_loaded", "dictionary_entries",
+        "grant_id", "grant_issuer",
     }
     if (
         set(event) != fields

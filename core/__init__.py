@@ -4,6 +4,7 @@ from .audit import AuditEvent, AuditWriter, build_audit_event
 from .errors import (
     AuditError,
     DisclosureBlocked,
+    GrantError,
     GuardError,
     HumanApprovalRequired,
     ParserError,
@@ -43,6 +44,7 @@ __all__ = [
     # errors
     "AuditError",
     "DisclosureBlocked",
+    "GrantError",
     "GuardError",
     "HumanApprovalRequired",
     "ParserError",

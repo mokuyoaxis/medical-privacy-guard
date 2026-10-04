@@ -78,8 +78,14 @@ class Verifier:
         profile: PolicyProfile,
         detectors: Sequence | None = None,
         dictionary: object | None = None,
+        accepted_types: Sequence[str] = (),
     ) -> None:
         self.profile = profile
+        #: Fact types a grant covers. A read-only value (a JSON number) can
+        #: never be rewritten, so a granted release still carries it; V1 would
+        #: otherwise reject the release for the very risk the human accepted.
+        #: Only these types are exempt, and only their residual spans.
+        self._accepted_types = frozenset(accepted_types)
         #: Optional InstitutionDictionary. Its only role here is to answer a
         #: question the detectors cannot: whether a word the rules never knew
         #: survived into the released text.
@@ -155,8 +161,13 @@ class Verifier:
         plan: DisclosurePlan | None,
         outcome: TransformOutcome | None,
     ) -> None:
-        targets = [f for f in facts if self.profile.action_for(f.type) in
-                   _ERASE_ACTIONS | _TRANSFORM_ACTIONS]
+        # A grant-covered fact is excluded from the coverage requirement, not
+        # from the checks that still apply to it. It cannot be transformed, so
+        # demanding an operation for it would make every granted release fail
+        # verification for the risk the human just accepted.
+        targets = [f for f in facts
+                   if self.profile.action_for(f.type) in _ERASE_ACTIONS | _TRANSFORM_ACTIONS
+                   and not self._grant_covers(f)]
         if original is None and plan is None and outcome is None:
             if any(self.profile.action_for(f.type) in _TRANSFORM_ACTIONS for f in targets):
                 raise _CheckFailure("transformation execution evidence is required")
@@ -385,12 +396,25 @@ class Verifier:
             f
             for f in residual
             if self.profile.action_for(f.type) in _ERASE_ACTIONS
+            and not self._grant_covers(f)
         ]
         if residues:
             kinds = sorted({f.type for f in residues})
             raise _CheckFailure(
                 f"residual identifiers after transformation: {', '.join(kinds)}"
             )
+
+    def _grant_covers(self, fact: DetectedFact) -> bool:
+        """True when a grant has accepted the risk of *fact* surviving release.
+
+        Narrow on purpose, and the narrowness is the safety property. A grant may
+        cover only a value the transformation layer cannot rewrite at all —
+        `read_only` is set exactly for those (a JSON number, where replacing the
+        value would change the document's type). Everything else the plan could
+        have handled still fails V1 if it survives: an approval is not a licence
+        to skip a transformation that was available.
+        """
+        return fact.read_only and fact.type in self._accepted_types
 
     def _check_dictionary_residual(self, sanitized: str) -> None:
         """A dictionary term that survived into the output is a residual.
@@ -431,6 +455,23 @@ class Verifier:
                 f"transformation introduced new sensitive types: {', '.join(sorted(new_types))}"
             )
 
+    def _residual_is_grant_covered(self, residual: Sequence[DetectedFact]) -> bool:
+        """True when every residual policy objects to is covered by a grant.
+
+        The test is deliberately on the residual, not on the verdict: policy is
+        re-run on the *output*, and what it objects to there is exactly what the
+        human must have accepted. If any surviving value is not covered, the
+        release fails — a grant for one type does not launder the others.
+        """
+        # Nothing to accept is not the same as something uncovered: a narrative
+        # whose only signals are context-only (a rare-condition note) needs no
+        # accepted type, because there is no untransformable value left in it.
+        uncovered = [
+            f for f in residual
+            if not self._grant_covers(f) and f.type not in CONTEXT_ONLY_TYPES
+        ]
+        return not uncovered
+
     def _check_v4_policy_satisfied(
         self,
         residual: Sequence[DetectedFact],
@@ -440,10 +481,13 @@ class Verifier:
         """Re-run policy after execution and residual-span checks.
 
         ALLOW passes. SANITIZE permits only already-verified DATE_SHIFT spans
-        and context-only signals; ASK and BLOCK always fail.
+        and context-only signals. ASK passes only when a grant covers every
+        residual that policy is still objecting to; BLOCK always fails.
         """
         decision = self._evaluator.evaluate(residual, recipient, purpose)
         if decision.verdict is Verdict.ALLOW:
+            return decision
+        if decision.verdict is Verdict.ASK and self._residual_is_grant_covered(residual):
             return decision
         if decision.verdict is Verdict.SANITIZE and residual:
             transformable = [f for f in residual if f.type not in CONTEXT_ONLY_TYPES]
@@ -470,9 +514,11 @@ def verify_sanitized(
     outcome: TransformOutcome | None = None,
     detectors: Sequence | None = None,
     dictionary: object | None = None,
+    accepted_types: Sequence[str] = (),
 ) -> VerificationResult:
     """Convenience wrapper constructing a Verifier for *profile*."""
-    return Verifier(profile, detectors=detectors, dictionary=dictionary).verify(
+    return Verifier(profile, detectors=detectors, dictionary=dictionary,
+                    accepted_types=accepted_types).verify(
         sanitized_text=sanitized_text,
         original_facts=original_facts,
         recipient=recipient,

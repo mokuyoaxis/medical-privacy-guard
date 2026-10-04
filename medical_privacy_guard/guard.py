@@ -17,14 +17,24 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Sequence
+from dataclasses import replace
+from typing import Any, Sequence
 
 from core.audit import AuditError, AuditWriter, build_audit_event
 from core.dictionary import load_dictionary
 from core.errors import ParserError
+from core.grant import (
+    ApprovalRequest,
+    Grant,
+    GrantRegistry,
+    approval_request_for,
+    check_grant,
+    env_grant_key,
+)
 from core.model import (
     Decision,
     DetectedFact,
+    DisclosurePlan,
     EnvironmentContext,
     EvaluationResult,
     Payload,
@@ -97,6 +107,11 @@ _STRUCTURED_KINDS = frozenset({"json", "csv", "fhir"})
 #: Environment variable holding the optional audit HMAC key. Read from the
 #: environment rather than a parameter default so a key never lands in argv.
 _AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
+
+#: Distinguishes "caller passed nothing" from "caller passed None meaning no
+#: key", so an explicit None disables grants instead of falling back to the
+#: environment.
+_UNSET = object()
 
 
 def _env_audit_key() -> bytes | None:
@@ -308,19 +323,59 @@ def _detect_leaves(
 _REBUILD_TRANSFORM_ACTIONS = frozenset({"GENERALIZE", "DATE_SHIFT"})
 
 
+def _accepted_types(grant: Grant | None) -> tuple[str, ...]:
+    """The fact types a grant covers, for the verifier to exempt."""
+    if grant is None:
+        return ()
+    return tuple(grant.accepted_types)
+
+
+def _releasable(decision: Decision) -> bool:
+    """True when a decision authorizes transformation followed by verification.
+
+    SANITIZE always does. ASK does only once a valid grant has been offered,
+    which is recorded by giving the decision a plan: an ASK with no plan is the
+    ordinary "withhold and wait" answer, and an ASK carrying a plan is one a
+    human has authorized.
+
+    The verdict deliberately stays ASK through the release. Rewriting it to
+    SANITIZE would tell the audit that policy became comfortable with the
+    payload, when the truth is that a person accepted a residual risk the policy
+    itself never clears.
+    """
+    if decision.verdict is Verdict.SANITIZE:
+        return True
+    return decision.verdict is Verdict.ASK and decision.plan is not None
+
+
 def _rebuilt_document_releasable(
-    profile: PolicyProfile, decision: Decision, residual: tuple[DetectedFact, ...]
+    profile: PolicyProfile,
+    decision: Decision,
+    residual: tuple[DetectedFact, ...],
+    accepted_types: frozenset[str] = frozenset(),
 ) -> bool:
     """True when the rebuilt document may still be released.
 
     ALLOW is releasable. SANITIZE is releasable only when every residual fact is
     either a context-only signal or one whose configured action leaves it in
-    place by design (a generalised date or age band, a shifted date). ASK and
-    BLOCK never are. This mirrors the policy re-run inside verification, so the
-    two checks cannot disagree about what "releasable" means.
+    place by design (a generalised date or age band, a shifted date). ASK is
+    releasable only when a grant covers every residual that is not context-only;
+    BLOCK never is. This mirrors the policy re-run inside verification, so the
+    two checks cannot disagree about what "releasable" means — and they are given
+    the same grant, for the same reason.
     """
     if decision.verdict is Verdict.ALLOW:
         return True
+    if decision.verdict is Verdict.ASK:
+        # Without a grant there is nothing to release, whatever the residual is.
+        # An ASK is releasable only because someone accepted its risk.
+        if not accepted_types or not residual:
+            return False
+        return all(
+            (fact.read_only and fact.type in accepted_types)
+            or fact.type in CONTEXT_ONLY_TYPES
+            for fact in residual
+        )
     if decision.verdict is not Verdict.SANITIZE or not residual:
         return False
     return all(
@@ -378,6 +433,8 @@ class Guard:
         audit_key: bytes | None = None,
         dictionary_path: str | None = None,
         detectors: Sequence | None = None,
+        grant_key: object = _UNSET,
+        registry: GrantRegistry | None = None,
     ) -> None:
         """Create a Guard bound to one policy profile.
 
@@ -424,6 +481,97 @@ class Guard:
             # pick between two identical claims.
             base = base + (DictionaryDetector(self.dictionary),)
         self._detectors = base
+        #: Key used to build approval fingerprints and to verify grants. Read
+        #: from the environment by default, so a key never lands in argv. An
+        #: explicit None disables grants: every ASK then stays an ASK.
+        self.grant_key = grant_key if grant_key is not _UNSET else env_grant_key()
+        #: Consumed grants, so a one-time approval cannot be replayed.
+        self._grants = registry or GrantRegistry()
+
+    def _grant_approval(
+        self,
+        *,
+        decision: Decision,
+        facts: tuple[DetectedFact, ...],
+        payload_kind: str,
+        content: Any,
+        recipient: Recipient,
+        purpose: Purpose,
+        grant: Grant | None,
+    ) -> tuple[ApprovalRequest | None, str | None]:
+        """Return the request, the rejection reason, and whether release is granted.
+
+        ``(request, None, False)``: the ASK stands, *request* describes it.
+        ``(None, reason, False)``: a grant was offered and rejected.
+        ``(None, None, True)``: the grant is valid; proceed to release.
+
+        The guard never issues a grant. It only describes what needs approving
+        and checks what came back, because a library that also decides who may
+        approve would be the authorization service ``docs/scope.md`` says it is
+        not.
+        """
+        if decision.verdict is not Verdict.ASK:
+            return None, None, False
+        if grant is None:
+            # No grant offered: the ASK stands as a plain withhold, and the
+            # request describes what needs approving.
+            return self._approval_request(decision, facts, payload_kind, content,
+                                          recipient, purpose), None, False
+        if not self.grant_key:
+            return None, "no grant key is configured", False
+        request = self._approval_request(decision, facts, payload_kind, content,
+                                         recipient, purpose)
+        untransformable = sorted(
+            {f.type for f in facts if f.read_only and f.type not in CONTEXT_ONLY_TYPES}
+        )
+        reason = check_grant(
+            grant,
+            request,
+            key=self.grant_key,
+            untransformable_types=untransformable,
+        )
+        if reason is not None:
+            return None, reason, False
+        if not self._grants.consume(grant):
+            return None, "grant has already been used", False
+        # Authorized. The plan is attached only here, so an ASK nobody approved
+        # never reaches the transformation branch — it stays a withhold.
+        return None, None, True
+
+    def _ask_plan(self, facts: Sequence[DetectedFact]) -> DisclosurePlan | None:
+        """Build the plan a granted ASK releases: everything except what cannot be rewritten.
+
+        This is the whole point of a grant. An approved disclosure is still a
+        minimized one — the human takes on the residual risk of a value the
+        transformation layer cannot touch (a JSON number), not of the values it
+        can. Releasing the original instead would mean an approval silently
+        undoes every detector that did fire.
+
+        An empty plan is returned, not None, when nothing is transformable: a
+        narrative with no identifiers still has to be releasable once a human
+        approves it — that is the whole point of asking. None is reserved for
+        "nobody approved this", which is what keeps the ungranted ASK a withhold.
+        """
+        return self._evaluator._build_plan([f.type for f in facts if not f.read_only])
+
+    def _approval_request(self, decision, facts, payload_kind, content, recipient, purpose):
+        """Build the ApprovalRequest for an ASK, or None with no key configured.
+
+        Without a key there is nothing to bind a grant to, so there is no point
+        issuing a request the deployment could never satisfy. The ASK still
+        stands.
+        """
+        if not self.grant_key:
+            return None
+        return approval_request_for(
+            decision=decision,
+            facts=facts,
+            recipient=recipient,
+            purpose=purpose,
+            payload_kind=payload_kind,
+            content=content,
+            key=self.grant_key,
+        )
 
     def _parse_structured(self, content, kind: str = "json"):
         """Parse a structured payload, or None when it cannot be parsed.
@@ -568,11 +716,17 @@ class Guard:
         purpose: str | Purpose,
         environment: EnvironmentContext | None = None,
         audit_dir: str | None = None,
+        grant: Grant | None = None,
     ) -> SanitizationResult:
         """Run the full pipeline: evaluate → transform → verify → (audit).
 
         Returns a SanitizationResult; `sanitized_payload` is None when the
         verdict is BLOCK/ASK or verification failed (nothing to release).
+
+        *grant* may authorize an ASK. A granted release is still the
+        minimized payload, not the original: the grant carries the residual
+        risk of what could not be transformed, it does not switch the
+        transformation off.
         """
         request_payload = _strip_text_payload(_coerce_payload(payload))
         recipient_obj = _coerce_recipient(recipient)
@@ -587,6 +741,7 @@ class Guard:
                 purpose_obj,
                 env,
                 audit_dir or self.audit_dir,
+                grant,
             )
 
         if request_payload.kind != "text" or not isinstance(text, str):
@@ -607,9 +762,25 @@ class Guard:
         sanitized: Payload | None = None
         decision_after: Decision | None = None
 
+        approval, grant_reason, granted = self._grant_approval(
+            decision=decision,
+            facts=facts,
+            payload_kind=request_payload.kind,
+            content=text,
+            recipient=recipient_obj,
+            purpose=purpose_obj,
+            grant=grant,
+        )
+        if grant_reason is not None:
+            # A rejected grant leaves the ASK standing. It can never widen the
+            # verdict: every failure path here withholds, none of them allow.
+            decision = replace(decision, explanation=f"{decision.explanation} Grant rejected: {grant_reason}.")
+        elif granted:
+            decision = replace(decision, plan=self._ask_plan(facts))
+
         if decision.verdict is Verdict.ALLOW:
             sanitized = request_payload
-        elif decision.verdict is Verdict.SANITIZE and decision.plan is not None:
+        elif _releasable(decision) and decision.plan is not None:
             outcome = apply_plan(text, facts, decision.plan)
             verification = verify_sanitized(
                 profile=self.profile,
@@ -622,6 +793,7 @@ class Guard:
                 outcome=outcome,
                 detectors=self._detectors,
                 dictionary=self.dictionary,
+                accepted_types=_accepted_types(grant),
             )
             if verification.passed:
                 sanitized = Payload(
@@ -642,12 +814,14 @@ class Guard:
             recipient_obj,
             purpose_obj,
             verification,
+            grant,
         )
         return SanitizationResult(
             decision_before=decision,
             sanitized_payload=sanitized,
             verification=verification,
             decision_after=decision_after,
+            approval_request=approval,
         )
 
     def _sanitize_structured(
@@ -657,6 +831,7 @@ class Guard:
         purpose: Purpose,
         env: EnvironmentContext | None,
         audit_dir: str | None,
+        grant: Grant | None = None,
     ) -> SanitizationResult:
         """Sanitize a structured payload: one decision, per-leaf transformation.
 
@@ -689,9 +864,23 @@ class Guard:
         sanitized: Payload | None = None
         decision_after: Decision | None = None
 
+        approval, grant_reason, granted = self._grant_approval(
+            decision=decision,
+            facts=facts,
+            payload_kind=payload.kind,
+            content=payload.content,
+            recipient=recipient,
+            purpose=purpose,
+            grant=grant,
+        )
+        if grant_reason is not None:
+            decision = replace(decision, explanation=f"{decision.explanation} Grant rejected: {grant_reason}.")
+        elif granted:
+            decision = replace(decision, plan=self._ask_plan(facts))
+
         if decision.verdict is Verdict.ALLOW:
             sanitized = payload
-        elif decision.verdict is Verdict.SANITIZE and decision.plan is not None:
+        elif _releasable(decision) and decision.plan is not None:
             outcome = apply_plan(text, facts, decision.plan)
             verification = verify_sanitized(
                 profile=self.profile,
@@ -704,6 +893,7 @@ class Guard:
                 outcome=outcome,
                 detectors=self._detectors,
                 dictionary=self.dictionary,
+                accepted_types=_accepted_types(grant),
             )
             if verification.passed:
                 replacements = _split(text, outcome.text, spans, outcome._evidence)
@@ -718,7 +908,9 @@ class Guard:
                 # that dropped, mis-keyed or reintroduced a value shows up here
                 # as a verdict that is not releasable, and the release is
                 # withheld rather than reported as verified.
-                if _rebuilt_document_releasable(self.profile, decision_after, residual):
+                if _rebuilt_document_releasable(
+                    self.profile, decision_after, residual, frozenset(_accepted_types(grant))
+                ):
                     sanitized = Payload(
                         kind=payload.kind, content=serialized, provenance=payload.provenance
                     )
@@ -732,12 +924,13 @@ class Guard:
                         ),
                     )
 
-        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification)
+        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification, grant)
         return SanitizationResult(
             decision_before=decision,
             sanitized_payload=sanitized,
             verification=verification,
             decision_after=decision_after,
+            approval_request=approval,
         )
 
     # -- audit --------------------------------------------------------------
@@ -750,6 +943,7 @@ class Guard:
         recipient: Recipient,
         purpose: Purpose,
         verification: VerificationResult | None,
+        grant: Grant | None = None,
     ) -> None:
         if not audit_dir:
             return
@@ -768,6 +962,8 @@ class Guard:
                 verification=status,
                 dictionary_loaded=self.dictionary is not None,
                 dictionary_entries=len(self.dictionary) if self.dictionary else 0,
+                grant_id=grant.grant_id if grant else "",
+                grant_issuer=grant.issuer if grant else "",
             )
             writer.record(event)
         except AuditError:

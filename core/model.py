@@ -304,6 +304,10 @@ class SanitizationResult:
     sanitized_payload: Payload | None
     verification: VerificationResult | None
     decision_after: Decision | None
+    #: Set when the verdict is ASK and a grant key is configured: what a
+    #: human (or the deployment's approval service) has to authorize. It
+    #: carries no raw values, only the fingerprint and the risk summary.
+    approval_request: object | None = None
 
 
 @dataclass(frozen=True)

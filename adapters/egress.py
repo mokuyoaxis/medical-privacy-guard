@@ -24,9 +24,10 @@ __all__ = ["release_or_raise", "verification_details"]
 def release_or_raise(result: SanitizationResult) -> Payload:
     """Return the payload an adapter may send, or raise the matching exception.
 
-    ALLOW returns the original payload unchanged and SANITIZE returns the
-    verified replacement. BLOCK and ASK raise. A SANITIZE with nothing verified
-    to send raises :class:`VerificationFailed` rather than falling back to the
+    ALLOW returns the original payload unchanged, SANITIZE returns the verified
+    replacement, and a granted ASK returns that same minimized payload. BLOCK
+    raises, as does an ASK nobody approved. A SANITIZE with nothing verified to
+    send raises :class:`VerificationFailed` rather than falling back to the
     input.
     """
     decision = result.decision_before
@@ -35,7 +36,11 @@ def release_or_raise(result: SanitizationResult) -> Payload:
     if verdict is Verdict.BLOCK:
         raise DisclosureBlocked(decision)
     if verdict is Verdict.ASK:
-        raise HumanApprovalRequired(decision)
+        # An ASK that still carries a plan has been authorized by a grant: the
+        # guard released a minimized payload and consumed the grant. Without a
+        # plan it is the ordinary "withhold and wait" answer, which raises.
+        if decision.plan is None:
+            raise HumanApprovalRequired(decision)
 
     payload = result.sanitized_payload
     if payload is None:

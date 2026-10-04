@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Scoped, expiring approval grants for ASK** (``core.grant``). ASK was the one
+  verdict with no working end-to-end path: the guard withheld the payload and
+  ``HumanApprovalRequired`` said a scoped grant was required without anything
+  able to say what a grant is. The guard now builds an ``ApprovalRequest`` (no
+  raw values) on ASK, and ``Guard.sanitize(..., grant=...)`` checks a
+  deployment-issued grant against it. A grant binds a fingerprint over the
+  payload, recipient, purpose, policy version and decision, is HMAC-signed with
+  a key the payload cannot hold, carries an expiry and a use count, and is
+  consumed on use. ``adapters.release_or_raise`` releases a granted ASK and
+  still raises for an unapproved one. Audit records ``grant_id`` /
+  ``grant_issuer``.
+
+  The important semantic: **an approved release is still a minimized release.**
+  The grant covers the residual risk of a value the transformer cannot rewrite
+  (``read_only`` facts such as a JSON number) and only those; everything the plan
+  could have handled is still transformed and verified. Releasing the original
+  instead would let an approval silently undo every detector that fired. The
+  verdict stays ASK through a granted release, so the audit shows a person
+  accepted a risk rather than policy relaxing.
+
+### Fixed
+
+- The audit field set grew with the grant fields and the benchmark's exact-set
+  gate rejected all 175 records until it was updated deliberately. The gate is
+  doing what it is there for: an audit record that grows an unexpected field is
+  a schema change, not something to accept silently.
+
+### Notes
+
+- Single-use is enforced by an in-memory registry. It stops a replay inside the
+  process and stops accidental double use, but it does not survive a restart and
+  is not shared between processes. That boundary is documented in
+  ``docs/scope.md`` rather than implied. A deployment needing durable single-use
+  injects its own store.
+- The guard does not decide who may approve. Issuing is deployment-side
+  (``GrantIssuer``), the same way ``EXTERNAL_APPROVED`` is: the library is not
+  an authorization service.
+
 ## [0.4.0] - 2026-10-03
 
 ### Added

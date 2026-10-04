@@ -78,6 +78,12 @@ class AuditEvent:
     #: so its contents are a sensitive asset that must not enter the log.
     dictionary_loaded: bool = False
     dictionary_entries: int = 0
+    #: Set when a release happened because a human approved it. The verdict
+    #: stays ASK: the record must show that a person accepted a residual risk,
+    #: not that policy became comfortable with the payload. Empty when no grant
+    #: was involved.
+    grant_id: str = ""
+    grant_issuer: str = ""
 
     # -- serialization ------------------------------------------------------
 
@@ -100,6 +106,8 @@ class AuditEvent:
             "prev_hash": self.prev_hash,
             "dictionary_loaded": self.dictionary_loaded,
             "dictionary_entries": self.dictionary_entries,
+            "grant_id": self.grant_id,
+            "grant_issuer": self.grant_issuer,
         }
 
     def to_json_line(self) -> str:
@@ -147,6 +155,8 @@ class AuditEvent:
             event_hash=payload.get("event_hash", ""),
             dictionary_loaded=bool(payload.get("dictionary_loaded", False)),
             dictionary_entries=int(payload.get("dictionary_entries", 0)),
+            grant_id=payload.get("grant_id", ""),
+            grant_issuer=payload.get("grant_issuer", ""),
         )
 
 
@@ -159,6 +169,8 @@ def build_audit_event(
     event_id: str | None = None,
     dictionary_loaded: bool = False,
     dictionary_entries: int = 0,
+    grant_id: str = "",
+    grant_issuer: str = "",
 ) -> AuditEvent:
     """Build an audit event from a decision; raw values are never included.
 
@@ -183,6 +195,8 @@ def build_audit_event(
         verification=verification,
         dictionary_loaded=dictionary_loaded,
         dictionary_entries=dictionary_entries,
+        grant_id=grant_id,
+        grant_issuer=grant_issuer,
     )
 
 

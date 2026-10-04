@@ -21,7 +21,7 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
-| v0.5 | ASK approval grants + dataset risk | Planned |
+| v0.5 | ASK approval grants + dataset risk | **Grants delivered in the working tree, untagged**; dataset risk planned |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 The newest tag is `v0.4.0`. The work that was planned as separate v0.5 (DICOM)
@@ -284,18 +284,44 @@ FHIR synthetic fixtures. All are in place.
 **Goal**: close the two gaps that make the ASK path a dead end and the dataset
 story unmeasured.
 
-**Scope**:
+### Delivered: ASK approval grants
 
-- ASK approval grants: scoped to a request, expiring, one-time; no permanent
-  blanket allow for high-risk content;
-- a file-scoped token map, so the same person receives one token across rows and
+ASK was the one verdict with no working end-to-end path: the guard withheld the
+payload and told the caller a scoped grant was required, with nothing in the
+library able to say what a grant is. ``core/grant.py`` closes it.
+
+The guard does **not** decide who may approve — that stays with the deployment,
+the same way ``EXTERNAL_APPROVED`` does. It describes what needs approving,
+checks a grant against it, and records granted releases in the audit.
+
+- ``ApprovalRequest``: what needs approval. No raw values; binds a fingerprint
+  over the payload, recipient, purpose, policy version and decision.
+- ``Grant``: deployment-issued, HMAC-signed, with ``expires_at`` and
+  ``uses_allowed`` (default 1). Issuing needs a key the payload cannot hold.
+- An approved release is still a **minimized** release. The grant carries the
+  residual risk of a value the transformer cannot rewrite (a JSON number); it
+  does not switch the transformation off. Releasing the original instead would
+  mean an approval silently undoes every detector that did fire.
+- The verdict stays ``ASK`` through a granted release, and the audit records
+  ``grant_id`` / ``grant_issuer``. The record must show that a person accepted a
+  risk, not that policy became comfortable with the payload.
+- Every grant failure — missing key, bad signature, wrong fingerprint, expired,
+  already used, type not accepted — falls back to ASK. None can widen to ALLOW.
+- Single-use is enforced by an in-memory registry. It stops replay inside the
+  process; it does not survive a restart and is not shared between processes.
+  That boundary is documented rather than implied; a deployment needing durable
+  single-use injects its own store.
+
+**Acceptance criteria**: a grant cannot be replayed; does not outlive its scope;
+cannot be issued by the payload it authorizes; is not a blanket allow; and never
+turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
+
+### Planned: dataset risk
+
+- A file-scoped token map, so the same person receives one token across rows and
   files instead of one per sanitization call;
-- dataset-level quasi-identifier combination risk.
-
-**Acceptance criteria** (to be refined before implementation): a grant cannot
-be replayed, does not outlive its scope, and cannot be issued by the payload it
-authorizes; a token is stable across a declared dataset; combination risk is
-reported per dataset, not per document.
+- dataset-level quasi-identifier combination risk, reported per dataset rather
+  than per document.
 
 **Docs**: scope.md; threat-model.md; README status flip.
 

@@ -196,6 +196,39 @@ writes. The report separates metadata findings, private tags and pixel risk:
 pydicom is an optional extra (`medical-privacy-guard[dicom]`). A missing extra
 is a parser error, not a degraded scan.
 
+## ASK approval grants
+
+ASK is the one verdict that needs something outside the guard to complete it.
+The library says *what* needs approving and checks *whether* an approval covers
+this disclosure; it never decides who may approve, for the same reason it is not
+an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
+
+- ``ApprovalRequest`` is produced on ASK and carries no raw values: a
+  fingerprint, the reason codes, the risk summary, fact-type counts and the
+  policy version. The fingerprint binds the payload's hash, the recipient, the
+  purpose and the policy version, so one changed byte invalidates every grant
+  issued for it.
+- A ``Grant`` is issued deployment-side and HMAC-signed with a key the payload
+  being authorized cannot hold. It names an expiry and a number of uses; without
+  an expiry it would be a blanket allow, which is what this design exists to
+  prevent.
+- **An approved release is still a minimized release.** The grant covers the
+  residual risk of a value the transformation layer cannot rewrite — ``read_only``
+  facts such as a JSON number — and only those. Everything the plan could have
+  handled is still transformed and still verified. The verdict stays ASK and the
+  audit records ``grant_id`` / ``grant_issuer``, so the record shows a person
+  accepted a risk rather than policy relaxing.
+- Every failure mode (no key, bad signature, wrong fingerprint, expired, already
+  used, type not accepted) falls back to ASK. None widens the verdict.
+- **Single-use is process-local.** The default registry stops a replay inside
+  the process and stops accidental double use, but it does not survive a restart
+  and is not shared between processes. Like the audit chain's tail-truncation
+  gap, this is stated rather than implied. A deployment needing durable
+  single-use injects its own store.
+
+Not covered: an approval UI or workflow, roles and approval chains, and revocation
+lists (use a short expiry, or inject a store that supports it).
+
 ## Unsupported
 
 No parsers or sanitization support exist for:

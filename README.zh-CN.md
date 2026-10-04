@@ -73,7 +73,6 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 - PDF / DOCX
 - DICOM 回写与像素风险检查（现有扫描器只读）
 - HTTP 出站代理
-- ASK 授权凭证（有范围、会过期、一次性）
 - 数据集级重识别与准标识符组合风险度量
 - 多模态内容（图像、音频、视频）
 - MCP 网关中的 `resources/read` 与 `prompts/get` 检查
@@ -112,8 +111,9 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
   版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
   UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
   边界见 [scope](docs/scope.md)。
-- **v0.5 — 审批与数据集风险**：计划中。ASK 授权凭证（有范围、会过期、一次性）、文件级
-  token 映射，以及数据集级准标识符组合风险。
+- **v0.5 — 审批与数据集风险**：**授权凭证已交付、尚未打 tag**；数据集风险计划中。ASK
+  是唯一没有闭环的裁决——guard 扣留载荷却说不出凭证是什么。现在凭证有范围、会过期、
+  一次性，且批准后的释放仍是最小化后的释放（见 [scope](docs/scope.md)）。
 - **v1.0 — 医疗 AI 出站隐私网关**：目标。
 
 ---

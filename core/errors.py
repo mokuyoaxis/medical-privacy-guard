@@ -47,6 +47,15 @@ class TransformerError(GuardError):
     """Raised when a transformation operation is unknown or cannot be applied."""
 
 
+class GrantError(GuardError):
+    """Raised when an approval grant cannot be issued or cannot be checked.
+
+    A malformed grant, a missing key or a bad timestamp is a configuration or
+    input problem, not a verdict. It never becomes an ALLOW: the caller keeps
+    the ASK it already had.
+    """
+
+
 class DictionaryError(GuardError):
     """Raised when an institution dictionary cannot be loaded or is invalid.
 
