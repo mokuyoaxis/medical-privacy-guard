@@ -27,7 +27,8 @@ import hmac
 import json
 import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from threading import Lock
 from typing import Any, Mapping, Sequence
 
 from .errors import GrantError
@@ -82,7 +83,7 @@ def content_hash(payload_kind: str, content: Any) -> str:
     else:
         # A structured payload is hashed through its JSON form so two equal
         # documents hash alike regardless of key order or Python type.
-        raw = json.dumps(content, ensure_ascii=False, sort_keys=True, default=str).encode(
+        raw = json.dumps(content, ensure_ascii=False, sort_keys=True).encode(
             "utf-8"
         )
     return hashlib.sha256(f"{payload_kind}\x00".encode("utf-8") + raw).hexdigest()
@@ -155,6 +156,20 @@ class Grant:
     accepted_types: tuple[str, ...] = ()
     signature: str = ""
 
+    def __post_init__(self) -> None:
+        for field in ("grant_id", "request_fingerprint", "issuer", "issued_at", "expires_at"):
+            value = getattr(self, field)
+            if not isinstance(value, str) or not value:
+                raise GrantError(f"grant {field} must be a non-empty string")
+        if not isinstance(self.signature, str):
+            raise GrantError("grant signature must be a string")
+        if type(self.uses_allowed) is not int or self.uses_allowed < 1:
+            raise GrantError("grant uses_allowed must be a positive integer")
+        if not isinstance(self.accepted_types, tuple) or any(
+            not isinstance(value, str) or not value for value in self.accepted_types
+        ):
+            raise GrantError("grant accepted_types must be a tuple of non-empty strings")
+
     # -- serialization ------------------------------------------------------
 
     def _payload(self) -> dict:
@@ -178,16 +193,21 @@ class Grant:
             data = json.loads(raw)
         except (TypeError, ValueError) as exc:
             raise GrantError("grant is not valid JSON") from exc
+        if not isinstance(data, dict):
+            raise GrantError("grant must be a JSON object")
+        accepted = data.get("accepted_types", [])
+        if not isinstance(accepted, list):
+            raise GrantError("grant accepted_types must be an array")
         try:
             return cls(
-                grant_id=str(data["grant_id"]),
-                request_fingerprint=str(data["request_fingerprint"]),
-                issuer=str(data["issuer"]),
-                issued_at=str(data["issued_at"]),
-                expires_at=str(data["expires_at"]),
-                uses_allowed=int(data.get("uses_allowed", 1)),
-                accepted_types=tuple(data.get("accepted_types", ())),
-                signature=str(data.get("signature", "")),
+                grant_id=data["grant_id"],
+                request_fingerprint=data["request_fingerprint"],
+                issuer=data["issuer"],
+                issued_at=data["issued_at"],
+                expires_at=data["expires_at"],
+                uses_allowed=data.get("uses_allowed", 1),
+                accepted_types=tuple(accepted),
+                signature=data.get("signature", ""),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise GrantError("grant is missing or has invalid fields") from exc
@@ -201,6 +221,8 @@ class Grant:
         )
 
     def signature_is_valid(self, key: bytes) -> bool:
+        if not self.signature.isascii():
+            return False
         expected = hmac.new(key, _canonical(self._payload()), hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, self.signature)
 
@@ -284,55 +306,57 @@ class GrantIssuer:
         ``ttl_seconds`` is required rather than defaulted: an approval that
         never expires is a blanket allow, which is the thing this design exists
         to prevent.
+
+        An explicit clock value must be timezone-aware; timestamps are stored
+        in UTC regardless of the supplied offset.
         """
-        if ttl_seconds <= 0:
-            raise GrantError("ttl_seconds must be positive; an approval must expire")
-        if uses_allowed < 1:
-            raise GrantError("uses_allowed must be at least 1")
+        if type(ttl_seconds) is not int or ttl_seconds <= 0:
+            raise GrantError("ttl_seconds must be a positive integer; an approval must expire")
         moment = now or _now()
+        if moment.utcoffset() is None:
+            raise GrantError("grant issuance time must be timezone-aware")
+        moment = moment.astimezone(timezone.utc)
         grant = Grant(
             grant_id=uuid.uuid4().hex,
             request_fingerprint=request.fingerprint,
             issuer=self.issuer,
             issued_at=moment.strftime(_ISO),
-            expires_at=(moment + _import_timedelta(ttl_seconds)).strftime(_ISO),
+            expires_at=(moment + timedelta(seconds=ttl_seconds)).strftime(_ISO),
             uses_allowed=uses_allowed,
             accepted_types=tuple(accepted_types),
         )
         return grant.signed(self._key)
 
 
-def _import_timedelta(seconds: int):
-    from datetime import timedelta
-
-    return timedelta(seconds=seconds)
-
-
 class GrantRegistry:
     """Consumes grants so a one-time approval cannot be replayed.
 
-    The default store is in-memory. That is a deliberate, documented boundary:
-    it stops a replay inside the process and stops accidental double use, but it
-    does not survive a restart and is not shared between processes. It protects
-    against misuse, not against an actor who holds the key and the process
-    (threat model T8 already excludes that). A deployment that needs durable
-    single-use passes its own store to :meth:`consume`.
+    A lock protects the read/update so concurrent callers share one use budget.
+    Guard instances share one registry by default. The store is in-memory: it
+    does not survive a restart and is not shared between processes. A deployment
+    that needs durable single-use injects a registry whose consume operation is
+    atomic in its persistent store. An explicitly supplied registry defines its
+    own consumption scope.
     """
 
     def __init__(self) -> None:
         self._used: dict[str, int] = {}
+        self._lock = Lock()
 
     def remaining(self, grant_id: str) -> int:
-        return self._used.get(grant_id, 0)
+        """Return recorded uses (the legacy method name does not mean uses left)."""
+        with self._lock:
+            return self._used.get(grant_id, 0)
 
     def consume(self, grant: Grant, store: "dict[str, int] | None" = None) -> bool:
         """Record one use of *grant*. False when it has been used up."""
         target = self._used if store is None else store
-        used = target.get(grant.grant_id, 0)
-        if used >= grant.uses_allowed:
-            return False
-        target[grant.grant_id] = used + 1
-        return True
+        with self._lock:
+            used = target.get(grant.grant_id, 0)
+            if used >= grant.uses_allowed:
+                return False
+            target[grant.grant_id] = used + 1
+            return True
 
 
 def check_grant(
@@ -355,9 +379,13 @@ def check_grant(
         return "grant is not signed"
     if not grant.signature_is_valid(key):
         return "grant signature does not verify"
-    if not hmac.compare_digest(grant.request_fingerprint, request.fingerprint):
+    if not grant.request_fingerprint.isascii() or not hmac.compare_digest(
+        grant.request_fingerprint, request.fingerprint
+    ):
         return "grant was issued for a different disclosure"
     moment = now or _now()
+    if moment.utcoffset() is None:
+        return "grant evaluation time must be timezone-aware"
     try:
         issued_at = _parse_iso(grant.issued_at)
         expires_at = _parse_iso(grant.expires_at)

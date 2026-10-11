@@ -4,6 +4,9 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+from packaging.version import Version
+
 from cli.main import EXIT_ERROR, EXIT_OK, main
 from core.errors import AuditError
 from core.model import ReasonCode, Verdict
@@ -225,11 +228,27 @@ def _pyproject_version() -> str:
 
 def _changelog_versions() -> list[str]:
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    return re.findall(r"^## \[(\d+\.\d+\.\d+)\]", text, re.MULTILINE)
+    return [
+        version
+        for version in re.findall(r"^## \[([^\]]+)\]", text, re.MULTILINE)
+        if version != "Unreleased"
+    ]
 
 
-def _key(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+def _key(version: str) -> Version:
+    return Version(version)
+
+
+@pytest.mark.parametrize(
+    ("older", "newer"),
+    [("0.4.0", "0.5.0-rc.1"), ("0.5.0-rc.1", "0.5.0-rc.2"), ("0.5.0-rc.2", "0.5.0")],
+)
+def test_release_order_places_candidates_before_the_final_version(older, newer):
+    assert _key(older) < _key(newer)
+
+
+def test_release_candidate_tag_and_package_versions_are_equivalent():
+    assert _key("0.5.0-rc.1") == _key("0.5.0rc1")
 
 
 def test_version_matches_pyproject():
@@ -242,15 +261,15 @@ def test_the_current_version_has_a_changelog_section():
     """A release records what changed before the version number moves."""
     from medical_privacy_guard import __version__
 
-    assert __version__ in _changelog_versions(), (
+    assert _key(__version__) in [_key(v) for v in _changelog_versions()], (
         f"CHANGELOG.md has no '## [{__version__}]' section"
     )
 
 
 def test_changelog_sections_are_unique_and_newest_first():
     versions = _changelog_versions()
-    assert len(versions) == len(set(versions)), "duplicate version section in CHANGELOG.md"
     keys = [_key(v) for v in versions]
+    assert len(keys) == len(set(keys)), "duplicate version section in CHANGELOG.md"
     assert keys == sorted(keys, reverse=True), "CHANGELOG.md sections are not newest-first"
 
 

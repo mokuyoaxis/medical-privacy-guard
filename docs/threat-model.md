@@ -34,11 +34,11 @@ External trust boundary
 > **Route medical payloads through the Guard before external disclosure.**
 
 This is a deployment objective, not network enforcement supplied by the current
-library. The implemented v0.1/v0.2 API and CLI process plain text locally and
-return decisions; MCP/SDK adapters, structured-format parsers and scoped ASK
-authorization are roadmap items. Callers must honor withheld payloads and use
-only the returned releasable payload. The following threats distinguish current
-mitigations from planned integrations.
+library. The API and CLI process text, JSON, CSV and a minimal FHIR resource set
+locally. MCP stdio and SDK wrappers enforce selected egress paths, scoped ASK
+grants are checked by the guard, and DICOM inspection is read-only. Callers must
+honor withheld payloads and use only the returned releasable payload. The
+following threats distinguish current mitigations from planned integrations.
 
 ## Threats and mitigation status
 
@@ -47,33 +47,38 @@ mitigations from planned integrations.
 **Scenario**: Agent receives text like `帮我分析这个患者：张三，手机号13800000000……` and forwards it to a cloud LLM.
 
 **Current mitigation**: callers can run text through detectors and policy before
-sending. Automatic egress interception and SDK wrappers are planned, not supplied
-by the current library. Missed identifiers remain a disclosure risk.
+sending. OpenAI-compatible and Anthropic wrappers check selected request fields
+before the caller's SDK sends them. They do not inspect responses or enforce
+network routing; missed identifiers remain a disclosure risk.
 
 ### T2. Agent invokes external MCP tool with sensitive arguments
 
 **Scenario**: `mcp.search_web({query: patient_record})`
 
-**Planned mitigation**: an MCP adapter will translate arguments into a
-`DisclosureRequest`. There is no current MCP gateway enforcing this path.
+**Current mitigation**: the MCP stdio gateway checks `tools/call` arguments and
+`inputResponses`, rewrites SANITIZE calls and refuses ASK/BLOCK calls. Other
+methods, response traffic, `requestState` and stderr are outside its inspection
+scope. Direct calls that bypass the gateway remain possible.
 
 ### T3. Agent uploads an attachment
 
 **Scenario**: `upload(report.pdf)` containing raw PHI.
 
-**Current boundary / hardening contract**: explicitly typed non-text payloads
+**Current boundary / hardening contract**: unsupported declared payload kinds
 BLOCK. CLI checks reject known unsupported extensions, NUL/unsupported control
-characters and JSON-container content. They cannot identify arbitrary disguised
-formats. `str`/text API callers must supply plain text; decoding arbitrary files
-as UTF-8 does not make them supported. PDF extraction is not implemented.
+characters and recognized malformed containers. Valid JSON/FHIR containers are
+classified and walked as structured documents. Explicit text declarations skip
+classification; neither decoding nor a declaration makes arbitrary disguised
+formats supported. PDF extraction is not implemented.
 
 ### T4. DICOM metadata is cleaned but pixel data still contains patient name
 
 **Scenario**: DICOM metadata de-identified, but burned-in annotation or recognizable facial structure remains.
 
-**Current boundary**: DICOM is unsupported. **Future requirement**: a DICOM
-handler must distinguish metadata, pixel and recognizable-visual-feature risks;
-unknown pixel risk must not become a clean-release claim.
+**Current boundary**: the experimental DICOM scanner reads metadata, counts
+private tags and reports pixel and recognizable-visual-feature risks separately.
+Both pixel risks remain UNKNOWN, so `safe_to_release` is always false. DICOM
+write-back and pixel de-identification remain unimplemented.
 
 ### T5. Free text contains indirect identity clues
 
@@ -107,7 +112,7 @@ No-op/incomplete operations must fail; untransformed dates are not exempt merely
 because GENERALIZE or DATE_SHIFT was planned. Date shifts need expected-offset
 and interval checks. Evidence remains local and may contain sensitive values.
 
-Recognized failures withhold output: failed verification returns BLOCK;
+Recognized failures withhold output: failed verification returns no payload;
 unsupported typed payloads return BLOCK; configured audit failure or CLI
 parsing/configuration errors may raise/exit nonzero rather than return a policy
 verdict. None may silently fall back to raw output. Conversely, a missed pattern
@@ -119,15 +124,20 @@ must confirm the hardening contract; historical benchmark PASS is insufficient.
 
 **Scenario**: Agent has the same OS permissions as Guard and calls `requests.post(...)` directly.
 
-**Mitigation in v0.x**: documented residual risk. Long-term mitigations include MCP gateway, provider egress proxy, host-managed credentials, and network-layer enforcement.
+**Mitigation in v0.x**: documented residual risk. The shipped MCP gateway only
+checks traffic routed through it. Provider egress proxies, host-managed
+credentials and network-layer enforcement remain deployment work.
 
 ### T9. Human authorizes without understanding risk
 
 **Scenario**: User clicks "Allow" on a generic consent prompt.
 
-**Current boundary**: ASK withholds the releasable payload; it does not implement
-an approval workflow. **Future requirement**: explain risk without exposing full
-PHI and issue only scoped, expiring grants, not permanent blanket approvals.
+**Current mitigation**: ASK withholds content without a valid deployment-issued
+grant. Requests contain no raw values; grants bind the disclosure, expire and
+carry a use budget. Default Guard instances share an atomic process-local
+consumption registry. Approved releases are still minimized and verified.
+**Deployment responsibility**: informed approval, roles and approval UI, plus a
+persistent atomic registry for consumption across processes or restarts.
 
 ### T10. Policy drift or misconfiguration
 
@@ -142,11 +152,11 @@ control recipient approval; declaring a purpose does not establish consent.
 
 | Threat | Reason | Future work |
 |---|---|---|
-| Malicious agent with same OS privileges | Guard cannot intercept what it cannot see | MCP gateway, provider proxy, constrained environment |
+| Malicious agent with same OS privileges | Guard cannot intercept what it cannot see | Network enforcement, provider proxy, constrained environment |
 | Advanced steganography in images/audio | Outside current text scope | Format-specific research |
 | Legal compliance certification | Engineering infrastructure, not legal advice | No certification claim |
 | Complete scientific anonymization | Requires analysis beyond this text baseline | Dataset-level risk analysis |
-| LLM prompt injection convincing the user | Current library cannot enforce informed approval | Scoped authorization and UX hardening |
+| LLM prompt injection convincing the user | Scoped grants cannot enforce informed approval | Approval UX and deployment authorization controls |
 | Missed identifiers or disguised formats | Detection and CLI admission checks have bounded coverage | Independent synthetic challenge sets and format parsers |
 
 ## Assumptions
@@ -158,8 +168,9 @@ control recipient approval; declaring a purpose does not establish consent.
    and network restrictions are the deployer's responsibility.
 5. Recipient trust comes from trusted deployment configuration, not untrusted
    payload claims. `EXTERNAL_APPROVED` is an input declaration, not authentication.
-6. API callers passing `str` or text payloads supply only plain text and configure
-   audit storage when durable event recording is required.
+6. String inputs are classified by content; callers explicitly declaring
+   `Payload(kind="text")` are responsible for that declaration. Audit storage
+   is configured when durable event recording is required.
 
 ## Residual risk statement
 

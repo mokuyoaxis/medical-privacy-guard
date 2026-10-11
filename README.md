@@ -109,12 +109,14 @@ forwarded byte for byte. Responses are not inspected, and neither adapter covers
 every egress path; see [docs/scope.md](docs/scope.md).
 
 **Approval grants.** ASK is the one verdict that needs something outside the
-guard.``core.grant`` describes what needs approving (no raw values), and checks a
+guard. ``core.grant`` describes what needs approving (no raw values), and checks a
 deployment-issued grant against it: scoped to one disclosure, expiring, one-time,
 and signed with a key the payload cannot hold. An approved release is still a
 minimized release — the grant carries the residual risk of a value that cannot be
 rewritten, it does not switch the transformation off. Every grant failure falls
-back to ASK.
+back to ASK. All default Guard instances share a thread-safe consumption
+registry within the process; durable use limits across processes or restarts
+require a deployment-controlled registry passed through `Guard(registry=...)`.
 
 **Audit.** Metadata-only JSONL when configured, chained by hash so a deleted,
 reordered or edited record is detectable, with an optional HMAC key and an
@@ -230,11 +232,14 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   UNKNOWN (so `safe_to_release` is false for every file) and never writes a
   file. Responses are not inspected; see [scope](docs/scope.md) for the
   boundaries.
-- **v0.5 — Approval and dataset risk**: **approval grants delivered in the
-  working tree, untagged**; dataset risk planned. ASK was the one verdict
+- **v0.5 — ASK approvals and security hardening**: available in the
+  `v0.5.0-rc.1` release candidate.
+  ASK was the one verdict
   with no working path — the guard withheld the payload and could not say what
   a grant is. A grant is now scoped, expiring and one-time, and an approved
   release is still a minimized release (see [scope](docs/scope.md)).
+  Default consumption is shared within a process. Persistent consumption and
+  dataset-level risk remain planned work.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---

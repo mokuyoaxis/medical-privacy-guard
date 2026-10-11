@@ -67,6 +67,11 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 
 不含直接标识符的医疗内容仍属于敏感数据。在严格 profile 下，它可以留在本地或可信内部环境，但发送给 `EXTERNAL_UNKNOWN` 接收方会返回 `ASK`。调用方不得把声明的用途视为同意；只有经部署机构批准的端点才能使用 `EXTERNAL_APPROVED`。
 
+配置授权密钥后，ASK 可生成不含原始值的审批请求，并通过 `Guard.sanitize(..., grant=...)`
+校验部署方签发的限范围、限时效凭证。获批后仍转换并验证可处理的标识符。同一进程内的默认
+Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额使用；跨进程或重启后的次数限制须由
+部署方通过 `Guard(registry=...)` 注入可原子消费的持久化实现。
+
 ### 尚未实现
 
 - XLSX、TSV（CSV 已覆盖同类需求）
@@ -111,9 +116,10 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
   版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
   UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
   边界见 [scope](docs/scope.md)。
-- **v0.5 — 审批与数据集风险**：**授权凭证已交付、尚未打 tag**；数据集风险计划中。ASK
+- **v0.5 — ASK 审批与安全加固**：已纳入 `v0.5.0-rc.1` 候选版。ASK
   是唯一没有闭环的裁决——guard 扣留载荷却说不出凭证是什么。现在凭证有范围、会过期、
   一次性，且批准后的释放仍是最小化后的释放（见 [scope](docs/scope.md)）。
+  默认消费状态在进程内共享；持久化消费和数据集级风险仍为后续计划。
 - **v1.0 — 医疗 AI 出站隐私网关**：目标。
 
 ---

@@ -5,6 +5,9 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 [README.md](README.md); the authoritative capability boundary lives in
 [docs/scope.md](docs/scope.md).
 
+Acceptance criteria under completed versions describe their release-time scope;
+current capabilities are defined by scope.md and the latest delivered stage.
+
 ## Status at a glance
 
 | Version | Theme | Status |
@@ -21,10 +24,10 @@ criteria, test requirements, and documentation updates. Status is mirrored in
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
-| v0.5 | ASK approval grants + dataset risk | **Grants delivered in the working tree, untagged**; dataset risk planned |
+| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.1`); persistent consumption and dataset risk planned |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The newest tag is `v0.4.0`. The work that was planned as separate v0.5 (DICOM)
+The current package version is `0.5.0rc1`, tagged as `v0.5.0-rc.1`. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
 Three version numbers in six days would not have been earned by the release
 process, and a read-only scanner that cannot clear pixel risk does not deserve
@@ -43,7 +46,7 @@ These are out of scope for every version:
 
 ---
 
-## v0.1 — Text core MVP (current)
+## v0.1 — Text core MVP
 
 **Goal**: a stable, honest, installable, tested text privacy guard.
 
@@ -250,9 +253,8 @@ why the numbers were collapsed.
 ### Deferred from the original v0.4 scope
 
 - **ASK approval grants** (scoped to a request, expiring, one-time). The
-  `HumanApprovalRequired` exception states that a scoped grant is required, not
-  how one is obtained; the current ASK result withholds content and nothing
-  more. This is the first item of v0.5.
+  v0.4.0 release withheld ASK content without implementing grants. The grant
+  path is implemented in the v0.5.0-rc.1 candidate below.
 - **Tool-name risk classes** (`file_upload`, `email_send`,
   `cloud_storage_upload`). The gateway evaluates the arguments of a call, not
   the tool's name. A caller can add the classification without a protocol
@@ -279,10 +281,10 @@ FHIR synthetic fixtures. All are in place.
 
 ---
 
-## v0.5 — Approval and dataset risk
+## v0.5 — ASK approvals and security hardening
 
-**Goal**: close the two gaps that make the ASK path a dead end and the dataset
-story unmeasured.
+**Goal**: complete the scoped ASK approval path and verify its release and audit
+contracts. Persistent consumption and dataset risk are follow-up work.
 
 ### Delivered: ASK approval grants
 
@@ -307,16 +309,20 @@ checks a grant against it, and records granted releases in the audit.
   risk, not that policy became comfortable with the payload.
 - Every grant failure — missing key, bad signature, wrong fingerprint, expired,
   already used, type not accepted — falls back to ASK. None can widen to ALLOW.
-- Single-use is enforced by an in-memory registry. It stops replay inside the
-  process; it does not survive a restart and is not shared between processes.
-  That boundary is documented rather than implied; a deployment needing durable
-  single-use injects its own store.
+- Single-use is enforced by one shared, locked in-memory registry across default
+  Guard instances in the process. Concurrent callers cannot exceed the signed
+  use budget. It does not survive a restart and is not shared between processes;
+  a deployment needing durable single-use injects a registry with atomic
+  persistent consumption through ``Guard(registry=...)``.
 
 **Acceptance criteria**: a grant cannot be replayed; does not outlive its scope;
 cannot be issued by the payload it authorizes; is not a blanket allow; and never
 turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
 
-### Planned: dataset risk
+### Planned follow-up: persistent consumption and dataset risk
+
+- A durable, atomic consumption registry for a single machine with multiple
+  processes; the current default remains in-memory and process-local;
 
 - A file-scoped token map, so the same person receives one token across rows and
   files instead of one per sanitization call;

@@ -44,7 +44,7 @@ The remediation contract requires the following checks for each document:
 |---|---|
 | SANITIZE | Complete planned transformations, successful verification, a released sanitized payload, and a valid corresponding audit event |
 | ALLOW | An unchanged released payload and a valid corresponding audit event; no transformation is required |
-| ASK / BLOCK | No released payload and a valid audit event for that outcome |
+| Unapproved ASK / BLOCK | No released payload and a valid audit event for that outcome |
 
 Separate lifecycle counts must distinguish unchanged ALLOW releases, verified
 SANITIZE releases, ASK, BLOCK and failed verification. An initial SANITIZE
@@ -300,6 +300,65 @@ given character is outside the inventory is still missed in the adjacent form.
 
 ## Test and packaging status
 
+Candidate preparation on 2026-10-11 sets the package version to `0.5.0rc1`
+for the `v0.5.0-rc.1` tag. The final Python 3.12.14 run passes **1338 tests with
+no skips**. Its 21 release-gate cases also pass on Python 3.10.21 and 3.11.16;
+four new cases cover candidate ordering and equivalent tag/package spelling.
+The candidate wheel and sdist build, the sdist rebuild reproduces the same
+wheel member contents, and isolated installed-wheel API/CLI, approval/replay,
+FHIR and DICOM smoke checks pass. These are local checks before the candidate
+commit and push; remote results must be checked for that specific commit.
+
+Before the version was selected, release validation on 2026-10-11 reproduced **1334 passes with no skips on
+each of Python 3.10.21, 3.11.16 and 3.12.14**, including the optional DICOM tests.
+These runs used isolated test environments against the uncommitted source. An sdist
+and wheel built successfully; rebuilding the wheel from the sdist produced
+identical member contents. A clean Python 3.12 environment outside the source
+tree passed API/CLI, approval/replay, FHIR and DICOM smoke checks against the
+installed wheel. Package checks confirmed policy YAML and runtime modules were
+included and private evidence/logs were excluded.
+
+Dependency auditing found no known vulnerabilities in the 40 resolved tooling,
+test and runtime dependencies, including PyYAML 6.0.3 and pydicom 3.0.2. A
+separate installed-runtime audit also reported no findings for those two;
+medical-privacy-guard itself was skipped because this local version is not
+available on PyPI. This is a result for those resolved versions at the time of
+the audit, not every version admitted by the project's lower bounds.
+Fresh lint and static security checks passed. At that time, remote main was verified as
+770d144 with successful CI; neither local HEAD e4b9bdf nor the uncommitted fixes
+has a corresponding remote CI result. No commit, push or release was made.
+The 0.4.0 artifacts are validation candidates containing unreleased changes.
+
+The later 2026-10-11 grant-lifecycle and audit-integrity review passes **1334 tests
+on Python 3.13.5 with no skips**, including 70 grant tests, 40 audit tests and
+16 DICOM tests. This adds 50 cases to the earlier 1284-test baseline below.
+The cases cover explicit approval state, context-only approval across formats,
+read-only and writable identifiers of the same type, adapter verification,
+accepted audit identity, grant JSON types and clock offsets, FHIR annotation
+semantics, and older audit schemas plus integrity failures. The contract audit
+now has eight sections, including ASK release across formats. `ruff`, `bandit`
+and the 175-document benchmark pass; all benchmark safety gates remain zero.
+The hand-written simulation still has 0/74 missed values and 0/53 over-redacted
+values. No existing audit logs were rewritten or migrated, and no remote CI,
+other Python versions, build or dependency audit was run in this review.
+
+Verified locally on 2026-10-11 against `e4b9bdf` plus the uncommitted grant-replay
+fix: **1284 tests pass on Python 3.13.5, with no skips**. This includes 31 grant
+tests and 16 DICOM scanner tests, using pydicom 3.0.2 loaded from an existing
+wheel in a temporary directory. Six new cases cover cross-Guard replay,
+concurrent one-use and three-use budgets, atomic registry consumption and shared
+injected registries. Before the fix, five of those cases failed; after it, all
+pass. The CI test matrix now installs the existing `dicom` extra and requires
+its import, so its DICOM tests cannot pass merely by skipping the module.
+
+The current benchmark reproduces strict recall/precision 1.0000 (1474/1474),
+135 SANITIZE / 35 ALLOW / 5 ASK and zero on every safety gate. The 21 hand-written
+simulation notes have 0/74 missed labelled values and 0/53 over-redacted values.
+`ruff`, `bandit`, the seven-section contract audit and `git diff --check` pass.
+This run did not re-validate Python 3.10–3.12, remote CI, dependency auditing or
+distribution builds; the older records below remain historical evidence for
+those checks.
+
 Verified locally on 2026-09-22 (v0.2.3): 803 tests pass on Python 3.13, including
 the 55 cases in `tests/test_name_span_completeness.py`, the six challenge-corpus
 regression probes 18 cases covering the audit chain and eight covering the audit leak gate; the
@@ -489,10 +548,10 @@ survive both initial detection and verification.
 
 | Capability | Status |
 |---|---|
-| Labelled-span detection (24 types) | Historical overlap baseline; strict results require a fresh run |
-| False positives on annotated and identifier-free text | Historical baseline; strict matching changes hit accounting |
-| Normal lifecycle | Historical 135 SANITIZE, 5 ASK, 35 ALLOW |
-| Per-document verification/release and audit-integrity gates | Hardened acceptance contract; fault-injection validation required |
+| Labelled-span detection (24 types) | Strict recall/precision 1.0000 on the 2026-10-11 synthetic run |
+| False positives on annotated and identifier-free text | Zero under strict matching on the same run |
+| Normal lifecycle | Reproduced 135 SANITIZE, 5 ASK, 35 ALLOW |
+| Per-document verification/release and audit-integrity gates | Passed with the fault-injection regression suite |
 | Marked or adjacent patient names (`患者：张三`, `患者张三`) | Implemented |
 | Grouped/full-width mobile numbers and valid non-padded dates | Implemented; independent challenge results not asserted here |
 | Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb and a clause-boundary connective; a bare name in ordinary prose is still missed |

@@ -79,6 +79,7 @@ class Verifier:
         detectors: Sequence | None = None,
         dictionary: object | None = None,
         accepted_types: Sequence[str] = (),
+        approval_granted: bool = False,
     ) -> None:
         self.profile = profile
         #: Fact types a grant covers. A read-only value (a JSON number) can
@@ -86,6 +87,7 @@ class Verifier:
         #: otherwise reject the release for the very risk the human accepted.
         #: Only these types are exempt, and only their residual spans.
         self._accepted_types = frozenset(accepted_types)
+        self._approval_granted = approval_granted
         #: Optional InstitutionDictionary. Its only role here is to answer a
         #: question the detectors cannot: whether a word the rules never knew
         #: survived into the released text.
@@ -123,6 +125,7 @@ class Verifier:
         targets require all three optional execution arguments to prove completion.
         """
         residual = self._detect_all(sanitized_text, self._detectors)
+        residual = self._read_only_residuals(residual, original_facts, outcome)
 
         try:
             self._check_v1_no_residual(residual)
@@ -130,6 +133,8 @@ class Verifier:
             self._check_v2_no_new_types(original_facts, residual)
             self._check_execution(sanitized_text, original_facts, original_text, plan, outcome)
             for fact in residual:
+                if self._grant_covers(fact):
+                    continue
                 if self.profile.action_for(fact.type) not in _TRANSFORM_ACTIONS:
                     continue
                 if outcome is None or not any(
@@ -151,6 +156,35 @@ class Verifier:
             passed=True,
             reason_codes=(),
             details=f"verified: transformation checks satisfied; policy re-run → {decision_after.verdict.value}",
+        )
+
+    def _read_only_residuals(
+        self,
+        residual: tuple[DetectedFact, ...],
+        original_facts: Sequence[DetectedFact],
+        outcome: TransformOutcome | None,
+    ) -> tuple[DetectedFact, ...]:
+        """Restore typed read-only spans lost when structured leaves become text.
+
+        Only the exact output span of an approved original fact is covered.
+        Execution checks still require that untargeted context stay unchanged.
+        Another writable value of the same type gets no exemption.
+        """
+        if not self._approval_granted or outcome is None:
+            return residual
+        covered: set[tuple[str, int, int]] = set()
+        for fact in original_facts:
+            if not self._grant_covers(fact):
+                continue
+            shift = sum(
+                (record.output_end - record.output_start) - (record.end - record.start)
+                for record in outcome._evidence if record.end <= fact.start
+            )
+            covered.add((fact.type, fact.start + shift, fact.end + shift))
+        return tuple(
+            replace(fact, read_only=True)
+            if (fact.type, fact.start, fact.end) in covered else fact
+            for fact in residual
         )
 
     def _check_execution(
@@ -414,7 +448,7 @@ class Verifier:
         have handled still fails V1 if it survives: an approval is not a licence
         to skip a transformation that was available.
         """
-        return fact.read_only and fact.type in self._accepted_types
+        return self._approval_granted and fact.read_only and fact.type in self._accepted_types
 
     def _check_dictionary_residual(self, sanitized: str) -> None:
         """A dictionary term that survived into the output is a residual.
@@ -470,7 +504,7 @@ class Verifier:
             f for f in residual
             if not self._grant_covers(f) and f.type not in CONTEXT_ONLY_TYPES
         ]
-        return not uncovered
+        return self._approval_granted and not uncovered
 
     def _check_v4_policy_satisfied(
         self,
@@ -515,10 +549,15 @@ def verify_sanitized(
     detectors: Sequence | None = None,
     dictionary: object | None = None,
     accepted_types: Sequence[str] = (),
+    approval_granted: bool = False,
 ) -> VerificationResult:
-    """Convenience wrapper constructing a Verifier for *profile*."""
+    """Construct a verifier; Guard sets approval_granted only after grant acceptance.
+
+    This layer checks execution and residuals, not signatures or consumption.
+    A type list alone never authorizes an ASK residual.
+    """
     return Verifier(profile, detectors=detectors, dictionary=dictionary,
-                    accepted_types=accepted_types).verify(
+                    accepted_types=accepted_types, approval_granted=approval_granted).verify(
         sanitized_text=sanitized_text,
         original_facts=original_facts,
         recipient=recipient,

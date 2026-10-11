@@ -43,6 +43,15 @@ def strict_verifier():
 
 
 class TestHappyPath:
+    def test_context_ask_is_not_verified_without_approval(self, strict_verifier):
+        text = "本例为罕见变异型病例，建议多学科会诊。"
+        result = strict_verifier.verify(
+            sanitized_text=text, original_facts=detect_all(text),
+            recipient=approved_recipient(), purpose=Purpose.RESEARCH,
+        )
+        assert result.passed is False
+        assert ReasonCode.VERIFICATION_FAILED in result.reason_codes
+
     def test_clean_payload_passes(self, strict_verifier):
         result = strict_verifier.verify(
             sanitized_text="普通随访内容，无敏感信息",

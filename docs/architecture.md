@@ -14,7 +14,7 @@ ship; XLSX, DICOM write-back and dataset-level re-identification analysis are
 future work.
 
 ```text
-Plain text (caller-declared in API; admission checks in CLI)
+Text / JSON / CSV / FHIR (shared admission and normalization)
   │
   ▼
 Detect sensitive facts
@@ -26,7 +26,8 @@ Build disclosure context + engineering risk summary
 Policy decision
   │
   ├── BLOCK ────────▶ audit when configured + refuse
-  ├── ASK ──────────▶ audit when configured + return for caller escalation
+  ├── ASK ──────────▶ withhold without a valid deployment-issued grant
+  │    └── valid grant ▶ transform + verify + audit + minimized release
   ├── ALLOW ────────▶ audit when configured + return unchanged payload
   └── SANITIZE
          │
@@ -36,7 +37,7 @@ Policy decision
          ▼
       Verify evidence / postconditions + re-scan / re-evaluate policy
          │
-         ├── fail ───▶ audit when configured + BLOCK
+         ├── fail ───▶ audit when configured + withhold
          └── pass ───▶ audit when configured + return sanitized payload
 ```
 
@@ -53,6 +54,7 @@ hardening contract, not proof of complete anonymization. See
 | `formats/admission.py` | Decide what content is *before* it is scanned; shared by the CLI and the adapters | `Payload` |
 | `detectors` | Output sensitive-entity facts, not policy decisions | `DetectedFact` |
 | `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
+| `core/grant.py` | Bind approval to a disclosure, verify the grant and consume its use budget | `ApprovalRequest` / accepted or rejected grant |
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
@@ -69,7 +71,8 @@ hardening contract, not proof of complete anonymization. See
 - **Detectors do not decide.** They emit facts; policy chooses the outcome.
 - **A structured payload is one disclosure.** Its leaves are flattened into a
   single text for detection, transformation and verification, and the verdict
-  covers the whole document: one direct identifier withholds the record. Leaves
+  covers the whole document: an untransformable identifier withholds the record
+  until a valid grant accepts its residual risk. Leaves
   are joined with NUL so two adjacent values cannot form a pattern that exists
   in neither.
 - **No facts is not proof of safety.** Unrecognized content may produce ALLOW;
@@ -84,6 +87,11 @@ hardening contract, not proof of complete anonymization. See
   DATE_SHIFT needs the expected offset and interval consistency. An unchanged
   exact date is not exempt merely because its planned action is DATE_SHIFT or
   GENERALIZE. Context-only signals may remain only as permitted by policy.
+- **Approval is explicit.** Guard forwards approval state only after signature,
+  scope, validity and consumption checks. The verifier and rebuilt-document gate
+  both need that state for ASK; accepted types alone do not represent approval.
+  Approved read-only spans are traced through execution offsets, while writable
+  spans of the same type still require full transformation.
 - **Adapters do not contain privacy rules.** Their role is to translate
   external calls and enforce the core result, not to redefine policy.
 
@@ -127,9 +135,12 @@ directly, and DICOM support is read-only inspection, not de-identification.
    Events are chained by hash so deletion, reordering and edits are detectable;
    tail truncation and keyless whole-chain rewriting are not, and are documented
    as such rather than implied to be covered.
-4. **Bounded input admission**: typed non-text payloads BLOCK. CLI checks reject
-   known unsupported extensions, NUL/control characters and JSON containers,
-   not every possible disguised format. API text declarations are trusted.
+4. **Bounded input admission**: unsupported declared payload kinds BLOCK. String
+   inputs are classified through the shared admission rule: valid JSON/FHIR
+   containers are walked as structured documents. Known unsupported extensions,
+   unsupported control characters and recognized malformed containers are
+   refused. Explicit `Payload(kind="text")` skips classification, but still
+   undergoes normalization; arbitrary disguised formats cannot all be identified.
 5. **Output separation**: input/output/audit collisions, including existing
    hard-link aliases, must be rejected before writes. Static path checks are
    not a guarantee against filesystem races.
@@ -137,6 +148,10 @@ directly, and DICOM support is read-only inspection, not de-identification.
    The deployment supplies trusted recipient metadata; the library is not
    an authorization service for self-declared `EXTERNAL_APPROVED` values.
 7. **Policy version is auditable**: decisions carry the policy profile/version.
+8. **Approval remains scoped**: a granted ASK still transforms and verifies the
+   releasable payload. All default Guard instances in a process share one locked
+   registry, so concurrent callers cannot exceed the signed use budget. An
+   injected registry owns its consumption scope and must consume atomically.
 
 The hardening requirements above need code and fault-injection validation;
 historical corpus scores do not establish them. No-facts ALLOW and detector
@@ -157,8 +172,9 @@ These hold for the shipped adapters and for anything built on top of them:
 
 Not yet implemented:
 
-- A deployment-controlled approval service must scope and expire ASK grants. The
-  current ASK result withholds content but does not implement such grants.
+- Approval UI, roles and approval chains, and durable consumption across
+  processes or restarts. Scoped/expiring grants and process-local consumption
+  are implemented; deployment-side code decides who may issue them.
 - DICOM write-back must keep metadata cleaning and pixel risk separate. The
   read-only scanner already reports them separately; it does not write.
 
@@ -203,6 +219,7 @@ medical-privacy-guard/
 │   ├── model.py
 │   ├── errors.py
 │   ├── policy.py
+│   ├── grant.py
 │   ├── verify.py
 │   ├── benchmark.py
 │   └── audit.py

@@ -18,7 +18,11 @@ the transformer cannot rewrite; it does not switch the transformation off.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from threading import Barrier
 
 import pytest
 
@@ -26,6 +30,7 @@ from core.grant import (
     ApprovalRequest,
     Grant,
     GrantIssuer,
+    GrantRegistry,
     check_grant,
     content_hash,
 )
@@ -129,6 +134,86 @@ def test_a_grant_cannot_be_replayed(guard, issuer):
     second = guard.sanitize(Payload(kind="json", content=dict(MIXED)), APPROVED, PURPOSE, grant=grant)
     assert second.sanitized_payload is None
     assert "already been used" in second.decision_before.explanation
+
+
+def test_a_grant_cannot_be_replayed_by_another_guard(guard, issuer):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",))
+    first = guard.sanitize(Payload(kind="json", content=dict(MIXED)), APPROVED,
+                           PURPOSE, grant=grant)
+    assert first.sanitized_payload is not None
+
+    second = Guard(grant_key=KEY).sanitize(
+        Payload(kind="json", content=dict(MIXED)), APPROVED, PURPOSE, grant=grant
+    )
+    assert second.decision_before.verdict is Verdict.ASK
+    assert second.sanitized_payload is None
+    assert "already been used" in second.decision_before.explanation
+
+
+@pytest.mark.parametrize("uses_allowed", [1, 3])
+def test_concurrent_guards_share_the_use_budget(guard, issuer, uses_allowed):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",),
+                         uses_allowed=uses_allowed)
+    callers = 8
+    start = Barrier(callers)
+
+    def release(_):
+        other = Guard(grant_key=KEY)
+        start.wait(timeout=10)
+        return other.sanitize(Payload(kind="json", content=dict(MIXED)),
+                              APPROVED, PURPOSE, grant=grant)
+
+    with ThreadPoolExecutor(max_workers=callers) as executor:
+        results = list(executor.map(release, range(callers)))
+    released = [r for r in results if r.sanitized_payload is not None]
+    assert len(released) == uses_allowed
+    assert all(r.decision_before.verdict is Verdict.ASK for r in results)
+    for result in released:
+        assert result.verification is not None and result.verification.passed
+        assert json.loads(result.sanitized_payload.content)["name"] != "张三"
+
+
+@pytest.mark.parametrize("uses_allowed", [1, 3])
+def test_registry_consumption_is_atomic(guard, issuer, uses_allowed):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         uses_allowed=uses_allowed)
+
+    class YieldingCounter(dict):
+        def get(self, key, default=0):
+            used = super().get(key, default)
+            # Allow another thread to run between the read and the update.
+            time.sleep(0.02)
+            return used
+
+    registry = GrantRegistry()
+    store = YieldingCounter()
+    callers = 8
+    start = Barrier(callers)
+
+    def consume(_):
+        start.wait(timeout=10)
+        return registry.consume(grant, store=store)
+
+    with ThreadPoolExecutor(max_workers=callers) as executor:
+        results = list(executor.map(consume, range(callers)))
+    assert sum(results) == uses_allowed
+    assert store[grant.grant_id] == uses_allowed
+
+
+def test_an_explicit_registry_can_be_shared(issuer):
+    registry = GrantRegistry()
+    first_guard = Guard(grant_key=KEY, registry=registry)
+    second_guard = Guard(grant_key=KEY, registry=registry)
+    grant = issuer.issue(_ask(first_guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",))
+    first = first_guard.sanitize(Payload(kind="json", content=dict(MIXED)),
+                                 APPROVED, PURPOSE, grant=grant)
+    second = second_guard.sanitize(Payload(kind="json", content=dict(MIXED)),
+                                   APPROVED, PURPOSE, grant=grant)
+    assert first.sanitized_payload is not None
+    assert second.sanitized_payload is None
 
 
 def test_a_grant_does_not_outlive_its_scope(guard, issuer):
@@ -337,3 +422,171 @@ def test_an_ungranted_narrative_stays_withheld(guard):
     result = guard.sanitize(RARE_NOTE, APPROVED, Purpose.RESEARCH)
     assert result.sanitized_payload is None
     assert result.approval_request is not None
+
+
+@pytest.mark.parametrize("kind, content", [
+    ("text", RARE_NOTE),
+    ("json", {"note": RARE_NOTE}),
+    ("csv", "note\n" + RARE_NOTE + "\n"),
+    ("fhir", {"resourceType": "Condition", "note": [{"text": RARE_NOTE}]}),
+])
+def test_approved_context_is_releasable_in_every_format(guard, issuer, kind, content):
+    payload = Payload(kind=kind, content=content)
+    request = guard.sanitize(payload, APPROVED, PURPOSE).approval_request
+    grant = issuer.issue(request, ttl_seconds=300)
+    result = guard.sanitize(payload, APPROVED, PURPOSE, grant=grant)
+    assert result.decision_before.verdict is Verdict.ASK
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None
+
+
+@pytest.mark.parametrize("document, accepted, unchanged_key, rewritten_key", [
+    ({"phone": 13800000000, "name": "张三"}, "PHONE", "phone", "name"),
+    ({"name": "张三", "phone": 13800000000}, "PHONE", "phone", "name"),
+    ({"mrn": 1234567, "medical_record_number": "ZY2026001"},
+     "MEDICAL_RECORD_NUMBER", "mrn", "medical_record_number"),
+    ({"phone": 13800000000, "mobile": "13900000000"}, "PHONE", "phone", "mobile"),
+    ({"id_card": 110101199003078888, "name": "张三"},
+     "GOVERNMENT_ID", "id_card", "name"),
+])
+def test_approved_read_only_values_survive_and_writable_values_transform(
+    guard, issuer, document, accepted, unchanged_key, rewritten_key
+):
+    payload = Payload(kind="json", content=document)
+    grant = issuer.issue(_ask(guard, document).approval_request, ttl_seconds=300,
+                         accepted_types=(accepted,))
+    result = guard.sanitize(payload, APPROVED, PURPOSE, grant=grant)
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None
+    released = json.loads(result.sanitized_payload.content)
+    assert released[unchanged_key] == document[unchanged_key]
+    assert type(released[unchanged_key]) is type(document[unchanged_key])
+    assert released[rewritten_key] != document[rewritten_key]
+
+
+@pytest.mark.parametrize("kind, content", [
+    ("text", RARE_NOTE),
+    ("json", MIXED),
+])
+def test_rejected_grants_do_not_enter_authorized_audit_fields(
+    guard, issuer, tmp_path, kind, content
+):
+    payload = Payload(kind=kind, content=content)
+    request = guard.sanitize(payload, APPROVED, PURPOSE).approval_request
+    grant = issuer.issue(request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",))
+    rejected = replace(grant, issuer="SYNTH-UNVERIFIED-ISSUER", signature="invalid")
+    result = guard.sanitize(payload, APPROVED, PURPOSE, grant=rejected,
+                            audit_dir=str(tmp_path))
+    assert result.sanitized_payload is None
+    event = json.loads((tmp_path / "events.jsonl").read_text())
+    assert event["grant_id"] == "" and event["grant_issuer"] == ""
+    assert rejected.issuer not in json.dumps(event)
+
+
+@pytest.mark.parametrize("raw", [
+    'null', '[]', '1', '"a grant"',
+    '{"grant_id": 1, "request_fingerprint": "x", "issuer": "x", '
+    '"issued_at": "x", "expires_at": "x"}',
+])
+def test_grant_decoding_rejects_invalid_shapes(raw):
+    from core.errors import GrantError
+
+    with pytest.raises(GrantError):
+        Grant.from_json(raw)
+
+
+@pytest.mark.parametrize("field, value", [
+    ("uses_allowed", 1.5), ("uses_allowed", True), ("uses_allowed", "1"),
+    ("uses_allowed", 0), ("accepted_types", "PHONE"),
+    ("accepted_types", [1]), ("issuer", {"name": "synthetic"}),
+])
+def test_grant_decoding_does_not_coerce_fields(guard, issuer, field, value):
+    from core.errors import GrantError
+
+    data = json.loads(issuer.issue(_ask(guard).approval_request, ttl_seconds=300).to_json())
+    data[field] = value
+    with pytest.raises(GrantError):
+        Grant.from_json(json.dumps(data))
+
+
+def test_grant_json_round_trip_preserves_signature(guard, issuer):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",), uses_allowed=3)
+    parsed = Grant.from_json(grant.to_json())
+    assert parsed == grant
+    assert parsed.signature_is_valid(KEY)
+
+
+def test_read_only_approval_does_not_cover_a_failed_writable_transformation(
+    guard, issuer, monkeypatch
+):
+    document = {"phone": 13800000000, "mobile": "13900000000"}
+    grant = issuer.issue(_ask(guard, document).approval_request, ttl_seconds=300,
+                         accepted_types=("PHONE",))
+    monkeypatch.setattr("transformers.text.TextTransformer.apply",
+                        lambda self, fact, op, tokens: fact.value)
+    result = guard.sanitize(Payload(kind="json", content=document), APPROVED,
+                            PURPOSE, grant=grant)
+    assert result.sanitized_payload is None
+    assert result.verification is not None and not result.verification.passed
+
+
+@pytest.mark.parametrize("signature", ["", "invalid", "不合法"])
+def test_invalid_signatures_remain_ask_without_spending_a_use(guard, issuer, signature):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",))
+    result = guard.sanitize(Payload(kind="json", content=dict(MIXED)), APPROVED,
+                            PURPOSE, grant=replace(grant, signature=signature))
+    assert result.decision_before.verdict is Verdict.ASK
+    assert result.sanitized_payload is None
+    result = guard.sanitize(Payload(kind="json", content=dict(MIXED)), APPROVED,
+                            PURPOSE, grant=grant)
+    assert result.sanitized_payload is not None
+
+
+@pytest.mark.parametrize("field, value", [
+    ("ttl_seconds", True), ("ttl_seconds", 1.5), ("ttl_seconds", "1"),
+    ("uses_allowed", True), ("uses_allowed", 1.5), ("uses_allowed", "1"),
+])
+def test_issuer_rejects_non_integer_budgets(guard, issuer, field, value):
+    from core.errors import GrantError
+
+    kwargs = {"ttl_seconds": 300, field: value}
+    with pytest.raises(GrantError):
+        issuer.issue(_ask(guard).approval_request, **kwargs)
+
+
+@pytest.mark.parametrize("text", ["普通随访", "电话13800000000"])
+def test_a_grant_not_needed_by_the_decision_is_not_audited_as_accepted(
+    guard, issuer, tmp_path, text
+):
+    grant = issuer.issue(_ask(guard).approval_request, ttl_seconds=300,
+                         accepted_types=("MEDICAL_RECORD_NUMBER",))
+    result = guard.sanitize(text, APPROVED, PURPOSE, grant=grant, audit_dir=str(tmp_path))
+    assert result.sanitized_payload is not None
+    event = json.loads((tmp_path / "events.jsonl").read_text())
+    assert event["grant_id"] == "" and event["grant_issuer"] == ""
+
+
+@pytest.mark.parametrize("offset", [-5, 8])
+def test_issuance_preserves_the_instant_across_timezones(guard, issuer, offset):
+    request = _ask(guard).approval_request
+    moment = datetime.now(timezone(timedelta(hours=offset)))
+    grant = issuer.issue(request, ttl_seconds=60, now=moment)
+    assert check_grant(grant, request, key=KEY, now=moment) is None
+    assert check_grant(grant, request, key=KEY,
+                       now=moment + timedelta(seconds=61)) == "grant has expired"
+
+
+def test_a_naive_clock_has_an_explicit_failure(guard, issuer):
+    from core.errors import GrantError
+
+    request = _ask(guard).approval_request
+    moment = datetime.now(timezone.utc).replace(tzinfo=None)
+    with pytest.raises(GrantError, match="timezone-aware"):
+        issuer.issue(request, ttl_seconds=60, now=moment)
+    grant = issuer.issue(request, ttl_seconds=60)
+    assert check_grant(grant, request, key=KEY, now=moment) == (
+        "grant evaluation time must be timezone-aware"
+    )

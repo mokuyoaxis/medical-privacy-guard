@@ -49,7 +49,7 @@ def release_or_raise(result: SanitizationResult) -> Payload:
         # sending the input instead would be the disclosure this guard exists to
         # prevent.
         raise VerificationFailed(decision, verification_details(result))
-    if verdict is Verdict.SANITIZE and not _verified(result):
+    if verdict in {Verdict.SANITIZE, Verdict.ASK} and not _verified(result):
         raise VerificationFailed(decision, verification_details(result))
     return payload
 

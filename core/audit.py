@@ -17,7 +17,7 @@ import json
 import os
 import uuid
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -78,18 +78,22 @@ class AuditEvent:
     #: so its contents are a sensitive asset that must not enter the log.
     dictionary_loaded: bool = False
     dictionary_entries: int = 0
-    #: Set when a release happened because a human approved it. The verdict
+    #: Set only for a grant validated and consumed for this attempt. A PASS
+    #: verification marks a successful granted release. The verdict
     #: stays ASK: the record must show that a person accepted a residual risk,
     #: not that policy became comfortable with the payload. Empty when no grant
-    #: was involved.
+    #: was accepted; rejected and unused grants never populate these fields.
     grant_id: str = ""
     grant_issuer: str = ""
+    #: Preserve the serialized field set of older records when checking hashes.
+    #: New and re-chained events always use the current schema.
+    _present_fields: frozenset[str] | None = field(default=None, repr=False, compare=False)
 
     # -- serialization ------------------------------------------------------
 
     def _payload(self) -> dict:
         """Canonical payload excluding ``event_hash``, which hashes it."""
-        return {
+        payload = {
             "event_id": self.event_id,
             "timestamp": self.timestamp,
             "decision": self.decision,
@@ -109,6 +113,9 @@ class AuditEvent:
             "grant_id": self.grant_id,
             "grant_issuer": self.grant_issuer,
         }
+        if self._present_fields is not None:
+            payload = {name: value for name, value in payload.items() if name in self._present_fields}
+        return payload
 
     def to_json_line(self) -> str:
         payload = {**self._payload(), "event_hash": self.event_hash}
@@ -131,12 +138,21 @@ class AuditEvent:
 
     def chained(self, prev_hash: str, key: bytes | None = None) -> "AuditEvent":
         """Return a copy linked to *prev_hash*, with its hash computed."""
-        linked = replace(self, prev_hash=prev_hash)
+        linked = replace(self, prev_hash=prev_hash, _present_fields=None)
         return replace(linked, event_hash=linked.compute_hash(key))
 
     @classmethod
     def from_json_line(cls, line: str) -> "AuditEvent":
         payload = json.loads(line)
+        if not isinstance(payload, dict):
+            raise TypeError("audit line must be a JSON object")
+        known = {item.name for item in fields(cls) if not item.name.startswith("_")}
+        if set(payload) - known:
+            raise ValueError("audit event contains unsupported fields")
+        if not isinstance(payload["entity_counts"], dict) or any(
+            not isinstance(payload[name], list) for name in ("reason_codes", "transformations")
+        ):
+            raise TypeError("audit event has invalid container fields")
         return cls(
             event_id=payload["event_id"],
             timestamp=payload["timestamp"],
@@ -153,10 +169,11 @@ class AuditEvent:
             verification=payload["verification"],
             prev_hash=payload.get("prev_hash", ""),
             event_hash=payload.get("event_hash", ""),
-            dictionary_loaded=bool(payload.get("dictionary_loaded", False)),
-            dictionary_entries=int(payload.get("dictionary_entries", 0)),
+            dictionary_loaded=payload.get("dictionary_loaded", False),
+            dictionary_entries=payload.get("dictionary_entries", 0),
             grant_id=payload.get("grant_id", ""),
             grant_issuer=payload.get("grant_issuer", ""),
+            _present_fields=frozenset(payload) - {"event_hash"},
         )
 
 
@@ -367,7 +384,7 @@ def read_events(filename: str | Path) -> tuple[AuditEvent, ...]:
                 continue
             try:
                 events.append(AuditEvent.from_json_line(stripped))
-            except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            except (KeyError, TypeError, ValueError) as exc:
                 raise AuditError(f"corrupt audit line: {exc}") from exc
     return tuple(events)
 

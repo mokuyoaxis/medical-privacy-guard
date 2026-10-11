@@ -353,6 +353,48 @@ def unreadable_leaf_coverage() -> list[str]:
     return problems
 
 
+def approval_release_contract() -> list[str]:
+    """Approved ASK must release consistently across all supported formats."""
+    from core.grant import GrantIssuer, GrantRegistry
+
+    note = "本例为罕见变异型病例，建议多学科会诊。"
+    samples = (
+        ("text context", Payload(kind="text", content=note), ()),
+        ("JSON context", Payload(kind="json", content={"note": note}), ()),
+        ("CSV context", Payload(kind="csv", content="note\n" + note + "\n"), ()),
+        ("FHIR annotation", Payload(kind="fhir", content={
+            "resourceType": "Condition", "note": [{"text": note}],
+        }), ()),
+        ("numeric phone", Payload(kind="json", content={
+            "name": "张三", "phone": 13800000000,
+        }), ("PHONE",)),
+        ("mixed MRN types", Payload(kind="json", content={
+            "mrn": 1234567, "medical_record_number": "ZY2026001",
+        }), ("MEDICAL_RECORD_NUMBER",)),
+    )
+    problems = []
+    key = b"synthetic-contract-audit-key"
+    issuer = GrantIssuer(key, issuer="synthetic-contract-audit")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel.EXTERNAL_APPROVED)
+    for name, payload, accepted in samples:
+        guard = Guard(grant_key=key, registry=GrantRegistry())
+        before = guard.sanitize(payload, recipient, Purpose.RESEARCH)
+        if (before.decision_before.verdict is not Verdict.ASK
+                or before.sanitized_payload is not None or before.approval_request is None):
+            problems.append(f"  {name}: did not withhold for approval")
+            continue
+        grant = issuer.issue(before.approval_request, ttl_seconds=300, accepted_types=accepted)
+        after = guard.sanitize(payload, recipient, Purpose.RESEARCH, grant=grant)
+        if (after.decision_before.verdict is not Verdict.ASK
+                or after.sanitized_payload is None
+                or after.verification is None or not after.verification.passed):
+            problems.append(f"  {name}: approved release was not verified and released")
+        replay = guard.sanitize(payload, recipient, Purpose.RESEARCH, grant=grant)
+        if replay.sanitized_payload is not None:
+            problems.append(f"  {name}: consumed grant was replayed")
+    return problems
+
+
 def main() -> int:
     sections = collections.OrderedDict(
         (
@@ -363,6 +405,7 @@ def main() -> int:
             ("Admission contract (CLI, adapters, guard)", admission_contract()),
             ("Invisible characters vs detection", invisible_character_coverage()),
             ("Unreadable leaves vs verdict", unreadable_leaf_coverage()),
+            ("ASK approval vs release", approval_release_contract()),
         )
     )
     failed = False

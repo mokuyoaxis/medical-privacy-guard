@@ -374,6 +374,54 @@ class TestChainIntegrity:
         assert report.verified, report.failures
         assert (report.total, report.chained, report.unchained) == (5, 5, 0)
 
+    @pytest.mark.parametrize("key", [None, b"synthetic-history-key"])
+    @pytest.mark.parametrize("absent", [
+        ("grant_id", "grant_issuer"),
+        ("grant_id", "grant_issuer", "dictionary_loaded", "dictionary_entries"),
+    ])
+    def test_older_chained_schemas_still_verify_and_accept_new_records(self, tmp_path, key, absent):
+        import hashlib
+        import hmac
+
+        payload = json.loads(sample_event().to_json_line())
+        payload.pop("event_hash")
+        for name in absent:
+            payload.pop(name)
+        payload["prev_hash"] = GENESIS_HASH
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
+        payload["event_hash"] = (
+            hmac.new(key, raw, hashlib.sha256).hexdigest()
+            if key else hashlib.sha256(raw).hexdigest()
+        )
+        writer = AuditWriter(tmp_path, key=key)
+        writer.filename.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        assert writer.verify().verified
+        event = writer.read_all()[0]
+        assert json.loads(event.to_json_line()) == payload
+        writer.record(replace(event, event_id="current-schema"))
+        assert writer.verify().verified
+        assert writer.verify().chained == 2
+
+    @pytest.mark.parametrize("field, value", [
+        ("dictionary_entries", "0"), ("dictionary_loaded", 0),
+    ])
+    def test_field_type_changes_cannot_be_hidden_by_coercion(self, tmp_path, field, value):
+        writer = AuditWriter(tmp_path)
+        writer.record(sample_event())
+        payload = json.loads(writer.filename.read_text())
+        payload[field] = value
+        writer.filename.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        assert not writer.verify().verified
+
+    def test_unknown_fields_cannot_bypass_integrity_verification(self, tmp_path):
+        writer = AuditWriter(tmp_path)
+        writer.record(sample_event())
+        payload = json.loads(writer.filename.read_text())
+        payload["unknown_field"] = "SYNTH-UNSIGNED-METADATA"
+        writer.filename.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        with pytest.raises(AuditError, match="unsupported fields"):
+            writer.verify()
+
     def test_first_record_links_to_genesis(self, tmp_path):
         writer = AuditWriter(tmp_path)
         writer.record(sample_event())

@@ -229,10 +229,15 @@ def _complete_names(document: Any) -> dict[str, str]:
     not declare is how a detector starts reading prose as people.
     """
     extra: dict[str, str] = {}
-    stack: list[tuple[Any, str]] = [(document, "")]
+    stack: list[tuple[Any, str, bool]] = [(document, "", False)]
     while stack:
-        node, pointer = stack.pop()
+        node, pointer, is_name = stack.pop()
         if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, (dict, list)):
+                    stack.append((value, f"{pointer}/{_escape(key)}", key == "name"))
+            if not is_name:
+                continue
             # ``family`` is a string and ``given`` is an array in FHIR, so a
             # component's value may sit one level down ("given": ["伟"]).
             # Only the plain-string leaves of a component are completed, and
@@ -264,12 +269,9 @@ def _complete_names(document: Any) -> dict[str, str]:
                     value = node.get(key)
                     if isinstance(value, str) and value.strip():
                         extra[f"{pointer}/{_escape(key)}"] = value
-            for key, value in node.items():
-                if isinstance(value, (dict, list)):
-                    stack.append((value, f"{pointer}/{_escape(key)}"))
         elif isinstance(node, list):
             for index in range(len(node) - 1, -1, -1):
-                stack.append((node[index], f"{pointer}/{index}"))
+                stack.append((node[index], f"{pointer}/{index}", is_name))
     return extra
 
 

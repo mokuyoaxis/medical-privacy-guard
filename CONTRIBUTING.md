@@ -36,12 +36,16 @@ contain synthetic data only.
 ## Development checks
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,dicom]"
 python -m pytest -q
 python -m ruff check .
 python -m bandit -q -r core detectors transformers medical_privacy_guard cli
 python -m build
 ```
+
+The ``dicom`` extra is optional for deployments, but required for the full test
+suite and installed by the CI test matrix. Without it, the DICOM scanner test
+module skips; that run does not establish DICOM correctness.
 
 Changes to policy, detectors, transformers or verification require tests for:
 

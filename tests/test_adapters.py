@@ -82,6 +82,19 @@ class TestVerdictMapping:
         assert "张三" not in str(payload.content)
         assert "[PERSON_NAME_001]" in str(payload.content)
 
+    @pytest.mark.parametrize("verification", [None, VerificationResult(False, (), "synthetic")])
+    def test_planned_ask_requires_successful_verification(self, verification):
+        from dataclasses import replace
+
+        from core.model import DisclosurePlan
+
+        result = _synthetic(Verdict.ASK, payload=Payload(kind="text", content="synthetic"),
+                            verification=verification)
+        result = replace(result, decision_before=replace(result.decision_before,
+                                                         plan=DisclosurePlan(operations=())))
+        with pytest.raises(VerificationFailed):
+            release_or_raise(result)
+
     def test_block_raises_and_carries_the_decision(self, guard):
         result = _json(guard, {"id_card": "110101199003078888"}, "external-unknown")
         assert result.decision_before.verdict is Verdict.BLOCK

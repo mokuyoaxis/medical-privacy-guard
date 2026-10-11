@@ -85,6 +85,10 @@ when they disagree, this file wins and the other two are updated.
   chain does not cover is stated in [evaluation.md](evaluation.md) and the
   design note: tail truncation, whole-chain rewriting without a key, and
   timestamp authenticity;
+- audit-chain reads preserve the stored field set and value types: missing
+  optional fields in older records are not hashed as newly inserted defaults.
+  Type changes cannot be hidden by coercion, and unknown fields are refused.
+  Existing logs are read without rewriting or migration;
 - FHIR resources (``Payload(kind="fhir")``, or a ``.fhir``/``.json`` file whose
   content declares a ``resourceType``): a minimal set — ``Patient``,
   ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
@@ -96,7 +100,8 @@ when they disagree, this file wins and the other two are updated.
   name before detection, since neither component alone is detectable; the
   replacement is still written through each component's own path, so the
   document keeps its shape. This is not FHIR de-identification: no value-domain
-  or reference-integrity claim is made;
+  or reference-integrity claim is made. Name completion is restricted to
+  ``name`` objects; annotation fields such as ``note[].text`` remain prose;
 - an MCP stdio gateway (``medical-privacy-guard mcp-gateway -- <server command>``):
   a transparent proxy that spawns an MCP server and mediates one stdio session
   with it. Newline-delimited JSON-RPC is forwarded byte for byte, except for
@@ -144,7 +149,8 @@ yield a person called 周转正常 — at the cost of missing a real name whose 
 character is outside that inventory. A *labelled* value (`姓名：`, `主治医师：`) is
 bounded by its separator instead and does not have this limitation, which is why
 `主治医师欧阳修远` yields no fact while `主治医师：欧阳修远` yields the whole name.
-A bare name token with no field label is not detected at all.
+A bare name token without a supported label, title or narrative anchor is not
+detected.
 
 The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
 the five annotated rare-context notes correctly returned ASK. That run did not
@@ -203,8 +209,9 @@ The library says *what* needs approving and checks *whether* an approval covers
 this disclosure; it never decides who may approve, for the same reason it is not
 an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
 
-- ``ApprovalRequest`` is produced on ASK and carries no raw values: a
-  fingerprint, the reason codes, the risk summary, fact-type counts and the
+- With a configured grant key, ``ApprovalRequest`` is produced on ASK and
+  carries no raw values: a fingerprint, the reason codes, the risk summary,
+  fact-type counts and the
   policy version. The fingerprint binds the payload's hash, the recipient, the
   purpose and the policy version, so one changed byte invalidates every grant
   issued for it.
@@ -216,15 +223,29 @@ an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
   residual risk of a value the transformation layer cannot rewrite — ``read_only``
   facts such as a JSON number — and only those. Everything the plan could have
   handled is still transformed and still verified. The verdict stays ASK and the
-  audit records ``grant_id`` / ``grant_issuer``, so the record shows a person
-  accepted a risk rather than policy relaxing.
+  audit records ``grant_id`` / ``grant_issuer`` only for a grant actually
+  validated and consumed. Its verification status distinguishes success from
+  a failed approved attempt. Rejected or unused grants supply no audit identity.
+  Approval state is explicit: an empty accepted-type list may authorize
+  context-only risk, but a type list alone cannot authorize release;
+- The verifier covers only exact output spans traced to approved read-only
+  input facts. Another writable value of that type must still be transformed
+  and verified; adapters require PASS verification for a granted ASK too;
+- Grant JSON fields retain their declared types. Use budgets are positive
+  integers, accepted types are an array of strings, and malformed data raises
+  ``GrantError`` rather than being silently coerced or treated as approval;
+- Explicit issuance clocks must be timezone-aware and are converted to UTC;
+  their offsets cannot shift the signed validity window. The guard's default
+  clock is UTC;
 - Every failure mode (no key, bad signature, wrong fingerprint, expired, already
   used, type not accepted) falls back to ASK. None widens the verdict.
-- **Single-use is process-local.** The default registry stops a replay inside
-  the process and stops accidental double use, but it does not survive a restart
-  and is not shared between processes. Like the audit chain's tail-truncation
-  gap, this is stated rather than implied. A deployment needing durable
-  single-use injects its own store.
+- **Single-use is process-local.** All default Guard instances share one
+  registry, whose locked read/update enforces the use budget under concurrent
+  calls. It does not survive a restart and is not shared between processes.
+  Passing ``Guard(registry=...)`` replaces that default; the deployment must
+  share the injected registry across callers and implement atomic consumption
+  in a persistent store when durable single-use is required. Consumption occurs
+  before transformation and audit, so a subsequent failure still spends the use.
 
 Not covered: an approval UI or workflow, roles and approval chains, and revocation
 lists (use a short expiry, or inject a store that supports it).
@@ -281,7 +302,8 @@ normalisation — the caller states the content is text, and the guard still rea
 what a human would read.
 
 The admission contract blocks known unsupported extensions, NUL and other
-unsupported control characters, and JSON-container content before detection.
+unsupported control characters, and recognized malformed containers before
+detection. Valid JSON/FHIR containers take their supported structured path.
 Every string leaf of a structured payload passes the same check, so a control
 character that arrives as a JSON escape (`"\u0000"`, whose bytes are ordinary
 ASCII) is refused rather than reaching the detectors. UTF-8 decoding is necessary
@@ -316,8 +338,9 @@ need implementation-level regression validation, not just documentation.
 
 ## Experimental
 
-Nothing. Experimental capabilities live behind explicit feature flags and are
-listed here only when they exist.
+The read-only DICOM metadata scanner is experimental and requires the optional
+``dicom`` extra. It reports identifiers without rewriting the file; pixel risk
+remains UNKNOWN and no file is reported safe to release.
 
 ## Definitions
 

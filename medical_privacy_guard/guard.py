@@ -20,7 +20,7 @@ import os
 from dataclasses import replace
 from typing import Any, Sequence
 
-from core.audit import AuditError, AuditWriter, build_audit_event
+from core.audit import AuditWriter, build_audit_event
 from core.dictionary import load_dictionary
 from core.errors import ParserError
 from core.grant import (
@@ -112,6 +112,9 @@ _AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
 #: key", so an explicit None disables grants instead of falling back to the
 #: environment.
 _UNSET = object()
+
+#: Share consumed grants across default Guard instances in this process.
+_DEFAULT_GRANT_REGISTRY = GrantRegistry()
 
 
 def _env_audit_key() -> bytes | None:
@@ -353,6 +356,7 @@ def _rebuilt_document_releasable(
     decision: Decision,
     residual: tuple[DetectedFact, ...],
     accepted_types: frozenset[str] = frozenset(),
+    approval_granted: bool = False,
 ) -> bool:
     """True when the rebuilt document may still be released.
 
@@ -369,7 +373,7 @@ def _rebuilt_document_releasable(
     if decision.verdict is Verdict.ASK:
         # Without a grant there is nothing to release, whatever the residual is.
         # An ASK is releasable only because someone accepted its risk.
-        if not accepted_types or not residual:
+        if not approval_granted:
             return False
         return all(
             (fact.read_only and fact.type in accepted_types)
@@ -451,6 +455,9 @@ class Guard:
             detectors: optional replacement detector set. Supplied detectors
                 may only extend recall; they must return ``DetectedFact`` and
                 must not decide verdicts, bypass verification or write audit.
+            registry: optional deployment-controlled consumption registry.
+                When omitted, all Guard instances share one process-local,
+                thread-safe registry. A custom registry must consume atomically.
         """
         self.profile: PolicyProfile = (
             PolicyProfile.load(profile_path) if profile_path else load_builtin_profile(profile)
@@ -486,7 +493,7 @@ class Guard:
         #: explicit None disables grants: every ASK then stays an ASK.
         self.grant_key = grant_key if grant_key is not _UNSET else env_grant_key()
         #: Consumed grants, so a one-time approval cannot be replayed.
-        self._grants = registry or GrantRegistry()
+        self._grants = registry if registry is not None else _DEFAULT_GRANT_REGISTRY
 
     def _grant_approval(
         self,
@@ -498,7 +505,7 @@ class Guard:
         recipient: Recipient,
         purpose: Purpose,
         grant: Grant | None,
-    ) -> tuple[ApprovalRequest | None, str | None]:
+    ) -> tuple[ApprovalRequest | None, str | None, bool]:
         """Return the request, the rejection reason, and whether release is granted.
 
         ``(request, None, False)``: the ASK stands, *request* describes it.
@@ -771,6 +778,7 @@ class Guard:
             purpose=purpose_obj,
             grant=grant,
         )
+        approved_grant = grant if granted else None
         if grant_reason is not None:
             # A rejected grant leaves the ASK standing. It can never widen the
             # verdict: every failure path here withholds, none of them allow.
@@ -793,7 +801,8 @@ class Guard:
                 outcome=outcome,
                 detectors=self._detectors,
                 dictionary=self.dictionary,
-                accepted_types=_accepted_types(grant),
+                accepted_types=_accepted_types(approved_grant),
+                approval_granted=granted,
             )
             if verification.passed:
                 sanitized = Payload(
@@ -814,7 +823,7 @@ class Guard:
             recipient_obj,
             purpose_obj,
             verification,
-            grant,
+            approved_grant,
         )
         return SanitizationResult(
             decision_before=decision,
@@ -873,6 +882,7 @@ class Guard:
             purpose=purpose,
             grant=grant,
         )
+        approved_grant = grant if granted else None
         if grant_reason is not None:
             decision = replace(decision, explanation=f"{decision.explanation} Grant rejected: {grant_reason}.")
         elif granted:
@@ -893,7 +903,8 @@ class Guard:
                 outcome=outcome,
                 detectors=self._detectors,
                 dictionary=self.dictionary,
-                accepted_types=_accepted_types(grant),
+                accepted_types=_accepted_types(approved_grant),
+                approval_granted=granted,
             )
             if verification.passed:
                 replacements = _split(text, outcome.text, spans, outcome._evidence)
@@ -909,7 +920,8 @@ class Guard:
                 # as a verdict that is not releasable, and the release is
                 # withheld rather than reported as verified.
                 if _rebuilt_document_releasable(
-                    self.profile, decision_after, residual, frozenset(_accepted_types(grant))
+                    self.profile, decision_after, residual,
+                    frozenset(_accepted_types(approved_grant)), approval_granted=granted,
                 ):
                     sanitized = Payload(
                         kind=payload.kind, content=serialized, provenance=payload.provenance
@@ -924,7 +936,7 @@ class Guard:
                         ),
                     )
 
-        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification, grant)
+        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification, approved_grant)
         return SanitizationResult(
             decision_before=decision,
             sanitized_payload=sanitized,
@@ -952,21 +964,16 @@ class Guard:
             status = "PASS" if verification.passed else "FAIL"
         elif decision.verdict is Verdict.ALLOW:
             status = "N/A (ALLOW)"
-        try:
-            writer = AuditWriter(audit_dir, key=self.audit_key)
-            event = build_audit_event(
-                decision,
-                facts,
-                recipient,
-                purpose,
-                verification=status,
-                dictionary_loaded=self.dictionary is not None,
-                dictionary_entries=len(self.dictionary) if self.dictionary else 0,
-                grant_id=grant.grant_id if grant else "",
-                grant_issuer=grant.issuer if grant else "",
-            )
-            writer.record(event)
-        except AuditError:
-            # Audit is part of the fail-closed contract for sanitize; surface
-            # it rather than silently dropping the record.
-            raise
+        writer = AuditWriter(audit_dir, key=self.audit_key)
+        event = build_audit_event(
+            decision,
+            facts,
+            recipient,
+            purpose,
+            verification=status,
+            dictionary_loaded=self.dictionary is not None,
+            dictionary_entries=len(self.dictionary) if self.dictionary else 0,
+            grant_id=grant.grant_id if grant else "",
+            grant_issuer=grant.issuer if grant else "",
+        )
+        writer.record(event)

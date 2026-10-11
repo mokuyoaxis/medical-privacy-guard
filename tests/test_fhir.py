@@ -189,6 +189,13 @@ class TestBundle:
 
 
 class TestPathReporting:
+    def test_annotation_text_is_not_completed_as_a_person_name(self):
+        document = {"resourceType": "Condition", "note": [{"text": "本例为罕见变异型病例"}]}
+        payload = parse_fhir_payload(document)
+        leaf = next(leaf for leaf in payload.leaves if leaf.path == "/note/0/text")
+        assert leaf.completed is None
+        assert leaf.probes == ()
+
     def test_leaves_are_addressable_and_completion_is_attached(self):
         payload = parse_fhir_payload(load("patient"))
         paths = {leaf.path for leaf in payload.leaves}

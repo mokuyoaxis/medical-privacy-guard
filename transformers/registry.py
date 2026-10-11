@@ -59,7 +59,9 @@ class TransformerRegistry:
         for op in ops:
             transformer = self.get(op.op)
             for fact in facts:
-                if fact.type != op.target:
+                # A writable fact may share this type with a numeric leaf;
+                # the operation still cannot rewrite that read-only span.
+                if fact.type != op.target or fact.read_only:
                     continue
                 replacement = transformer.apply(fact, op, token_registry)
                 replacements.append((fact, op, replacement))

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-rc.1] - 2026-10-11
+
 ### Added
 
 - **Scoped, expiring approval grants for ASK** (``core.grant``). ASK was the one
@@ -31,6 +33,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- ASK verification now requires an explicit accepted approval, including when
+  no read-only types remain. Text and structured release gates use the same
+  approval state; a context-only JSON/CSV/FHIR disclosure with a valid grant no
+  longer fails solely because its accepted-type list is empty.
+- Read-only leaves are skipped by transformers even when a writable leaf has
+  the same fact type. Verification restores only the exact approved read-only
+  output spans, so numeric identifiers may survive their scoped approval while
+  writable identifiers still require successful transformation.
+- ``release_or_raise`` requires successful verification for a granted ASK as
+  well as SANITIZE. Rejected and unused grants no longer populate audit fields
+  reserved for accepted grants.
+- FHIR name completion is restricted to ``name`` objects; annotation ``text``
+  no longer becomes a manufactured person-name field that removes clinical
+  context.
+- Grant parsing rejects invalid field types instead of coercing strings,
+  booleans or fractional use budgets. Invalid Unicode signatures are rejected
+  without raising a comparison error. Removed the unused timedelta wrapper,
+  serialization fallback and redundant audit catch/rethrow.
+- Grant issuance converts supplied timezone-aware clock values to UTC before
+  adding the ``Z`` suffix; non-UTC offsets no longer shift the validity window.
+  Naive clock values have explicit failures instead of ambiguous validity.
+- Audit-chain verification preserves each stored record's original field set
+  and value types. Older chained schemas keep verifying after optional fields
+  are added; type changes cannot disappear through coercion, and unknown fields
+  are rejected instead of being left outside the integrity check. Existing logs
+  are not rewritten. The contract audit now checks ASK release across formats.
+- Default Guard instances now share one process-local grant registry, so
+  creating another Guard cannot replay a consumed approval. Registry consumption
+  is locked so concurrent callers cannot exceed ``uses_allowed``. Added
+  cross-instance, concurrent single-use/multi-use and injected-registry tests.
+- The CI test matrix installs the existing ``dicom`` extra and requires its
+  import before running tests, so the DICOM scanner regressions are exercised
+  rather than silently skipped.
+- Release gates recognize prerelease versions, match candidate tag spelling to
+  Python package versions, and sort candidates before the final release.
+- Architecture, decision protocol, threat model and scope now describe the
+  implemented structured admission and granted ASK paths; DICOM inspection is
+  consistently documented as experimental and read-only.
 - The audit field set grew with the grant fields and the benchmark's exact-set
   gate rejected all 175 records until it was updated deliberately. The gate is
   doing what it is there for: an audit record that grows an unexpected field is
@@ -38,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
+- This is a release candidate: the Git tag is ``v0.5.0-rc.1`` and the Python
+  package version is ``0.5.0rc1``.
 - Single-use is enforced by an in-memory registry. It stops a replay inside the
   process and stops accidental double use, but it does not survive a restart and
   is not shared between processes. That boundary is documented in
@@ -804,7 +846,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...HEAD
+[0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1
+[0.4.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.3...v0.3.4
 [0.3.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...v0.3.1
