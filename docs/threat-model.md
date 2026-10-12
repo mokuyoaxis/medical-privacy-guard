@@ -137,7 +137,9 @@ grant. Requests contain no raw values; grants bind the disclosure, expire and
 carry a use budget. Default Guard instances share an atomic process-local
 consumption registry. Approved releases are still minimized and verified.
 **Deployment responsibility**: informed approval, roles and approval UI, plus a
-persistent atomic registry for consumption across processes or restarts.
+persistent atomic registry for consumption across processes or restarts. The
+optional SQLite backend provides committed use budgets and ID revocation, but
+cannot retract an accepted release or detect restoring an old database.
 
 ### T10. Policy drift or misconfiguration
 

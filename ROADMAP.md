@@ -24,10 +24,10 @@ current capabilities are defined by scope.md and the latest delivered stage.
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
-| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.1`); persistent consumption and dataset risk planned |
+| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.2`), including SQLite consumption/revocation; CLI/MCP approval input and dataset risk planned |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The current package version is `0.5.0rc1`, tagged as `v0.5.0-rc.1`. The work that was planned as separate v0.5 (DICOM)
+The current package version is `0.5.0rc2`, tagged as `v0.5.0-rc.2`. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
 Three version numbers in six days would not have been earned by the release
 process, and a read-only scanner that cannot clear pixel risk does not deserve
@@ -284,7 +284,7 @@ FHIR synthetic fixtures. All are in place.
 ## v0.5 — ASK approvals and security hardening
 
 **Goal**: complete the scoped ASK approval path and verify its release and audit
-contracts. Persistent consumption and dataset risk are follow-up work.
+contracts, including durable SQLite consumption and revocation. Dataset risk remains planned.
 
 ### Delivered: ASK approval grants
 
@@ -319,10 +319,20 @@ checks a grant against it, and records granted releases in the audit.
 cannot be issued by the payload it authorizes; is not a blanket allow; and never
 turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
 
-### Planned follow-up: persistent consumption and dataset risk
+### Delivered in rc.2: persistent consumption and revocation
 
-- A durable, atomic consumption registry for a single machine with multiple
-  processes; the current default remains in-memory and process-local;
+- `SqliteGrantRegistry` for a single machine, private local disk and concurrent
+  processes, injected through the existing Guard interface. No new dependency.
+- Explicit initialization; schema and private permissions checked; missing state
+  and storage errors fail without recreation or memory fallback.
+- Atomic committed use budgets and persistent hashed-ID revocations, including
+  before first use; timeout configurable and worker count controlled by callers.
+- The default remains process-local memory. Backend switches and old backups
+  require isolating old valid grants; no rollback-detection claim is made.
+
+**Docs**: [deployment and recovery](docs/grant-registry.md).
+
+### Planned follow-up: dataset risk
 
 - A file-scoped token map, so the same person receives one token across rows and
   files instead of one per sanitization call;

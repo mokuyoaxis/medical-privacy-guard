@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-rc.2] - 2026-10-12
+
+### Added
+
+- Optional `SqliteGrantRegistry` for one machine sharing a private local disk:
+  explicitly initialized state, atomic committed use budgets across processes
+  and restarts, and persistent revocation by grant ID, including unused IDs.
+  Uses standard-library SQLite with DELETE/EXTRA and a configurable lock timeout;
+  no new production dependency. Guard's default remains process-local memory.
+  Missing, corrupt or unsupported state and storage errors fail explicitly;
+  there is no automatic recreation, migration or memory fallback. Deployment
+  and recovery boundaries are documented in `docs/grant-registry.md`.
+
+### Changed
+
+- The installed-wheel CI smoke test now exercises persistent consumption,
+  replay refusal and ID revocation. Public deployment examples use a portable
+  home-relative path.
+
+### Notes
+
+- Git tag `v0.5.0-rc.2` corresponds to Python package version `0.5.0rc2`.
+  CLI/MCP approval input and dataset-level risk remain follow-up work.
+
 ## [0.5.0-rc.1] - 2026-10-11
 
 ### Added
@@ -846,7 +870,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...HEAD
+[0.5.0-rc.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...v0.5.0-rc.2
 [0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1
 [0.4.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.3...v0.3.4

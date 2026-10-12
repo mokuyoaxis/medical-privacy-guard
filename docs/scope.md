@@ -242,13 +242,22 @@ an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
 - **Single-use is process-local.** All default Guard instances share one
   registry, whose locked read/update enforces the use budget under concurrent
   calls. It does not survive a restart and is not shared between processes.
-  Passing ``Guard(registry=...)`` replaces that default; the deployment must
-  share the injected registry across callers and implement atomic consumption
-  in a persistent store when durable single-use is required. Consumption occurs
+  Passing ``Guard(registry=...)`` replaces that default. The optional
+  ``SqliteGrantRegistry`` shares committed budgets and ID-based revocation
+  between processes using the same private local database. It requires explicit
+  initialization, checks expiry after obtaining the write lock and never
+  recreates missing state or falls back to memory. Storage faults raise
+  ``GrantError``; expiry, exhaustion and revocation withhold the ASK. See
+  [persistent consumption](grant-registry.md). Consumption occurs
   before transformation and audit, so a subsequent failure still spends the use.
 
-Not covered: an approval UI or workflow, roles and approval chains, and revocation
-lists (use a short expiry, or inject a store that supports it).
+SQLite revocation persists even for an unused grant ID and prevents new
+consumption after its commit. It cannot retract a previously accepted release.
+Restoring old state can restore spent uses and remove later revocations; the
+deployment must isolate old grants before a backend switch or restore.
+
+Not covered: an approval UI or workflow, roles and approval chains, multi-machine
+state, and authenticated detection of database replacement or backup rollback.
 
 ## Unsupported
 

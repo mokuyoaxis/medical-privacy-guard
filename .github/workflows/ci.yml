@@ -59,11 +59,19 @@ jobs:
           python -m venv /tmp/mpg-wheel-venv
           /tmp/mpg-wheel-venv/bin/python -m pip install dist/*.whl
           cd /tmp
-          /tmp/mpg-wheel-venv/bin/python - <<'PY'
+          /tmp/mpg-wheel-venv/bin/python -I - <<'PY'
+          import tempfile
+          from importlib.metadata import version
+          from pathlib import Path
+
           from adapters import release_or_raise
           from core.errors import HumanApprovalRequired
+          from core.grant import GrantIssuer
+          from core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
           from core.model import Payload
-          from medical_privacy_guard import Guard
+          from medical_privacy_guard import Guard, __version__
+
+          assert __version__ == version("medical-privacy-guard")
 
           result = Guard().sanitize(
               "患者：测试患者甲，电话13800000000",
@@ -89,4 +97,23 @@ jobs:
               pass
           else:
               raise AssertionError("a read-only identifier must not be released")
+
+          with tempfile.TemporaryDirectory(prefix="mpg-wheel-grants-") as folder:
+              database = Path(folder) / "grants.sqlite3"
+              initialize_grant_registry(database)
+              registry = SqliteGrantRegistry(database)
+              key = b"synthetic-ci-grant-key"
+              guard = Guard(grant_key=key, registry=registry)
+              payload = Payload(kind="json", content={"phone": 13800000000})
+              request = guard.sanitize(payload, "external_approved", "RESEARCH").approval_request
+              issuer = GrantIssuer(key, issuer="synthetic-ci")
+              grant = issuer.issue(request, ttl_seconds=300, accepted_types=("PHONE",))
+              accepted = guard.sanitize(payload, "external_approved", "RESEARCH", grant=grant)
+              assert release_or_raise(accepted).content
+              other = Guard(grant_key=key, registry=SqliteGrantRegistry(database))
+              assert other.sanitize(payload, "external_approved", "RESEARCH", grant=grant).sanitized_payload is None
+              revoked = issuer.issue(request, ttl_seconds=300, accepted_types=("PHONE",))
+              assert registry.revoke(revoked.grant_id)
+              assert other.sanitize(payload, "external_approved", "RESEARCH", grant=revoked).sanitized_payload is None
+              assert registry.remaining(revoked.grant_id) == 0
           PY

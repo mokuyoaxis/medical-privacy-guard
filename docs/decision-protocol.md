@@ -132,7 +132,9 @@ A granted release keeps verdict ASK and still transforms and verifies every
 rewritable target. Only accepted read-only residuals and approved context risk
 may remain. A rejected grant withholds content. All default Guard instances
 share the consumption registry within one process; restart and cross-process
-replay prevention require a deployment-controlled persistent registry. Approval
+replay prevention use an explicitly initialized ``SqliteGrantRegistry`` shared
+by path. Its ID revocations stop subsequent consumption; storage faults raise
+``GrantError`` instead of releasing or silently using memory. Approval
 UI, roles and informed-consent checks remain deployment responsibilities.
 
 ## Interaction tiers

@@ -300,6 +300,26 @@ given character is outside the inventory is still missed in the adjacent form.
 
 ## Test and packaging status
 
+Before rc.2 preparation, the SQLite implementation was validated on 2026-10-11:
+**1385 tests with no skips on each of Python 3.10.21, 3.11.16 and 3.12.14**.
+The 47 new cases include 32-process contention for one-use/three-use budgets,
+reopening state in another process, pre/post-commit crashes, persistent ID
+revocation before first use and after partial use, concurrent revoke/consume
+ordering, expiry while waiting, commit failures, missing/corrupt/unsupported
+state and private permissions. All 47 also pass on system Python 3.13.5 with
+SQLite 3.46.1 (45 normal cases and two process-contention cases run separately).
+The three supported-version environments use SQLite 3.53.1.
+
+The confirmed private database was initialized with directory `0700`, file
+`0600`, schema v1 and DELETE/EXTRA. A separate-process lock probe on that actual
+path passes without adding consumption or revocation rows. Ruff, Bandit and the
+eight-section contract audit pass. The wheel includes the new backend, rebuilds
+identically from the sdist and passes isolated installed-wheel consumption,
+replay, revocation, CLI, FHIR and DICOM smoke checks. These are local results
+after `v0.5.0-rc.1`, before preparing the `v0.5.0-rc.2` commit and push. The
+rc.1 tag remains unchanged; remote results must be checked for the rc.2 commit.
+Device power loss and rollback authentication are not established by these checks.
+
 Candidate preparation on 2026-10-11 sets the package version to `0.5.0rc1`
 for the `v0.5.0-rc.1` tag. The final Python 3.12.14 run passes **1338 tests with
 no skips**. Its 21 release-gate cases also pass on Python 3.10.21 and 3.11.16;

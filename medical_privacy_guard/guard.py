@@ -540,7 +540,7 @@ class Guard:
         if reason is not None:
             return None, reason, False
         if not self._grants.consume(grant):
-            return None, "grant has already been used", False
+            return None, "grant has expired, been revoked, or has already been used", False
         # Authorized. The plan is attached only here, so an ASK nobody approved
         # never reaches the transformation branch — it stays a withhold.
         return None, None, True

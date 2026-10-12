@@ -55,6 +55,7 @@ hardening contract, not proof of complete anonymization. See
 | `detectors` | Output sensitive-entity facts, not policy decisions | `DetectedFact` |
 | `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
 | `core/grant.py` | Bind approval to a disclosure, verify the grant and consume its use budget | `ApprovalRequest` / accepted or rejected grant |
+| `core/grant_sqlite.py` | Persist atomic budgets and ID revocation for processes sharing private local disk | committed acceptance / refusal / `GrantError` |
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
@@ -172,9 +173,10 @@ These hold for the shipped adapters and for anything built on top of them:
 
 Not yet implemented:
 
-- Approval UI, roles and approval chains, and durable consumption across
-  processes or restarts. Scoped/expiring grants and process-local consumption
-  are implemented; deployment-side code decides who may issue them.
+- Approval UI, roles and approval chains. Scoped/expiring grants, process-local
+  consumption and an optional SQLite consumption/revocation backend are
+  implemented; deployment-side code decides who may issue or revoke them.
+- Multi-machine consumption and authenticated detection of restored old state.
 - DICOM write-back must keep metadata cleaning and pixel risk separate. The
   read-only scanner already reports them separately; it does not write.
 

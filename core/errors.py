@@ -48,7 +48,7 @@ class TransformerError(GuardError):
 
 
 class GrantError(GuardError):
-    """Raised when an approval grant cannot be issued or cannot be checked.
+    """Raised when a grant cannot be issued, checked or durably consumed.
 
     A malformed grant, a missing key or a bad timestamp is a configuration or
     input problem, not a verdict. It never becomes an ALLOW: the caller keeps
