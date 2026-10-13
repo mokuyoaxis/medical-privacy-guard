@@ -28,6 +28,7 @@ from core.model import (
 from formats.admission import UnsupportedInput, payload_for_text, reject_if_binary
 
 if TYPE_CHECKING:
+    from core.grant import Grant
     from medical_privacy_guard import Guard
 
 __all__ = ["evaluate_call", "payload_for", "sanitize_call"]
@@ -74,6 +75,8 @@ def sanitize_call(
     purpose: str | Purpose,
     environment: EnvironmentContext | None = None,
     audit_dir: str | None = None,
+    *,
+    grant: Grant | None = None,
 ) -> SanitizationResult:
     """Sanitize an external call's content; one decision covers the whole call."""
-    return guard.sanitize(payload_for(content), recipient, purpose, environment, audit_dir)
+    return guard.sanitize(payload_for(content), recipient, purpose, environment, audit_dir, grant=grant)

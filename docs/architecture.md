@@ -56,6 +56,8 @@ hardening contract, not proof of complete anonymization. See
 | `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
 | `core/grant.py` | Bind approval to a disclosure, verify the grant and consume its use budget | `ApprovalRequest` / accepted or rejected grant |
 | `core/grant_sqlite.py` | Persist atomic budgets and ID revocation for processes sharing private local disk | committed acceptance / refusal / `GrantError` |
+| `core/grant_files.py` | Read/write private local approval files without key exposure | signed request / grant objects |
+| `core/dataset.py` | Share batch tokens and report aggregate selected-column combinations | per-file Guard results / engineering counts |
 | `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
@@ -215,6 +217,9 @@ medical-privacy-guard/
 │   ├── threat-model.md
 │   ├── decision-protocol.md
 │   ├── scope.md
+│   ├── grant-registry.md
+│   ├── approval-workflow.md
+│   ├── datasets.md
 │   └── evaluation.md
 ├── core/
 │   ├── __init__.py
@@ -222,6 +227,9 @@ medical-privacy-guard/
 │   ├── errors.py
 │   ├── policy.py
 │   ├── grant.py
+│   ├── grant_sqlite.py
+│   ├── grant_files.py
+│   ├── dataset.py
 │   ├── verify.py
 │   ├── benchmark.py
 │   └── audit.py

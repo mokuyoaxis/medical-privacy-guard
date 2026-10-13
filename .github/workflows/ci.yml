@@ -117,3 +117,4 @@ jobs:
               assert other.sanitize(payload, "external_approved", "RESEARCH", grant=revoked).sanitized_payload is None
               assert registry.remaining(revoked.grant_id) == 0
           PY
+          /tmp/mpg-wheel-venv/bin/python -I -B "$GITHUB_WORKSPACE/tools/smoke_local_workflows.py"

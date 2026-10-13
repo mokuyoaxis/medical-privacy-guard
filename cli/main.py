@@ -8,9 +8,13 @@ Commands:
     audit-verify <audit_dir> [--json] [--key-env VAR]
     mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
     dicom-inspect <file> [--json]
+    grant-issue <request_file> --approve --issuer ID --ttl-seconds N -o GRANT
+    grant-db-init / grant-status / grant-revoke [--grant-db DB]
+    dataset-risk <files...> --quasi-identifier COLUMN
+    dataset-sanitize <files...> --output-dir NEW_DIR
 
 Exit codes:
-    0  ALLOW, or SANITIZE that passed verification; for audit-verify, an intact chain
+    0  ALLOW, or verified SANITIZE/approved ASK; for audit-verify, an intact chain
     2  BLOCK (or verification failure — no output is produced); for
        audit-verify, a broken chain
     3  ASK
@@ -32,7 +36,11 @@ from typing import Mapping, Sequence
 from adapters.mcp_gateway import GatewaySettings, McpGateway
 from core.audit import read_events, verify_chain
 from core.benchmark import run_benchmark
-from core.errors import AuditError, GuardError, ParserError
+from core.dataset import analyze_dataset, read_dataset_file, sanitize_dataset
+from core.errors import AuditError, GrantError, GuardError, ParserError
+from core.grant import ApprovalRequest, Grant, GrantIssuer, env_grant_key
+from core.grant_files import read_approval_file, write_approval_file
+from core.grant_sqlite import DEFAULT_GRANT_DB_PATH, SqliteGrantRegistry, initialize_grant_registry
 from core.model import (
     Decision,
     DetectedFact,
@@ -94,6 +102,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
     )
     _add_common(p_inspect)
+    p_inspect.add_argument("--approval-request-out", help="New private signed approval request file")
 
     p_sanitize = sub.add_parser(
         "sanitize", help="Sanitize a file and write the result.",
@@ -116,6 +125,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
     )
     _add_common(p_sanitize)
+    p_sanitize.add_argument("--approval-request-out", help="New private signed approval request file on ASK")
+    p_sanitize.add_argument("--grant-file", help="Private deployment-issued grant file")
+    p_sanitize.add_argument("--grant-db", help="Absolute initialized SQLite registry path")
+    p_sanitize.add_argument("--grant-timeout", type=float, default=5.0, help="SQLite lock wait in seconds")
+
+    p_issue = sub.add_parser("grant-issue", help="Issue a grant after explicit local human review")
+    p_issue.add_argument("request_file", help="Private signed approval request from Guard")
+    p_issue.add_argument("--approve", action="store_true", help="Confirm that the disclosure was reviewed and approved")
+    p_issue.add_argument("--issuer", required=True, help="Deployment-controlled opaque reviewer ID")
+    p_issue.add_argument("--ttl-seconds", type=int, required=True, help="Required positive lifetime")
+    p_issue.add_argument("--uses-allowed", type=int, default=1)
+    p_issue.add_argument("--accepted-type", action="append", default=[], help="Explicit accepted read-only fact type; repeatable")
+    p_issue.add_argument("-o", "--output", required=True, help="New private grant file; existing paths refused")
+
+    for name, help_text in (
+        ("grant-db-init", "Explicitly create a new private SQLite registry"),
+        ("grant-status", "Read committed uses and revocation status"),
+        ("grant-revoke", "Persistently revoke a grant ID, including unused IDs"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("--grant-db", default=str(DEFAULT_GRANT_DB_PATH), help="Absolute private SQLite registry path")
+        command.add_argument("--grant-timeout", type=float, default=5.0)
+        if name != "grant-db-init":
+            command.add_argument("grant_id", help="Opaque grant ID")
 
     p_benchmark = sub.add_parser(
         "benchmark",
@@ -155,6 +188,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional local institution vocabulary (.csv or .json)",
     )
+    p_gateway.add_argument("--grant-file", action="append", default=[], help="Private local grant file; repeat for different disclosure fields")
+    p_gateway.add_argument("--grant-db", help="Absolute initialized SQLite registry path")
+    p_gateway.add_argument("--grant-timeout", type=float, default=5.0)
+    p_gateway.add_argument("--approval-scope", help="Stable unique deployment ID for this upstream server")
+    p_gateway.add_argument("--approval-request-dir", help="Private directory for signed requests requiring review")
     p_gateway.add_argument(
         "server",
         nargs="+",
@@ -190,6 +228,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_dicom.add_argument("file", help="DICOM file to inspect")
     p_dicom.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+
+    for name, help_text in (
+        ("dataset-risk", "Report aggregate quasi-identifier combinations in CSV/JSON rows"),
+        ("dataset-sanitize", "Minimize CSV/JSON files with one batch-scoped token map"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("files", nargs="+", help="CSV with headers or JSON row objects")
+        command.add_argument("--encoding", default="utf-8-sig")
+        command.add_argument("--quasi-identifier", action="append", default=[],
+                             help="Selected scalar column; repeat for a combination")
+        command.add_argument("--min-group-size", type=int, default=2,
+                             help="Engineering highlight threshold; does not authorize release")
+        if name == "dataset-sanitize":
+            command.add_argument("--output-dir", required=True, help="New private directory; existing paths refused")
+            command.add_argument("--dictionary", default=None)
+            command.add_argument("--audit-dir", default=None)
+            _add_common(command)
     return parser
 
 
@@ -225,13 +280,17 @@ def _payload_for_path(text: str, path: str) -> Payload:
     return payload_for_text(text, is_csv=Path(path).suffix.lower() == ".csv")
 
 
-def _check_paths(input_file: str, output: str | None, audit_dir: str | None) -> None:
+def _check_paths(
+    input_file: str, output: str | None, audit_dir: str | None,
+    protected_files: Sequence[str] = (),
+) -> None:
     """Preflight aliases in trusted directories; not a directory-race sandbox."""
     paths = [Path(input_file)]
     if output is not None:
         paths.append(Path(output))
     if audit_dir:
         paths.append(Path(audit_dir) / "events.jsonl")
+    paths.extend(Path(path) for path in protected_files)
     try:
         resolved = [path.resolve() for path in paths]
         identities = []
@@ -329,6 +388,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     refused here -- a content classifier has no meaning for a table -- while
     ``sanitize`` read it as CSV and released it.
     """
+    if args.approval_request_out:
+        _check_paths(args.file, args.approval_request_out, None)
     text = read_text_file(args.file, args.encoding)
     recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
     purpose = _PURPOSES[args.purpose]
@@ -344,6 +405,10 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     facts = result.facts
     decision = result.decision
     counts = _counts(facts)
+    if decision.verdict is Verdict.ASK and args.approval_request_out:
+        if result.approval_request is None:
+            raise GrantError("exporting an approval request requires the configured grant key")
+        write_approval_file(args.approval_request_out, result.approval_request)
 
     if args.json:
         print(_json_decision(decision, counts, result.public_facts))
@@ -353,7 +418,15 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_sanitize(args: argparse.Namespace) -> int:
-    _check_paths(args.file, args.output, args.audit_dir)
+    database = args.grant_db or (str(DEFAULT_GRANT_DB_PATH) if args.grant_file else None)
+    protected = tuple(path for path in (args.grant_file, database) if path)
+    _check_paths(args.file, args.output, args.audit_dir, protected)
+    if args.approval_request_out:
+        _check_paths(args.file, args.approval_request_out, args.audit_dir, protected)
+        if args.output:
+            _check_paths(args.approval_request_out, args.output, None)
+    registry = SqliteGrantRegistry(database, timeout_seconds=args.grant_timeout) if database else None
+    grant = Grant.from_json(read_approval_file(args.grant_file)) if args.grant_file else None
     admission_error: str | None = None
     try:
         text = read_text_file(args.file, args.encoding)
@@ -368,29 +441,128 @@ def _cmd_sanitize(args: argparse.Namespace) -> int:
     purpose = _PURPOSES[args.purpose]
     # Guard owns detect → decide → transform → verify → audit.  In particular,
     # audit completes before this function writes/reveals the output.
-    result = Guard(profile=args.profile, dictionary_path=args.dictionary).sanitize(
+    result = Guard(profile=args.profile, dictionary_path=args.dictionary, registry=registry).sanitize(
         payload,
         recipient,
         purpose,
         audit_dir=args.audit_dir,
+        grant=grant,
     )
     decision = result.decision_before
 
     if decision.verdict is Verdict.BLOCK:
         print(f"BLOCK: {admission_error or decision.explanation}", file=sys.stderr)
         return EXIT_BLOCK
-    if decision.verdict is Verdict.ASK:
-        print(f"ASK: {decision.explanation}", file=sys.stderr)
-        return EXIT_ASK
-
     if result.verification is not None and not result.verification.passed:
         print(f"VERIFICATION FAILED: {result.verification.details}", file=sys.stderr)
+        return EXIT_BLOCK
+    if decision.verdict is Verdict.ASK and result.sanitized_payload is None:
+        if args.approval_request_out:
+            if result.approval_request is None:
+                raise GrantError("exporting an approval request requires the configured grant key")
+            write_approval_file(args.approval_request_out, result.approval_request)
+        print(f"ASK: {decision.explanation}", file=sys.stderr)
+        return EXIT_ASK
+    if decision.verdict is Verdict.ASK and (
+        result.verification is None or not result.verification.passed
+    ):
+        print("BLOCK: no verified approved payload is available for release", file=sys.stderr)
         return EXIT_BLOCK
     if result.sanitized_payload is None:
         print("BLOCK: no verified payload is available for release", file=sys.stderr)
         return EXIT_BLOCK
 
     _write_output(args.output, args.file, result.sanitized_payload.content)
+    return EXIT_OK
+
+
+def _cmd_grant_issue(args: argparse.Namespace) -> int:
+    if not args.approve:
+        raise GrantError("grant issuance requires explicit local review and --approve")
+    _check_paths(args.request_file, args.output, None)
+    key = env_grant_key()
+    if key is None:
+        raise GrantError("grant issuance requires MEDICAL_PRIVACY_GUARD_GRANT_KEY in the environment")
+    request = ApprovalRequest.from_json(read_approval_file(args.request_file))
+    if not request.signature_is_valid(key):
+        raise GrantError("approval request signature does not verify; regenerate it with the active key")
+    print(f"Reviewed request: {request.request_id}; risk={request.risk_level} "
+          f"score={request.risk_score}; purpose={request.purpose}; types={dict(request.fact_counts)}",
+          file=sys.stderr)
+    grant = GrantIssuer(key, issuer=args.issuer).issue(
+        request, ttl_seconds=args.ttl_seconds, uses_allowed=args.uses_allowed,
+        accepted_types=args.accepted_type,
+    )
+    write_approval_file(args.output, grant)
+    print(json.dumps({"grant_id": grant.grant_id, "expires_at": grant.expires_at,
+                      "uses_allowed": grant.uses_allowed}))
+    return EXIT_OK
+
+
+def _cmd_grant_registry(args: argparse.Namespace) -> int:
+    if args.command == "grant-db-init":
+        initialize_grant_registry(args.grant_db)
+        print("Grant database initialized.")
+        return EXIT_OK
+    registry = SqliteGrantRegistry(args.grant_db, timeout_seconds=args.grant_timeout)
+    if args.command == "grant-revoke":
+        created = registry.revoke(args.grant_id)
+        print(json.dumps({"revoked": True, "new_revocation": created}))
+    else:
+        print(json.dumps({"uses_consumed": registry.remaining(args.grant_id),
+                          "revoked": registry.is_revoked(args.grant_id)}))
+    return EXIT_OK
+
+
+def _cmd_dataset(args: argparse.Namespace) -> int:
+    if args.command == "dataset-risk" and not args.quasi_identifier:
+        raise ParserError("dataset-risk requires at least one --quasi-identifier")
+    if args.command == "dataset-sanitize":
+        if os.path.lexists(args.output_dir):
+            raise GuardError("dataset output directory must be new; existing paths are refused")
+        for path in args.files:
+            _check_paths(path, None, args.audit_dir)
+        if args.audit_dir:
+            try:
+                output, audit = Path(args.output_dir).resolve(), Path(args.audit_dir).resolve()
+            except (OSError, RuntimeError) as exc:
+                raise GuardError("cannot validate dataset output and audit directories") from exc
+            if output == audit or output in audit.parents:
+                raise GuardError("audit directory must not be inside the new dataset output directory")
+    loaded = [read_dataset_file(path, args.encoding) for path in args.files]
+    risk = analyze_dataset(
+        (row for _, rows in loaded for row in rows), args.quasi_identifier,
+        min_group_size=args.min_group_size,
+    ) if args.quasi_identifier else None
+    if args.command == "dataset-risk":
+        print(json.dumps(risk.to_dict(), ensure_ascii=False))
+        return EXIT_OK
+
+    result = sanitize_dataset(
+        [payload for payload, _ in loaded], args.recipient, args.purpose,
+        profile=args.profile, dictionary_path=args.dictionary, audit_dir=args.audit_dir,
+    )
+    directory = Path(args.output_dir)
+    try:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    except OSError as exc:
+        raise GuardError("could not create the new private dataset output directory") from exc
+    summary = result.summary()
+    if risk is not None:
+        summary["input_combination_metrics"] = risk.to_dict()
+    for index, item in enumerate(result.results, 1):
+        if item.sanitized_payload is not None:
+            _write_output(str(directory / f"{index:03d}.{item.sanitized_payload.kind}"),
+                          args.files[index - 1], item.sanitized_payload.content)
+    text = json.dumps(summary, ensure_ascii=False, indent=2)
+    _write_output(str(directory / "manifest.json"), args.files[0], text)
+    print(text)
+    if any(item.decision_before.verdict is Verdict.BLOCK
+           or item.verification is not None and not item.verification.passed
+           for item in result.results):
+        return EXIT_BLOCK
+    if any(item.sanitized_payload is None for item in result.results):
+        return EXIT_ASK
     return EXIT_OK
 
 
@@ -482,6 +654,11 @@ def _cmd_mcp_gateway(args: argparse.Namespace) -> int:
         purpose=args.purpose,
         dictionary_path=args.dictionary_path,
         audit_dir=args.audit_dir,
+        grant_files=tuple(args.grant_file),
+        grant_database=args.grant_db,
+        grant_timeout=args.grant_timeout,
+        approval_scope=args.approval_scope,
+        approval_request_dir=args.approval_request_dir,
     )
     return McpGateway(args.server, settings).run()
 
@@ -598,6 +775,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_inspect(args)
         if args.command == "sanitize":
             return _cmd_sanitize(args)
+        if args.command == "grant-issue":
+            return _cmd_grant_issue(args)
+        if args.command in {"grant-db-init", "grant-status", "grant-revoke"}:
+            return _cmd_grant_registry(args)
+        if args.command in {"dataset-risk", "dataset-sanitize"}:
+            return _cmd_dataset(args)
         if args.command == "benchmark":
             return _cmd_benchmark(args)
         if args.command == "audit-verify":

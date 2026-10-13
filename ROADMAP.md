@@ -24,10 +24,10 @@ current capabilities are defined by scope.md and the latest delivered stage.
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
-| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.2`), including SQLite consumption/revocation; CLI/MCP approval input and dataset risk planned |
+| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.3`), including SQLite consumption/revocation, local approvals and initial dataset measurements |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The current package version is `0.5.0rc2`, tagged as `v0.5.0-rc.2`. The work that was planned as separate v0.5 (DICOM)
+The current package version is `0.5.0rc3`, with candidate tag `v0.5.0-rc.3`. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
 Three version numbers in six days would not have been earned by the release
 process, and a read-only scanner that cannot clear pixel risk does not deserve
@@ -332,12 +332,23 @@ turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
 
 **Docs**: [deployment and recovery](docs/grant-registry.md).
 
-### Planned follow-up: dataset risk
+### Delivered in rc.3: local approvals and dataset measurements
 
-- A file-scoped token map, so the same person receives one token across rows and
-  files instead of one per sanitization call;
-- dataset-level quasi-identifier combination risk, reported per dataset rather
-  than per document.
+- Signed review metadata, local human CLI issuance, private grant files and
+  SQLite consumption in CLI/MCP. MCP grants bind configured server scope,
+  actual tool name and field; client approval claims do not authorize release.
+- Batch-scoped in-memory tokens for identical type/value pairs across CSV/JSON
+  files. This does not identify people or persist original-value maps.
+- Aggregate selected-column combination group sizes and singleton/small-group
+  fractions. Engineering measurements remain separate from release decisions.
+
+**Docs**: [local approvals](docs/approval-workflow.md); [datasets](docs/datasets.md).
+
+### Planned follow-up: broader dataset privacy
+
+- Distinct-person analysis, richer quasi-identifiers and external knowledge;
+- generalized/suppressed outputs and stronger privacy models;
+- deployment approval roles/UI and authenticated detection of restored old state.
 
 **Docs**: scope.md; threat-model.md; README status flip.
 

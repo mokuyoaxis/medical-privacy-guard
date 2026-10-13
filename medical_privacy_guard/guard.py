@@ -73,7 +73,7 @@ from formats import (
     reject_if_binary,
 )
 from formats.fhir import inspect_fhir, parse_fhir_payload
-from transformers import apply_plan
+from transformers import TokenRegistry, apply_plan
 
 __all__ = ["Guard"]
 
@@ -439,6 +439,7 @@ class Guard:
         detectors: Sequence | None = None,
         grant_key: object = _UNSET,
         registry: GrantRegistry | None = None,
+        token_registry: TokenRegistry | None = None,
     ) -> None:
         """Create a Guard bound to one policy profile.
 
@@ -458,6 +459,9 @@ class Guard:
             registry: optional deployment-controlled consumption registry.
                 When omitted, all Guard instances share one process-local,
                 thread-safe registry. A custom registry must consume atomically.
+            token_registry: optional batch-scoped in-memory token map. Identical
+                type/value pairs share tokens across calls; the caller owns its
+                serial use and lifetime. Omitted means a new map per payload.
         """
         self.profile: PolicyProfile = (
             PolicyProfile.load(profile_path) if profile_path else load_builtin_profile(profile)
@@ -494,6 +498,7 @@ class Guard:
         self.grant_key = grant_key if grant_key is not _UNSET else env_grant_key()
         #: Consumed grants, so a one-time approval cannot be replayed.
         self._grants = registry if registry is not None else _DEFAULT_GRANT_REGISTRY
+        self._tokens = token_registry
 
     def _grant_approval(
         self,
@@ -509,7 +514,7 @@ class Guard:
         """Return the request, the rejection reason, and whether release is granted.
 
         ``(request, None, False)``: the ASK stands, *request* describes it.
-        ``(None, reason, False)``: a grant was offered and rejected.
+        ``(request, reason, False)``: a grant was rejected; a fresh request permits review.
         ``(None, None, True)``: the grant is valid; proceed to release.
 
         The guard never issues a grant. It only describes what needs approving
@@ -538,9 +543,9 @@ class Guard:
             untransformable_types=untransformable,
         )
         if reason is not None:
-            return None, reason, False
+            return request, reason, False
         if not self._grants.consume(grant):
-            return None, "grant has expired, been revoked, or has already been used", False
+            return request, "grant has expired, been revoked, or has already been used", False
         # Authorized. The plan is attached only here, so an ASK nobody approved
         # never reaches the transformation branch — it stays a withhold.
         return None, None, True
@@ -568,7 +573,7 @@ class Guard:
         issuing a request the deployment could never satisfy. The ASK still
         stands.
         """
-        if not self.grant_key:
+        if decision.verdict is not Verdict.ASK or not self.grant_key:
             return None
         return approval_request_for(
             decision=decision,
@@ -691,14 +696,24 @@ class Guard:
             _, spans = _flatten(parsed.leaves)
             facts = _detect_leaves(parsed.leaves, spans, self._detectors)
             decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
-            return EvaluationResult(decision=decision, facts=facts)
+            return EvaluationResult(
+                decision=decision, facts=facts,
+                approval_request=self._approval_request(
+                    decision, facts, request_payload.kind, request_payload.content, recipient_obj, purpose_obj
+                ),
+            )
         if request_payload.kind != "text" or not isinstance(text, str):
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
             return EvaluationResult(decision=decision, facts=())
 
         facts = detect_all(text, self._detectors)
         decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
-        return EvaluationResult(decision=decision, facts=facts)
+        return EvaluationResult(
+            decision=decision, facts=facts,
+            approval_request=self._approval_request(
+                decision, facts, "text", text, recipient_obj, purpose_obj
+            ),
+        )
 
     def _decision_fail_closed(self, reason_code: ReasonCode) -> Decision:
         return Decision(
@@ -728,7 +743,7 @@ class Guard:
         """Run the full pipeline: evaluate → transform → verify → (audit).
 
         Returns a SanitizationResult; `sanitized_payload` is None when the
-        verdict is BLOCK/ASK or verification failed (nothing to release).
+        verdict is BLOCK, an ASK is unapproved, or verification failed.
 
         *grant* may authorize an ASK. A granted release is still the
         minimized payload, not the original: the grant carries the residual
@@ -789,7 +804,11 @@ class Guard:
         if decision.verdict is Verdict.ALLOW:
             sanitized = request_payload
         elif _releasable(decision) and decision.plan is not None:
-            outcome = apply_plan(text, facts, decision.plan)
+            outcome = (
+                apply_plan(text, facts, decision.plan)
+                if self._tokens is None
+                else apply_plan(text, facts, decision.plan, tokens=self._tokens)
+            )
             verification = verify_sanitized(
                 profile=self.profile,
                 sanitized_text=outcome.text,
@@ -891,7 +910,11 @@ class Guard:
         if decision.verdict is Verdict.ALLOW:
             sanitized = payload
         elif _releasable(decision) and decision.plan is not None:
-            outcome = apply_plan(text, facts, decision.plan)
+            outcome = (
+                apply_plan(text, facts, decision.plan)
+                if self._tokens is None
+                else apply_plan(text, facts, decision.plan, tokens=self._tokens)
+            )
             verification = verify_sanitized(
                 profile=self.profile,
                 sanitized_text=outcome.text,

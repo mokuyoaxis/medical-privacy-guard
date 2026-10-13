@@ -118,6 +118,10 @@ back to ASK. All default Guard instances share a thread-safe consumption
 registry within the process. For durable use limits and ID-based revocation,
 initialize a private local SQLite database and inject `SqliteGrantRegistry`
 through `Guard(registry=...)`; see [deployment instructions](docs/grant-registry.md).
+The untagged follow-up adds [local CLI/MCP approval files](docs/approval-workflow.md),
+with explicit human issuance and signed review metadata.
+It also adds [CSV/JSON batches](docs/datasets.md) with consistent tokens and
+aggregate combination measurements; these measurements do not authorize release.
 
 **Audit.** Metadata-only JSONL when configured, chained by hash so a deleted,
 reordered or edited record is detectable, with an optional HMAC key and an
@@ -234,14 +238,15 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   file. Responses are not inspected; see [scope](docs/scope.md) for the
   boundaries.
 - **v0.5 — ASK approvals and security hardening**: available in the
-  `v0.5.0-rc.2` release candidate.
+  `v0.5.0-rc.3` release candidate.
   ASK was the one verdict
   with no working path — the guard withheld the payload and could not say what
   a grant is. A grant is now scoped, expiring and one-time, and an approved
   release is still a minimized release (see [scope](docs/scope.md)).
   Default consumption is shared within a process. An optional SQLite backend
-  supplies persistent consumption and revocation on private local disk;
-  dataset-level risk remains planned work.
+  supplies persistent consumption and revocation on private local disk.
+  This candidate includes local CLI/MCP approvals, batch token consistency
+  and aggregate combination measurements. Broader dataset anonymization remains planned.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---

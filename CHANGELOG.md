@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-rc.3] - 2026-10-13
+
+### Added
+
+- Local CLI approval workflow: signed request export, explicitly confirmed
+  issuance to private files, SQLite-backed grant input, status and revocation.
+  Review signatures cover the request metadata. Read-only evaluation prepares
+  requests without consumption; rejected grants permit fresh review.
+- MCP local grant-file input and private request export with deployment/tool/
+  field scope binding, multi-field preflight and verified minimized release.
+  Client approval fields do not authorize release; upstream processes do not
+  inherit the grant or audit signing-key environment variables.
+- CSV/JSON batch token consistency using one serial in-memory registry, private
+  verified per-file outputs and a value-free manifest. Added aggregate counts
+  for caller-selected quasi-identifier combinations: group sizes, singleton
+  fraction and rows below a configurable engineering threshold. These reports
+  do not change Guard verdicts or claim anonymization.
+
+### Fixed
+
+- Grant body fields with invalid Unicode raise `GrantError` at construction;
+  malformed local files cannot crash signature encoding or be treated as approval.
+- Dataset sanitization rejects audit logs that alias an input through a path,
+  symlink or hardlink before creating logs or changing input permissions. Audit
+  directories inside the new output directory are rejected before side effects.
+- MCP initialization rejects audit logs that alias grant files or the shared
+  credential database before opening an audit writer, preserving approval state.
+- Grant issuance rejects expiry values outside the supported timestamp range
+  with `GrantError`, without creating a credential file or leaking a traceback.
+- Dataset JSON parsing rejects exponent overflow to infinity, including values
+  outside the selected quasi-identifier columns.
+
+### Changed
+
+- Installed-wheel CI smoke checks now exercise the real CLI request/issuance/
+  consume/replay/revocation workflow, MCP scoped approvals and dataset commands.
+
+### Notes
+
+- Git tag `v0.5.0-rc.3` corresponds to Python package version `0.5.0rc3`.
+  First adoption is documented; no actual consumer or key has been migrated.
+  Dataset reports remain engineering measurements and do not authorize release.
+
 ## [0.5.0-rc.2] - 2026-10-12
 
 ### Added
@@ -870,7 +913,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...HEAD
+[0.5.0-rc.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...v0.5.0-rc.3
 [0.5.0-rc.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...v0.5.0-rc.2
 [0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1
 [0.4.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.4...v0.4.0

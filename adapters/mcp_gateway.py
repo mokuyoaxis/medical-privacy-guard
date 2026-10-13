@@ -36,16 +36,23 @@ passed as a list with ``shell=False``, so nothing is re-parsed by a shell.
 from __future__ import annotations
 
 import json
+import os
 import signal
 import subprocess  # nosec B404
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import IO, Any, Sequence
 
-from adapters.ingress import sanitize_call
+from adapters.egress import release_or_raise
+from adapters.ingress import payload_for, sanitize_call
 from core.errors import GuardError
-from core.model import Verdict
+from core.grant import GRANT_KEY_ENV, check_grant
+from core.grant_files import prepare_approval_directory, read_grants, write_approval_file
+from core.grant_sqlite import DEFAULT_GRANT_DB_PATH, SqliteGrantRegistry
+from core.model import Recipient, TrustLevel, Verdict
+from core.policy import CONTEXT_ONLY_TYPES
 from medical_privacy_guard import Guard
 
 __all__ = ["REFUSED_CODE", "GatewayError", "GatewaySettings", "McpGateway"]
@@ -82,6 +89,11 @@ class GatewaySettings:
     purpose: str = "external_ai_assistance"
     dictionary_path: str | None = None
     audit_dir: str | None = None
+    grant_files: tuple[str, ...] = ()
+    grant_database: str | None = None
+    grant_timeout: float = 5.0
+    approval_scope: str | None = None
+    approval_request_dir: str | None = None
 
 
 def _parse(raw: bytes) -> dict[str, Any] | list[Any] | None:
@@ -133,10 +145,35 @@ class McpGateway:
         # Two writers share stdout: the upstream reader thread and a refusal
         # written from this thread. Without the lock their lines can interleave.
         self._write_lock = threading.Lock()
+        if (settings.grant_files or settings.approval_request_dir) and not settings.approval_scope:
+            raise GatewayError("local approval requires a deployment-controlled --approval-scope")
+        database = settings.grant_database or (DEFAULT_GRANT_DB_PATH if settings.grant_files else None)
+        if settings.audit_dir:
+            audit = Path(settings.audit_dir) / "events.jsonl"
+            protected = [Path(path) for path in settings.grant_files]
+            if database is not None:
+                protected.append(Path(database))
+            try:
+                resolved_audit = audit.resolve()
+                for path in protected:
+                    if (path.resolve() == resolved_audit or
+                            audit.exists() and path.exists() and audit.samefile(path)):
+                        raise GatewayError("audit log and local approval files/database must be distinct")
+            except (OSError, RuntimeError) as exc:
+                raise GatewayError("cannot validate audit and local approval paths") from exc
+        self._registry = (
+            SqliteGrantRegistry(database, timeout_seconds=settings.grant_timeout)
+            if database is not None else None
+        )
+        self._request_directory = (
+            prepare_approval_directory(settings.approval_request_dir)
+            if settings.approval_request_dir else None
+        )
         self._guard = Guard(
             profile=settings.profile,
             dictionary_path=settings.dictionary_path,
             audit_dir=settings.audit_dir,
+            registry=self._registry,
         )
         self.intercepted = 0
         self.rewritten = 0
@@ -155,6 +192,9 @@ class McpGateway:
         # (it comes from the CLI's argv after --), and shell=False keeps it from
         # being re-parsed. B603 asks the caller to confirm exactly this.
         try:
+            server_environment = dict(os.environ)
+            for name in (GRANT_KEY_ENV, "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"):
+                server_environment.pop(name, None)
             process = subprocess.Popen(  # nosec B603
                 self._server_command,
                 stdin=subprocess.PIPE,
@@ -165,6 +205,7 @@ class McpGateway:
                 stderr=None,
                 # Binary, so no newline translation happens in either direction.
                 bufsize=0,
+                env=server_environment,
             )
         except OSError as exc:
             # A missing or unexecutable command is an operator error, and should
@@ -254,7 +295,7 @@ class McpGateway:
 
     @staticmethod
     def _encode(message: dict[str, Any]) -> bytes:
-        return json.dumps(message, ensure_ascii=False).encode("utf-8") + b"\n"
+        return json.dumps(message, ensure_ascii=True).encode("utf-8") + b"\n"
 
     # -- interception -------------------------------------------------------
 
@@ -300,6 +341,10 @@ class McpGateway:
             self._forward(raw, process)
             return
 
+        if self._settings.approval_scope is not None:
+            self._intercept_approval(message, params, process)
+            return
+
         for field in _INSPECTED_FIELDS:
             if field not in params:
                 continue
@@ -319,6 +364,102 @@ class McpGateway:
                 params[field] = value
 
         self._forward(self._encode(message), process)
+
+    def _approval_recipient(self, tool_name: str, field: str) -> Recipient:
+        return Recipient(
+            kind="mcp", trust_level=TrustLevel(self._settings.recipient.upper()),
+            name=json.dumps([tool_name, field], ensure_ascii=True, separators=(",", ":")),
+            endpoint="mcp-local:" + self._settings.approval_scope,
+        )
+
+    def _intercept_approval(self, message: dict, params: dict, process: subprocess.Popen) -> None:
+        """Preflight every disclosure before spending any configured approval.
+
+        This preflight does not reserve budgets. Final Guard consumption is
+        atomic; a later race or failure may still spend earlier accepted uses.
+        No part of a refused call reaches the upstream server.
+        """
+        tool_name = params.get("name")
+        if not isinstance(tool_name, str) or not tool_name:
+            self.refused += 1
+            if "id" in message:
+                self._refuse(message["id"], "local approval requires a valid tool name")
+            return
+        prepared, requests = [], []
+        try:
+            for field in _INSPECTED_FIELDS:
+                if field not in params or params[field] is None:
+                    continue
+                recipient = self._approval_recipient(tool_name, field)
+                evaluated = self._guard.evaluate(payload_for(params[field]), recipient, self._settings.purpose)
+                prepared.append((field, recipient, evaluated))
+                if evaluated.approval_request is not None:
+                    requests.append((field, evaluated.approval_request))
+            grants = read_grants(self._settings.grant_files)
+            reason = None
+            for field, recipient, evaluated in prepared:
+                if evaluated.decision.verdict is Verdict.BLOCK:
+                    reason = "disclosure withheld (BLOCK)"
+                    break
+                if evaluated.decision.verdict is not Verdict.ASK:
+                    continue
+                request = evaluated.approval_request
+                grant = grants.get(request.fingerprint) if request is not None else None
+                if grant is None:
+                    reason = "disclosure withheld (ASK): no matching local approval"
+                    break
+                reason = check_grant(
+                    grant, request, key=self._guard.grant_key,
+                    untransformable_types=tuple(
+                        fact.type for fact in evaluated.facts
+                        if fact.read_only and fact.type not in CONTEXT_ONLY_TYPES
+                    ),
+                )
+                if reason is not None:
+                    break
+                if (self._registry.is_revoked(grant.grant_id)
+                        or self._registry.remaining(grant.grant_id) >= grant.uses_allowed):
+                    reason = "local approval was revoked or has already been used"
+                    break
+            if reason is not None:
+                if self._settings.audit_dir:
+                    for field, recipient, _ in prepared:
+                        sanitize_call(self._guard, params[field], recipient, self._settings.purpose)
+                self._approval_refusal(message, reason, requests)
+                return
+
+            replacements = {}
+            for field, recipient, evaluated in prepared:
+                request = evaluated.approval_request
+                grant = grants.get(request.fingerprint) if request is not None else None
+                result = sanitize_call(self._guard, params[field], recipient,
+                                       self._settings.purpose, grant=grant)
+                if result.sanitized_payload is None:
+                    self._approval_refusal(message, "disclosure was not released by Guard", requests)
+                    return
+                payload = release_or_raise(result)
+                if result.decision_before.verdict is not Verdict.ALLOW:
+                    replacements[field] = _restore(params[field], payload.content)
+            params.update(replacements)
+            encoded = self._encode(message)
+        except (GuardError, UnicodeError) as exc:
+            self._approval_refusal(message, f"local approval failed ({type(exc).__name__})", requests)
+            return
+        self.rewritten += len(replacements)
+        self._forward(encoded, process)
+
+    def _approval_refusal(self, message: dict, reason: str, requests: list) -> None:
+        self.refused += 1
+        data = []
+        for field, request in requests:
+            if self._request_directory is not None:
+                try:
+                    write_approval_file(self._request_directory / (request.request_id + ".json"), request)
+                except GuardError:
+                    reason = "signed approval request could not be saved; disclosure withheld"
+            data.append({"field": field, "request": json.loads(request.to_json())})
+        if "id" in message:
+            self._refuse(message["id"], reason, {"approval_requests": data} if data else None)
 
     def _decide(self, value: Any) -> tuple[str, Any, str | None]:
         """Return ``(action, rewritten_value, reason)`` for one parameter field.
@@ -345,7 +486,7 @@ class McpGateway:
             return "rewrite", _restore(value, payload.content), None
         return "refuse", None, f"disclosure withheld ({verdict.value})"
 
-    def _refuse(self, request_id: Any, reason: str | None) -> None:
+    def _refuse(self, request_id: Any, reason: str | None, data: dict | None = None) -> None:
         self._write(
             self._encode(
                 {
@@ -354,6 +495,7 @@ class McpGateway:
                     "error": {
                         "code": REFUSED_CODE,
                         "message": reason or "disclosure withheld",
+                        **({"data": data} if data is not None else {}),
                     },
                 }
             )

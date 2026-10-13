@@ -140,9 +140,8 @@ class DataProvenance(str, Enum):
 class Payload:
     """A normalised payload ready for classification.
 
-    v0.1 supports plain text content. JSON-like, FHIR and DICOM payloads are
-    represented by this protocol type but fail closed until their format
-    handlers are implemented.
+    Guard supports text, JSON, CSV and a minimal FHIR resource set. DICOM has
+    a separate read-only inspection path; unsupported kinds remain withheld.
     """
 
     kind: str  # e.g. "text", "json", "fhir", "dicom"
@@ -289,6 +288,8 @@ class EvaluationResult:
 
     decision: Decision
     facts: tuple[DetectedFact, ...]
+    #: Signed metadata for a configured ASK, without consuming any grant.
+    approval_request: object | None = None
 
     @property
     def public_facts(self) -> tuple[PublicDetectedFact, ...]:

@@ -107,8 +107,10 @@ when they disagree, this file wins and the other two are updated.
   with it. Newline-delimited JSON-RPC is forwarded byte for byte, except for
   ``tools/call``, which is forwarded, rewritten or refused according to the
   verdict — a SANITIZE verdict rewrites ``params.arguments`` (and
-  ``params.inputResponses``) before forwarding, and an ASK/BLOCK verdict returns
-  a JSON-RPC error and never reaches the server. It does not participate in
+  ``params.inputResponses``) before forwarding. An unapproved ASK or BLOCK returns
+  a JSON-RPC error and never reaches the server. Configured local grants can
+  approve only verified minimized ASK fields; their fingerprint binds the
+  configured server scope, actual tool name and field. It does not participate in
   protocol negotiation: a modern client's ``server/discover`` probe and a legacy
   client's ``initialize`` are forwarded untouched, because the server's era is
   the server's business. The wrapped server's exit code is propagated;
@@ -215,6 +217,11 @@ an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
   policy version. The fingerprint binds the payload's hash, the recipient, the
   purpose and the policy version, so one changed byte invalidates every grant
   issued for it.
+- Generated request metadata is signed as well as fingerprint-bound. Local
+  CLI issuance requires a valid metadata signature and explicit `--approve`;
+  private grant files can be consumed by CLI/MCP through an explicitly selected
+  SQLite backend. Read-only evaluation does not consume a grant. See
+  [local approval workflow](approval-workflow.md).
 - A ``Grant`` is issued deployment-side and HMAC-signed with a key the payload
   being authorized cannot hold. It names an expiry and a number of uses; without
   an expiry it would be a blanket allow, which is what this design exists to
@@ -256,10 +263,15 @@ consumption after its commit. It cannot retract a previously accepted release.
 Restoring old state can restore spent uses and remove later revocations; the
 deployment must isolate old grants before a backend switch or restore.
 
-Not covered: an approval UI or workflow, roles and approval chains, multi-machine
+Not covered: an institutional approval UI, roles and approval chains, multi-machine
 state, and authenticated detection of database replacement or backup rollback.
 
 ## Unsupported
+
+The initial [dataset scope](datasets.md) provides batch token consistency and
+selected-column combination counts for CSV/JSON rows. It does not authenticate
+person identity, estimate population risk or enforce an anonymity threshold.
+Reports do not override per-file Guard decisions.
 
 No parsers or sanitization support exist for:
 

@@ -300,6 +300,34 @@ given character is outside the inventory is still missed in the adjacent form.
 
 ## Test and packaging status
 
+The rc.3 release validation on 2026-10-13 passes **1460 tests with no skips on
+each of Python 3.10.21, 3.11.16 and 3.12.14**. Fourteen additional cases cover
+dataset/MCP audit aliases, audit/output-directory conflicts, JSON exponent
+overflow, unrepresentable grant expiry, private partial output on write failure
+and no partial MCP forwarding or refund after a later field failure. All 75
+local-approval/dataset cases also pass on system Python 3.13.5 with SQLite 3.46.1.
+Ruff, Bandit, the contract audit, sdist rebuilding and isolated installed-wheel
+CLI/MCP/dataset checks pass. The audited PyYAML 6.0.3 and optional pydicom 3.0.2
+have no known vulnerabilities reported by pip-audit at this validation date.
+CI now exercises these installed-wheel workflows; read GitHub Actions results
+against the exact candidate commit. First adoption is documented, but no actual
+consumer or key has been migrated. Device power loss and old-state rollback
+authentication remain unverified.
+
+Before the rc.3 review, the local-approval and dataset follow-up on 2026-10-12 passed
+**1446 tests with no skips on each of Python 3.10.21, 3.11.16 and 3.12.14**.
+The 61 added cases cover signed review metadata, private approval file I/O,
+explicit CLI issuance and persistent use/revocation, MCP server/tool/field scope
+and multi-field preflight, upstream key isolation, a synthetic key/state switch,
+cross-file tokens and aggregate combination measurements. All 61 also pass on
+system Python 3.13.5. The switch is an isolated rehearsal, not a live migration.
+Ruff, Bandit and the eight-section contract audit pass. A rebuilt sdist/wheel
+and isolated installed-wheel CLI/MCP/dataset smoke checks pass. The original
+v0.5.0-rc.2 commit and tag have successful remote CI and Security; the later
+features were Unreleased at that stage and were not covered by that tag's CI.
+Counts of equivalent rows do not establish population anonymity or a safe-release
+threshold; risk reports are separate from Guard decisions.
+
 Before rc.2 preparation, the SQLite implementation was validated on 2026-10-11:
 **1385 tests with no skips on each of Python 3.10.21, 3.11.16 and 3.12.14**.
 The 47 new cases include 32-process contention for one-use/three-use budgets,

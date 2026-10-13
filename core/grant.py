@@ -114,25 +114,76 @@ class ApprovalRequest:
     purpose: str
     policy_version: str
     created_at: str
+    #: Authenticate the metadata a local approver reviews, not just its fingerprint.
+    signature: str = ""
+
+    def _payload(self) -> dict:
+        return {
+            "request_id": self.request_id,
+            "fingerprint": self.fingerprint,
+            "verdict": self.verdict,
+            "reason_codes": list(self.reason_codes),
+            "risk_level": self.risk_level,
+            "risk_score": self.risk_score,
+            "fact_counts": dict(self.fact_counts),
+            "recipient_class": self.recipient_class,
+            "purpose": self.purpose,
+            "policy_version": self.policy_version,
+            "created_at": self.created_at,
+        }
 
     def to_json(self) -> str:
-        return json.dumps(
-            {
-                "request_id": self.request_id,
-                "fingerprint": self.fingerprint,
-                "verdict": self.verdict,
-                "reason_codes": list(self.reason_codes),
-                "risk_level": self.risk_level,
-                "risk_score": self.risk_score,
-                "fact_counts": dict(self.fact_counts),
-                "recipient_class": self.recipient_class,
-                "purpose": self.purpose,
-                "policy_version": self.policy_version,
-                "created_at": self.created_at,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+        return json.dumps({**self._payload(), "signature": self.signature},
+                          ensure_ascii=False, sort_keys=True)
+
+    def signed(self, key: bytes) -> "ApprovalRequest":
+        return replace(self, signature=hmac.new(key, _canonical(self._payload()),
+                                               hashlib.sha256).hexdigest())
+
+    def signature_is_valid(self, key: bytes) -> bool:
+        if not self.signature or not self.signature.isascii():
+            return False
+        expected = hmac.new(key, _canonical(self._payload()), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, self.signature)
+
+    @classmethod
+    def from_json(cls, raw: str) -> "ApprovalRequest":
+        """Read request metadata; signing commands must also verify its signature."""
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise GrantError("approval request is not valid JSON") from exc
+        required = {
+            "request_id", "fingerprint", "verdict", "reason_codes", "risk_level",
+            "risk_score", "fact_counts", "recipient_class", "purpose", "policy_version",
+            "created_at",
+        }
+        if (not isinstance(data, dict) or not required <= set(data)
+                or set(data) - required - {"signature"}):
+            raise GrantError("approval request has missing or unsupported fields")
+        text_fields = required - {"reason_codes", "risk_score", "fact_counts"}
+        if any(not isinstance(data[name], str) or not data[name] for name in text_fields):
+            raise GrantError("approval request has invalid text fields")
+        if not isinstance(data.get("signature", ""), str):
+            raise GrantError("approval request signature must be a string")
+        if (data["verdict"] != "ASK" or len(data["fingerprint"]) != 64
+                or any(c not in "0123456789abcdef" for c in data["fingerprint"])):
+            raise GrantError("approval request must describe an ASK with a valid fingerprint")
+        if type(data["risk_score"]) is not int or data["risk_score"] < 0:
+            raise GrantError("approval request risk_score must be a non-negative integer")
+        reasons, counts = data["reason_codes"], data["fact_counts"]
+        if (not isinstance(reasons, list)
+                or any(not isinstance(value, str) or not value for value in reasons)
+                or not isinstance(counts, dict)
+                or any(not name or type(count) is not int or count < 1
+                       for name, count in counts.items())):
+            raise GrantError("approval request has invalid reason codes or fact counts")
+        try:
+            _canonical(data)
+            _parse_iso(data["created_at"])
+        except (UnicodeEncodeError, GrantError) as exc:
+            raise GrantError("approval request contains invalid text or timestamp") from exc
+        return cls(**{**data, "reason_codes": tuple(reasons)})
 
 
 @dataclass(frozen=True)
@@ -169,6 +220,10 @@ class Grant:
             not isinstance(value, str) or not value for value in self.accepted_types
         ):
             raise GrantError("grant accepted_types must be a tuple of non-empty strings")
+        try:
+            _canonical(self._payload())
+        except UnicodeEncodeError as exc:
+            raise GrantError("grant contains invalid Unicode text") from exc
 
     # -- serialization ------------------------------------------------------
 
@@ -275,7 +330,7 @@ def approval_request_for(
         purpose=purpose.value,
         policy_version=decision.policy_version,
         created_at=_now().strftime(_ISO),
-    )
+    ).signed(key)
 
 
 class GrantIssuer:
@@ -316,12 +371,16 @@ class GrantIssuer:
         if moment.utcoffset() is None:
             raise GrantError("grant issuance time must be timezone-aware")
         moment = moment.astimezone(timezone.utc)
+        try:
+            expires_at = (moment + timedelta(seconds=ttl_seconds)).strftime(_ISO)
+        except OverflowError as exc:
+            raise GrantError("ttl_seconds exceeds the supported timestamp range") from exc
         grant = Grant(
             grant_id=uuid.uuid4().hex,
             request_fingerprint=request.fingerprint,
             issuer=self.issuer,
             issued_at=moment.strftime(_ISO),
-            expires_at=(moment + timedelta(seconds=ttl_seconds)).strftime(_ISO),
+            expires_at=expires_at,
             uses_allowed=uses_allowed,
             accepted_types=tuple(accepted_types),
         )

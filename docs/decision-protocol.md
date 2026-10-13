@@ -122,6 +122,12 @@ and issues an HMAC-signed `Grant` with an expiry and a use budget. The guard
 checks its signature, fingerprint, time window and accepted read-only fact types
 before atomically consuming one use.
 
+Generated requests also authenticate their displayed metadata. Read-only
+evaluation prepares them without consumption. The local CLI verifies that
+signature and requires an explicit human approval flag before issuance; rejected
+grants can provide a new signed request for review. See the
+[local approval workflow](approval-workflow.md).
+
 The verifier and rebuilt-document gate receive explicit approval state from
 Guard. Accepted types alone do not authorize an ASK, and an approved context-only
 disclosure needs no read-only type exemption. Adapters require a PASS verification

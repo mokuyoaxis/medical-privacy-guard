@@ -46,9 +46,9 @@ on a lock; there is no additional retry or memory fallback.
 The deployment target is 9–32 concurrent CLI/MCP/Python processes. Worker count
 belongs to the caller and can be changed; the registry neither starts workers
 nor enforces a process limit. Tests exercise 32 independent Python processes
-competing for one-use and three-use grants. CLI and MCP currently have no complete
-grant-input/approval workflow; deployments integrate this backend through the
-Python API or their own wrappers.
+competing for one-use and three-use grants. CLI and MCP can explicitly select
+this registry and use private local grant files through the
+[local approval workflow](approval-workflow.md).
 
 ## Consumption and revocation
 

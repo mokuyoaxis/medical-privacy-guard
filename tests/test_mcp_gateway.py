@@ -68,7 +68,7 @@ def _call(request_id, arguments, name="tool", **extra):
     return {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": params}
 
 
-def run_gateway(messages, *, recipient="external_unknown", profile="external-ai-strict"):
+def run_gateway(messages, *, recipient="external_unknown", profile="external-ai-strict", settings=None):
     """Run one session and return (exit code, parsed client-visible lines, gateway).
 
     The streams are bytes on purpose: that is what the gateway talks, and it is
@@ -78,7 +78,7 @@ def run_gateway(messages, *, recipient="external_unknown", profile="external-ai-
     stdout = io.BytesIO()
     gateway = McpGateway(
         [sys.executable, "-c", UPSTREAM],
-        GatewaySettings(recipient=recipient, profile=profile),
+        settings if settings is not None else GatewaySettings(recipient=recipient, profile=profile),
         stdin=io.BytesIO(payload),
         stdout=stdout,
     )

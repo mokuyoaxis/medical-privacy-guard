@@ -56,7 +56,10 @@ network routing; missed identifiers remain a disclosure risk.
 **Scenario**: `mcp.search_web({query: patient_record})`
 
 **Current mitigation**: the MCP stdio gateway checks `tools/call` arguments and
-`inputResponses`, rewrites SANITIZE calls and refuses ASK/BLOCK calls. Other
+`inputResponses`, rewrites SANITIZE calls and withholds unapproved ASK/BLOCK calls.
+Configured private grants can approve verified minimized ASK fields, bound to
+a deployment-controlled server scope, tool name and field. Client approval
+metadata does not authorize release. Other
 methods, response traffic, `requestState` and stderr are outside its inspection
 scope. Direct calls that bypass the gateway remain possible.
 
