@@ -5,12 +5,12 @@ import os
 
 import pytest
 
-from cli.main import EXIT_ASK, EXIT_ERROR, EXIT_OK, main
-from core.dataset import analyze_dataset, read_dataset_file, sanitize_dataset
-from core.errors import ParserError
-from core.model import Payload
 from medical_privacy_guard import Guard
-from transformers import TokenRegistry
+from medical_privacy_guard.cli.main import EXIT_ASK, EXIT_ERROR, EXIT_OK, main
+from medical_privacy_guard.core.dataset import analyze_dataset, read_dataset_file, sanitize_dataset
+from medical_privacy_guard.core.errors import ParserError
+from medical_privacy_guard.core.model import Payload
+from medical_privacy_guard.transformers import TokenRegistry
 
 
 def test_combination_counts_are_joint_and_row_weighted():

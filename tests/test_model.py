@@ -8,8 +8,14 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from core.errors import AuditError, GuardError, ParserError, PolicyError, VerificationError
-from core.model import (
+from medical_privacy_guard.core.errors import (
+    AuditError,
+    GuardError,
+    ParserError,
+    PolicyError,
+    VerificationError,
+)
+from medical_privacy_guard.core.model import (
     Decision,
     DetectedFact,
     DisclosurePlan,

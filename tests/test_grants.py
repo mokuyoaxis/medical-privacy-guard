@@ -26,7 +26,8 @@ from threading import Barrier
 
 import pytest
 
-from core.grant import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.core.grant import (
     ApprovalRequest,
     Grant,
     GrantIssuer,
@@ -34,8 +35,7 @@ from core.grant import (
     check_grant,
     content_hash,
 )
-from core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
-from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
 
 KEY = b"test-grant-key"
 ISSUER = "deployment-approval-svc"
@@ -218,7 +218,7 @@ def test_an_explicit_registry_can_be_shared(issuer):
 
 def test_a_grant_does_not_outlive_its_scope(guard, issuer):
     """An approval that never expires would be a blanket allow."""
-    import core.grant as grant_module
+    import medical_privacy_guard.core.grant as grant_module
 
     request = _ask(guard).approval_request
     moment = grant_module._now()
@@ -234,7 +234,7 @@ def test_a_grant_does_not_outlive_its_scope(guard, issuer):
 
 def test_a_grant_issued_for_the_future_is_refused(guard, issuer):
     request = _ask(guard).approval_request
-    import core.grant as grant_module
+    import medical_privacy_guard.core.grant as grant_module
 
     future = issuer.issue(request, ttl_seconds=300,
                           now=grant_module._now() + timedelta(hours=1))
@@ -375,8 +375,8 @@ def test_an_approval_must_expire(issuer):
 
 def test_release_or_raise_still_refuses_an_unapproved_ask(guard):
     """The ordinary ASK path is unchanged: nothing leaves without a grant."""
-    from adapters import release_or_raise
-    from core.errors import HumanApprovalRequired
+    from medical_privacy_guard.adapters import release_or_raise
+    from medical_privacy_guard.core.errors import HumanApprovalRequired
 
     with pytest.raises(HumanApprovalRequired):
         release_or_raise(_ask(guard))
@@ -384,7 +384,7 @@ def test_release_or_raise_still_refuses_an_unapproved_ask(guard):
 
 def test_release_or_raise_releases_a_granted_ask(guard, issuer):
     """A granted ASK yields the minimized payload, not the original."""
-    from adapters import release_or_raise
+    from medical_privacy_guard.adapters import release_or_raise
 
     request = _ask(guard).approval_request
     grant = issuer.issue(request, ttl_seconds=300,
@@ -490,7 +490,7 @@ def test_rejected_grants_do_not_enter_authorized_audit_fields(
     '"issued_at": "x", "expires_at": "x"}',
 ])
 def test_grant_decoding_rejects_invalid_shapes(raw):
-    from core.errors import GrantError
+    from medical_privacy_guard.core.errors import GrantError
 
     with pytest.raises(GrantError):
         Grant.from_json(raw)
@@ -502,7 +502,7 @@ def test_grant_decoding_rejects_invalid_shapes(raw):
     ("accepted_types", [1]), ("issuer", {"name": "synthetic"}),
 ])
 def test_grant_decoding_does_not_coerce_fields(guard, issuer, field, value):
-    from core.errors import GrantError
+    from medical_privacy_guard.core.errors import GrantError
 
     data = json.loads(issuer.issue(_ask(guard).approval_request, ttl_seconds=300).to_json())
     data[field] = value
@@ -524,7 +524,7 @@ def test_read_only_approval_does_not_cover_a_failed_writable_transformation(
     document = {"phone": 13800000000, "mobile": "13900000000"}
     grant = issuer.issue(_ask(guard, document).approval_request, ttl_seconds=300,
                          accepted_types=("PHONE",))
-    monkeypatch.setattr("transformers.text.TextTransformer.apply",
+    monkeypatch.setattr("medical_privacy_guard.transformers.text.TextTransformer.apply",
                         lambda self, fact, op, tokens: fact.value)
     result = guard.sanitize(Payload(kind="json", content=document), APPROVED,
                             PURPOSE, grant=grant)
@@ -550,7 +550,7 @@ def test_invalid_signatures_remain_ask_without_spending_a_use(guard, issuer, sig
     ("uses_allowed", True), ("uses_allowed", 1.5), ("uses_allowed", "1"),
 ])
 def test_issuer_rejects_non_integer_budgets(guard, issuer, field, value):
-    from core.errors import GrantError
+    from medical_privacy_guard.core.errors import GrantError
 
     kwargs = {"ttl_seconds": 300, field: value}
     with pytest.raises(GrantError):
@@ -580,7 +580,7 @@ def test_issuance_preserves_the_instant_across_timezones(guard, issuer, offset):
 
 
 def test_a_naive_clock_has_an_explicit_failure(guard, issuer):
-    from core.errors import GrantError
+    from medical_privacy_guard.core.errors import GrantError
 
     request = _ask(guard).approval_request
     moment = datetime.now(timezone.utc).replace(tzinfo=None)

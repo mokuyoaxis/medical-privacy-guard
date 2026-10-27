@@ -14,15 +14,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-import adapters.mcp_gateway
-import core.dataset
-import core.grant_files
 import medical_privacy_guard
-from adapters.mcp_gateway import GatewaySettings, McpGateway
-from core.dataset import analyze_dataset, sanitize_dataset
-from core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
-from core.grant_files import write_approval_file
-from core.model import Payload
+import medical_privacy_guard.adapters.mcp_gateway
+import medical_privacy_guard.core.dataset
+import medical_privacy_guard.core.grant_files
+from medical_privacy_guard.adapters.mcp_gateway import GatewaySettings, McpGateway
+from medical_privacy_guard.core.dataset import analyze_dataset, sanitize_dataset
+from medical_privacy_guard.core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
+from medical_privacy_guard.core.grant_files import write_approval_file
+from medical_privacy_guard.core.model import Payload
 
 _SERVER = """import json,sys
 for line in sys.stdin:
@@ -34,7 +34,7 @@ for line in sys.stdin:
 
 def _cli(*arguments: str | Path) -> subprocess.CompletedProcess:
     return subprocess.run(  # nosec B603
-        [sys.executable, "-I", "-B", "-m", "cli.main", *map(str, arguments)],
+        [sys.executable, "-I", "-B", "-m", "medical_privacy_guard.cli.main", *map(str, arguments)],
         capture_output=True, text=True,
     )
 
@@ -50,7 +50,8 @@ def _gateway(message: dict, settings: GatewaySettings) -> dict:
 
 
 def main() -> None:
-    for module in (medical_privacy_guard, core.dataset, core.grant_files, adapters.mcp_gateway):
+    for module in (medical_privacy_guard, medical_privacy_guard.core.dataset,
+                   medical_privacy_guard.core.grant_files, medical_privacy_guard.adapters.mcp_gateway):
         assert Path(module.__file__).resolve().is_relative_to(Path(sys.prefix).resolve())
     key = "synthetic-installed-workflow-key"
     os.environ[GRANT_KEY_ENV] = key

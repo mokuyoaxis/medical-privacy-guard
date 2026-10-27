@@ -12,11 +12,14 @@ import re
 
 import pytest
 
-from core.errors import ParserError
+from medical_privacy_guard.core.errors import ParserError
 
 pytest.importorskip("pydicom")
 
-from formats.dicom_inspect import inspect_dicom_file, report_to_json  # noqa: E402
+from medical_privacy_guard.formats.dicom_inspect import (  # noqa: E402
+    inspect_dicom_file,
+    report_to_json,
+)
 
 FIXTURE = "tests/fixtures/dicom/ct_head_synthetic.dcm"
 
@@ -104,7 +107,7 @@ class TestTagTableIntegrity:
         """
         from pydicom.datadict import keyword_for_tag
 
-        from formats.dicom_inspect import _PHI_TAGS
+        from medical_privacy_guard.formats.dicom_inspect import _PHI_TAGS
 
         def fold(value: str) -> str:
             return re.sub(r"[^a-z0-9]", "", value.lower())
@@ -118,7 +121,7 @@ class TestTagTableIntegrity:
 
     def test_series_date_is_covered(self):
         """ROADMAP names SeriesDate; a date-only series must not report clean."""
-        from formats.dicom_inspect import _PHI_TAGS
+        from medical_privacy_guard.formats.dicom_inspect import _PHI_TAGS
 
         assert _PHI_TAGS.get(0x00080021) == "series_date"
 

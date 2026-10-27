@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "medical-privacy-guard"
-version = "0.5.0rc3"
+version = "0.6.0rc1"
 description = "Local-first privacy guardrails for medical data before it crosses a trust boundary."
 readme = "README.md"
 license = "MIT"
@@ -43,14 +43,15 @@ dev = [
 ]
 
 [project.scripts]
-medical-privacy-guard = "cli.main:main"
+medical-privacy-guard = "medical_privacy_guard.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "detectors*", "transformers*", "policies*", "formats*", "adapters*", "cli*", "medical_privacy_guard*"]
+include = ["medical_privacy_guard*"]
 
 [tool.setuptools.package-data]
-policies = ["*.yaml"]
+"medical_privacy_guard" = ["py.typed"]
+"medical_privacy_guard.policies" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

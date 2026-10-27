@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from cli.main import (
+from medical_privacy_guard.cli.main import (
     EXIT_ASK,
     EXIT_BLOCK,
     EXIT_ERROR,
     EXIT_OK,
     main,
 )
-from core.model import VerificationResult
+from medical_privacy_guard.core.model import VerificationResult
 
 CLEAN = "普通随访记录，无敏感信息\n"
 PHONE = "联系电话 13800000000\n"
@@ -265,8 +265,8 @@ class TestUnsupportedInputAudit:
     def test_content_block_audits_only_empty_unsupported_payload(
         self, tmp_path, monkeypatch, capsys, data,
     ):
-        from core.model import Payload
         from medical_privacy_guard import Guard
+        from medical_privacy_guard.core.model import Payload
 
         src = tmp_path / "SYNTH-PATH-CANARY.txt"
         src.write_bytes(data)
@@ -299,7 +299,7 @@ class TestUnsupportedInputAudit:
 
     @pytest.mark.parametrize("failure", ["directory", "short", "zero", "fsync"])
     def test_format_block_audit_failure_is_error(self, tmp_path, monkeypatch, capsys, failure):
-        import core.audit as audit
+        import medical_privacy_guard.core.audit as audit
 
         src = write(tmp_path, "SYNTH-PATH-CANARY.json", "SYNTH-CONTENT-CANARY")
         audit_dir = tmp_path / "audit"
@@ -467,7 +467,7 @@ class TestPathSafety:
     def test_late_output_symlink_is_not_followed(self, tmp_path, monkeypatch, capsys):
         import importlib
 
-        cli = importlib.import_module("cli.main")
+        cli = importlib.import_module("medical_privacy_guard.cli.main")
         src = Path(write(tmp_path, "source.txt", PHONE))
         dst = tmp_path / "output.txt"
         real_open = cli.os.open
@@ -484,7 +484,7 @@ class TestPathSafety:
 
     @pytest.mark.parametrize("failure", ["short", "zero", "fsync"])
     def test_audit_failure_releases_nothing(self, tmp_path, monkeypatch, capsys, failure):
-        import core.audit as audit
+        import medical_privacy_guard.core.audit as audit
 
         src = write(tmp_path, "source.txt", PHONE)
         dst = tmp_path / "output.txt"
@@ -558,8 +558,8 @@ class TestBenchmarkCommand:
         ever released, so every gate would be vacuous and the command would
         report a pass over zero measurements.
         """
-        from cli.main import DEFAULT_BENCHMARK_RECIPIENT
-        from core.benchmark import DEFAULT_RECIPIENT
+        from medical_privacy_guard.cli.main import DEFAULT_BENCHMARK_RECIPIENT
+        from medical_privacy_guard.core.benchmark import DEFAULT_RECIPIENT
 
         assert DEFAULT_BENCHMARK_RECIPIENT == DEFAULT_RECIPIENT
         assert DEFAULT_RECIPIENT != "external_unknown"

@@ -13,8 +13,8 @@ Coverage:
 
 import pytest
 
-from core.errors import TransformerError
-from core.model import (
+from medical_privacy_guard.core.errors import TransformerError
+from medical_privacy_guard.core.model import (
     DetectedFact,
     DisclosurePlan,
     Purpose,
@@ -22,10 +22,10 @@ from core.model import (
     TransformationOp,
     TrustLevel,
 )
-from core.policy import PolicyEvaluator, load_builtin_profile
-from detectors import detect_all
-from transformers import TokenRegistry, apply_plan
-from transformers.registry import TransformerRegistry
+from medical_privacy_guard.core.policy import PolicyEvaluator, load_builtin_profile
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.transformers import TokenRegistry, apply_plan
+from medical_privacy_guard.transformers.registry import TransformerRegistry
 
 
 def fact(fact_type: str, start: int, end: int, value: str) -> DetectedFact:
@@ -260,7 +260,7 @@ class TestEndToEnd:
 
 class TestIdempotency:
     def test_age_bands_are_not_re_detected_as_ages(self):
-        from transformers.generalize import _AGE_BANDS
+        from medical_privacy_guard.transformers.generalize import _AGE_BANDS
 
         for _, _, label in _AGE_BANDS:
             text = f"年龄：{label}"
@@ -268,7 +268,7 @@ class TestIdempotency:
             assert found == [], (label, found)
 
     def test_type_markers_do_not_re_detect_their_own_type(self):
-        from transformers.generalize import _TYPE_MARKERS
+        from medical_privacy_guard.transformers.generalize import _TYPE_MARKERS
 
         for fact_type, marker in sorted(_TYPE_MARKERS.items()):
             text = f"字段：{marker}"
@@ -344,7 +344,7 @@ def test_zero_hash_offset_is_replaced_by_nonzero_shift(monkeypatch):
         def hexdigest(self):
             return f"{365:08x}" + "0" * 56
 
-    monkeypatch.setattr("transformers.registry.hashlib.sha256", lambda value: ZeroOffsetHash())
+    monkeypatch.setattr("medical_privacy_guard.transformers.registry.hashlib.sha256", lambda value: ZeroOffsetHash())
     outcome = apply_plan("2026-01-01", (fact("EXACT_DATE", 0, 10, "2026-01-01"),), plan(
         TransformationOp(op="DATE_SHIFT", target="EXACT_DATE")
     ))

@@ -70,13 +70,13 @@ opener, labelled controls, and two over-redaction controls where an ordinary
 word must not be read as a name.
 
 Exploratory probes are bare names with no field label at all (`李四因胸痛入院。`).
-`detectors/person.py` deliberately does not detect bare name tokens — the
+`medical_privacy_guard/detectors/person.py` deliberately does not detect bare name tokens — the
 false-positive rate on free text would be unacceptable — so these are expected
 to fail. They are recorded rather than asserted.
 
 One consequence of the adjacent form is worth stating plainly: it now requires
 the given name to come from the name-character inventory in
-`detectors/surnames.py`. A real name whose given character is outside that
+`medical_privacy_guard/detectors/surnames.py`. A real name whose given character is outside that
 inventory is not detected. That is the price of not reading `患者周转正常` as a
 person called 周转正常.
 

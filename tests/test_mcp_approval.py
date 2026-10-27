@@ -7,11 +7,11 @@ import sys
 
 import pytest
 
-from adapters.mcp_gateway import GatewayError, GatewaySettings, McpGateway
-from cli.main import main
-from core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
-from core.grant_files import write_approval_file
-from core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
+from medical_privacy_guard.adapters.mcp_gateway import GatewayError, GatewaySettings, McpGateway
+from medical_privacy_guard.cli.main import main
+from medical_privacy_guard.core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
+from medical_privacy_guard.core.grant_files import write_approval_file
+from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
 from tests.test_mcp_gateway import _call, by_id, run_gateway, upstream_saw
 
 KEY = "synthetic-mcp-approval-key"
@@ -182,10 +182,10 @@ def test_request_export_failure_withholds_and_keeps_the_session_usable(deploymen
     directory = deployment[0] / "requests"
 
     def fail_export(*args):
-        from core.errors import GrantError
+        from medical_privacy_guard.core.errors import GrantError
         raise GrantError("synthetic request write failure")
 
-    monkeypatch.setattr("adapters.mcp_gateway.write_approval_file", fail_export)
+    monkeypatch.setattr("medical_privacy_guard.adapters.mcp_gateway.write_approval_file", fail_export)
     _, lines, gateway = run_gateway([_call(1, DOCUMENT), _call(2, {"note": "普通随访"})],
                                    settings=_settings(deployment, requests=directory))
     assert "error" in by_id(lines)[1]
@@ -194,8 +194,8 @@ def test_request_export_failure_withholds_and_keeps_the_session_usable(deploymen
 
 
 def test_later_field_failure_never_forwards_or_refunds_an_accepted_use(deployment, monkeypatch):
-    from adapters.ingress import sanitize_call
-    from core.errors import ParserError
+    from medical_privacy_guard.adapters.ingress import sanitize_call
+    from medical_privacy_guard.core.errors import ParserError
 
     _, before, _ = run_gateway([_call(1, DOCUMENT, inputResponses=DOCUMENT)],
                                settings=_settings(deployment))
@@ -208,7 +208,7 @@ def test_later_field_failure_never_forwards_or_refunds_an_accepted_use(deploymen
             raise ParserError("synthetic second-field failure")
         return sanitize_call(guard, value, recipient, purpose, grant=grant)
 
-    monkeypatch.setattr("adapters.mcp_gateway.sanitize_call", fail_second)
+    monkeypatch.setattr("medical_privacy_guard.adapters.mcp_gateway.sanitize_call", fail_second)
     _, refused, _ = run_gateway([_call(2, DOCUMENT, inputResponses=DOCUMENT)],
                                settings=_settings(deployment, [first, second]))
     assert "error" in by_id(refused)[2]

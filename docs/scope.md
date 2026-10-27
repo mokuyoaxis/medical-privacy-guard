@@ -36,7 +36,7 @@ when they disagree, this file wins and the other two are updated.
   residence verb and no field label are detected when the value ends at an
   administrative or street suffix; Label/value
   separators — colon, equals, whitespace, none, or a bracketed value — are
-  shared across detectors (``detectors/field_syntax.py``), so every labelled
+  shared across detectors (``medical_privacy_guard/detectors/field_syntax.py``), so every labelled
   field accepts the same spellings — a detector that spells out its own
   separator silently diverges and is caught by ``tools/audit_contracts.py``;
 - whole-name spans: a labelled name value is bounded by its separator and a
@@ -45,7 +45,7 @@ when they disagree, this file wins and the other two are updated.
   staff or relative label carrying no name (``责任护士每班交接``) yields no fact,
   and verification withholds release when a name span stops inside a name or is
   followed by text no boundary word explains;
-  the boundary word list (``detectors/surnames.py``) therefore carries the
+  the boundary word list (``medical_privacy_guard/detectors/surnames.py``) therefore carries the
   clinical titles *and* the academic, professional and administrative ranks a
   note writes after a name — ``主治医师：李国强教授`` captures ``李国强`` and
   releases the rank as the context it is. A rank with no name in front of it
@@ -114,6 +114,15 @@ when they disagree, this file wins and the other two are updated.
   protocol negotiation: a modern client's ``server/discover`` probe and a legacy
   client's ``initialize`` are forwarded untouched, because the server's era is
   the server's business. The wrapped server's exit code is propagated;
+- a local HTTP gateway (``medical-privacy-guard serve --upstream URL``):
+  OpenAI-compatible ``/v1/chat/completions`` and Anthropic ``/v1/messages``
+  endpoints that evaluate and rewrite the request with the same adapters as
+  the in-process wrappers. The upstream is fixed at startup, the default bind
+  is loopback-only, request bodies are size-limited JSON objects, and responses
+  are passed through without inspection. ASK and BLOCK return HTTP 403 with
+  reason codes and risk metadata only; client credentials are forwarded, never
+  stored. Non-loopback binding requires an explicit ``--allow-remote`` and an
+  external authenticated reverse proxy is the deployment's responsibility;
 - BLOCK for explicitly typed unsupported payloads and failed verification;
 - an evaluation harness over 175 synthetic Chinese clinical notes (140 with
   labelled identifiers, 1474 spans, and 35 identifier-free notes). Expected
@@ -145,7 +154,7 @@ for these forms. Its `regression/` half runs in CI; its `exploratory/` half
 records forms that are outside the baseline and is expected to fail.
 
 Adjacent person fields (`患者张三`, `其妻郑爽`) require the given name to come
-from the name-character inventory in `detectors/surnames.py`. An ordinary word
+from the name-character inventory in `medical_privacy_guard/detectors/surnames.py`. An ordinary word
 following a surname is therefore not read as a name — `患者周转正常` does not
 yield a person called 周转正常 — at the cost of missing a real name whose given
 character is outside that inventory. A *labelled* value (`姓名：`, `主治医师：`) is
@@ -282,6 +291,12 @@ No parsers or sanitization support exist for:
 - multimodal content (images / audio / video)
 - streaming request inspection
 
+The HTTP gateway supports only the two chat/messages paths above. It does not
+proxy OpenAI Responses, embeddings, image/audio endpoints, arbitrary paths or
+WebSocket traffic, and it does not inspect responses. It serves plain HTTP on
+loopback by default; TLS termination, client authentication and network access
+control for any non-loopback deployment are the deployment's responsibility.
+
 The MCP gateway's boundaries are narrower than "traffic through it is
 inspected", and the gap is worth naming precisely:
 
@@ -343,10 +358,10 @@ effect here was to hide a value from the rules meant to find it. The detectors'
 end conditions accept them as boundaries as well, so a rule that reads text
 without going through an entry point cannot be blinded either.
 
-The classification itself is shared: ``formats/admission.py`` holds the rule used
+The classification itself is shared: ``medical_privacy_guard/formats/admission.py`` holds the rule used
 by the CLI, the adapters and the guard's own string entry, so a payload cannot be
 plain text to one entry point and a structured document to another. An adapter
-does not accept the caller's word for what its content is — ``adapters.ingress``
+does not accept the caller's word for what its content is — ``medical_privacy_guard.adapters.ingress``
 classifies it.
 
 CLI output must not alias its input or the configured audit log, including

@@ -10,7 +10,7 @@ Coverage:
 
 import pytest
 
-from core.model import (
+from medical_privacy_guard.core.model import (
     DetectedFact,
     Purpose,
     ReasonCode,
@@ -18,10 +18,10 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from core.policy import PolicyEvaluator, load_builtin_profile
-from core.verify import Verifier, verify_sanitized
-from detectors import detect_all
-from transformers import apply_plan
+from medical_privacy_guard.core.policy import PolicyEvaluator, load_builtin_profile
+from medical_privacy_guard.core.verify import Verifier, verify_sanitized
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.transformers import apply_plan
 
 
 def external_recipient() -> Recipient:
@@ -373,8 +373,8 @@ def test_execution_contract_rejects_incomplete_or_tampered_evidence(mutation):
     ("电话13800000000", "[PHONE_999]"),
 ])
 def test_independent_postconditions_reject_bad_transformer(text, bad_output):
-    from transformers.base import Transformer
-    from transformers.registry import TransformerRegistry
+    from medical_privacy_guard.transformers.base import Transformer
+    from medical_privacy_guard.transformers.registry import TransformerRegistry
 
     class BrokenTransformer(Transformer):
         handles = ("GENERALIZE", "REMOVE")
@@ -398,8 +398,8 @@ def test_date_shift_may_equal_another_original_date():
 def test_date_shift_rejects_wrong_or_inconsistent_offsets(offsets):
     from datetime import date, timedelta
 
-    from transformers.base import Transformer
-    from transformers.registry import TransformerRegistry
+    from medical_privacy_guard.transformers.base import Transformer
+    from medical_privacy_guard.transformers.registry import TransformerRegistry
 
     class BrokenShift(Transformer):
         handles = ("DATE_SHIFT",)

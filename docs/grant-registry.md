@@ -1,6 +1,6 @@
 # Persistent grant consumption
 
-`core.grant_sqlite.SqliteGrantRegistry` provides committed use budgets and
+`medical_privacy_guard.core.grant_sqlite.SqliteGrantRegistry` provides committed use budgets and
 revocation for processes on one machine sharing one private local database.
 It uses Python's standard-library SQLite; no extra dependency is required.
 The default Guard registry remains in memory. Inject this backend explicitly
@@ -16,7 +16,7 @@ local Linux storage, rather than Android shared storage or a network filesystem.
 Initialize once, before consumers start:
 
 ```python
-from core.grant_sqlite import initialize_grant_registry
+from medical_privacy_guard.core.grant_sqlite import initialize_grant_registry
 
 initialize_grant_registry()  # Refuses any existing file, including an empty one.
 ```
@@ -31,7 +31,7 @@ automatic migration, cleanup or database restoration.
 Inject a registry into each consumer:
 
 ```python
-from core.grant_sqlite import SqliteGrantRegistry
+from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry
 from medical_privacy_guard import Guard
 
 registry = SqliteGrantRegistry(timeout_seconds=5.0)

@@ -24,7 +24,12 @@ import sys
 
 import pytest
 
-from adapters.mcp_gateway import REFUSED_CODE, GatewayError, GatewaySettings, McpGateway
+from medical_privacy_guard.adapters.mcp_gateway import (
+    REFUSED_CODE,
+    GatewayError,
+    GatewaySettings,
+    McpGateway,
+)
 
 #: An upstream MCP server that reports what it was given.
 UPSTREAM = r"""
@@ -286,7 +291,7 @@ class TestStartupFailure:
             gateway.run()
 
     def test_the_cli_reports_it_as_a_configuration_error(self, capsys):
-        from cli.main import EXIT_ERROR, main
+        from medical_privacy_guard.cli.main import EXIT_ERROR, main
 
         rc = main(["mcp-gateway", "--recipient", "external_unknown",
                    "--", "/nonexistent/mcp-server"])

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from core.benchmark import (
+from medical_privacy_guard.core.benchmark import (
     CorpusDocument,
     _count_audit_leaks,
     _survives_as_token,
@@ -23,8 +23,8 @@ from core.benchmark import (
     load_corpus,
     run_benchmark,
 )
-from core.errors import GuardError
-from core.model import DetectedFact
+from medical_privacy_guard.core.errors import GuardError
+from medical_privacy_guard.core.model import DetectedFact
 
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "synthetic_cn_notes"
 
@@ -378,8 +378,8 @@ class TestFaultInjection:
         script = """
 import sys
 from unittest.mock import patch
-from cli.main import main
-from core.model import VerificationResult
+from medical_privacy_guard.cli.main import main
+from medical_privacy_guard.core.model import VerificationResult
 fault = sys.argv.pop(1)
 if fault == "verification":
     target = "medical_privacy_guard.guard.verify_sanitized"
@@ -406,7 +406,7 @@ with patch(target, replacement):
             assert gate in result.stdout
 
     def test_all_135_verifications_fail_even_with_35_allow_releases(self, monkeypatch):
-        from core.model import VerificationResult
+        from medical_privacy_guard.core.model import VerificationResult
 
         monkeypatch.setattr(
             "medical_privacy_guard.guard.verify_sanitized",
@@ -440,7 +440,7 @@ with patch(target, replacement):
         ("timestamp", "invalid"), ("duplicate_key", "invalid"),
     ])
     def test_audit_damage_is_a_failure(self, tmp_path, monkeypatch, damage, category):
-        from core.audit import AuditWriter
+        from medical_privacy_guard.core.audit import AuditWriter
 
         _write_corpus(tmp_path)
         original = AuditWriter.record
@@ -498,8 +498,8 @@ with patch(target, replacement):
         ("ASK", "release"), ("BLOCK", "release"),
     ])
     def test_expected_lifecycle_is_checked_per_document(self, tmp_path, monkeypatch, verdict, change):
-        from core.model import Payload, Verdict
         from medical_privacy_guard import Guard
+        from medical_privacy_guard.core.model import Payload, Verdict
 
         _write_corpus(tmp_path, verdict=verdict)
         original = Guard.sanitize
@@ -521,8 +521,8 @@ with patch(target, replacement):
         assert not failed.passed()
 
     def test_partial_identifier_residue_fails_even_when_full_value_is_absent(self, tmp_path, monkeypatch):
-        from core.model import VerificationResult
-        from detectors import detect_all
+        from medical_privacy_guard.core.model import VerificationResult
+        from medical_privacy_guard.detectors import detect_all
 
         _write_corpus(tmp_path)
         original = detect_all
@@ -535,7 +535,7 @@ with patch(target, replacement):
                 if f.type == "PERSON_NAME" else f for f in original(text, detectors)
             )
 
-        monkeypatch.setattr("core.benchmark.detect_all", partial)
+        monkeypatch.setattr("medical_privacy_guard.core.benchmark.detect_all", partial)
         monkeypatch.setattr("medical_privacy_guard.guard.detect_all", partial)
         monkeypatch.setattr(
             "medical_privacy_guard.guard.verify_sanitized",
@@ -549,7 +549,7 @@ with patch(target, replacement):
         assert not failed.passed()
 
     def test_reused_event_ids_fail(self, monkeypatch):
-        from core.audit import AuditWriter
+        from medical_privacy_guard.core.audit import AuditWriter
 
         original = AuditWriter.record
 
@@ -562,9 +562,9 @@ with patch(target, replacement):
         assert not failed.passed()
 
     def test_each_corpus_document_has_expected_lifecycle(self, tmp_path):
-        from core.benchmark import _evaluate_document
-        from core.model import Purpose, Recipient, TrustLevel
         from medical_privacy_guard import Guard
+        from medical_privacy_guard.core.benchmark import _evaluate_document
+        from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel
 
         guard = Guard()
         recipient = Recipient("benchmark", trust_level=TrustLevel.EXTERNAL_APPROVED)

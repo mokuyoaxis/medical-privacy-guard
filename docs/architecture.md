@@ -52,24 +52,25 @@ hardening contract, not proof of complete anonymization. See
 
 | Component | Responsibility | Output |
 |---|---|---|
-| `medical_privacy_guard/guard.py`, `cli/main.py` | Evaluate a caller-declared payload and decide | `Decision` |
-| `formats/admission.py` | Decide what content is *before* it is scanned; shared by the CLI and the adapters | `Payload` |
-| `detectors` | Output sensitive-entity facts, not policy decisions | `DetectedFact` |
-| `core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
-| `core/grant.py` | Bind approval to a disclosure, verify the grant and consume its use budget | `ApprovalRequest` / accepted or rejected grant |
-| `core/grant_sqlite.py` | Persist atomic budgets and ID revocation for processes sharing private local disk | committed acceptance / refusal / `GrantError` |
-| `core/grant_files.py` | Read/write private local approval files without key exposure | signed request / grant objects |
-| `core/dataset.py` | Share batch tokens and report aggregate selected-column combinations | per-file Guard results / engineering counts |
-| `transformers` | Execute deterministic planned operations | transformed text + internal evidence |
-| `core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
-| `core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
-| `core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
-| `formats/` | Flatten a JSON, CSV or FHIR payload into string leaves and rebuild it | `StructuredPayload` |
-| `formats/dicom_inspect.py` | Read DICOM metadata and report identifiers; never writes | `DicomReport` |
-| `core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
-| `adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
-| `adapters/mcp_gateway.py` | Proxy a stdio MCP session, holding back `tools/call` the guard refuses | rewritten / refused JSON-RPC |
-| `adapters/openai_compat.py`, `adapters/anthropic_compat.py` | Evaluate every egress field of a vendor SDK call before it is sent | rewritten kwargs / raised verdict |
+| `medical_privacy_guard/guard.py`, `medical_privacy_guard/cli/main.py` | Evaluate a caller-declared payload and decide | `Decision` |
+| `medical_privacy_guard/formats/admission.py` | Decide what content is *before* it is scanned; shared by the CLI and the adapters | `Payload` |
+| `medical_privacy_guard/detectors` | Output sensitive-entity facts, not policy decisions | `DetectedFact` |
+| `medical_privacy_guard/core/policy.py` | Summarize engineering risk and evaluate facts + context | `Decision` + `DisclosurePlan` |
+| `medical_privacy_guard/core/grant.py` | Bind approval to a disclosure, verify the grant and consume its use budget | `ApprovalRequest` / accepted or rejected grant |
+| `medical_privacy_guard/core/grant_sqlite.py` | Persist atomic budgets and ID revocation for processes sharing private local disk | committed acceptance / refusal / `GrantError` |
+| `medical_privacy_guard/core/grant_files.py` | Read/write private local approval files without key exposure | signed request / grant objects |
+| `medical_privacy_guard/core/dataset.py` | Share batch tokens and report aggregate selected-column combinations | per-file Guard results / engineering counts |
+| `medical_privacy_guard/transformers` | Execute deterministic planned operations | transformed text + internal evidence |
+| `medical_privacy_guard/core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
+| `medical_privacy_guard/core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
+| `medical_privacy_guard/core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
+| `medical_privacy_guard/formats/` | Flatten a JSON, CSV or FHIR payload into string leaves and rebuild it | `StructuredPayload` |
+| `medical_privacy_guard/formats/dicom_inspect.py` | Read DICOM metadata and report identifiers; never writes | `DicomReport` |
+| `medical_privacy_guard/core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
+| `medical_privacy_guard/adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
+| `medical_privacy_guard/adapters/mcp_gateway.py` | Proxy a stdio MCP session, holding back `tools/call` the guard refuses | rewritten / refused JSON-RPC |
+| `medical_privacy_guard/adapters/openai_compat.py`, `medical_privacy_guard/adapters/anthropic_compat.py` | Evaluate every egress field of a vendor SDK call before it is sent | rewritten kwargs / raised verdict |
+| `medical_privacy_guard/adapters/http_gateway.py` | Local OpenAI/Anthropic-compatible reverse proxy; evaluates request bodies before forwarding to a fixed upstream | rewritten/refused HTTP request; pass-through response |
 
 ## Component boundaries
 
@@ -226,48 +227,16 @@ medical-privacy-guard/
 │   ├── approval-workflow.md
 │   ├── datasets.md
 │   └── evaluation.md
-├── core/
+├── medical_privacy_guard/
 │   ├── __init__.py
-│   ├── model.py
-│   ├── errors.py
-│   ├── policy.py
-│   ├── grant.py
-│   ├── grant_sqlite.py
-│   ├── grant_files.py
-│   ├── dataset.py
-│   ├── verify.py
-│   ├── benchmark.py
-│   └── audit.py
-├── detectors/
-│   ├── __init__.py
-│   ├── base.py
-│   ├── registry.py
-│   ├── surnames.py
-│   ├── regex.py
-│   ├── cn_identifiers.py
-│   ├── dates.py
-│   ├── person.py
-│   ├── location.py
-│   ├── medical_content.py
-│   ├── medical_record.py
-│   ├── demographics.py
-│   ├── institution.py
-│   └── clinical_context.py
-├── transformers/
-│   ├── __init__.py
-│   ├── base.py
-│   ├── registry.py
-│   ├── text.py
-│   ├── generalize.py
-│   └── dates.py
-├── policies/
-│   ├── external-ai-strict.yaml
-│   └── research.yaml
-├── cli/
-│   ├── __init__.py
-│   └── main.py
-├── formats/                   # admission + json / csv / fhir; dicom_inspect (read-only)
-├── adapters/                  # mcp_gateway + openai_compat + anthropic_compat
+│   ├── guard.py
+│   ├── core/                   # model, policy, grants, verify, audit, benchmark
+│   ├── detectors/              # deterministic detectors
+│   ├── transformers/           # transformation registry
+│   ├── policies/               # bundled policy YAML files
+│   ├── cli/                    # CLI entry point
+│   ├── formats/                # admission + json / csv / fhir; dicom_inspect (read-only)
+│   └── adapters/               # mcp_gateway + http_gateway + openai_compat + anthropic_compat
 ├── tools/
 │   └── generate_synthetic_cn_notes.py
 ├── skills/
@@ -290,7 +259,8 @@ medical-privacy-guard/
 - JSON, CSV and a minimal FHIR resource set, plus a read-only DICOM scanner;
 - CSV/JSON batch token consistency and aggregate combination measurements
   (engineering-only; they do not authorize release or claim anonymity);
-- MCP stdio gateway and OpenAI-compatible / Anthropic client wrappers;
+- MCP stdio gateway, local OpenAI/Anthropic-compatible HTTP gateway, and
+  OpenAI-compatible / Anthropic client wrappers;
 - explicit non-text payloads BLOCK; format admission has the bounded checks
   described in [scope.md](scope.md), not universal format identification;
 - a synthetic evaluation corpus and benchmark with strict per-document gates,

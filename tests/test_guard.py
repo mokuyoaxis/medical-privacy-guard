@@ -10,8 +10,9 @@ Coverage:
 
 import pytest
 
-from core.errors import PolicyError
-from core.model import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.core.errors import PolicyError
+from medical_privacy_guard.core.model import (
     EnvironmentContext,
     Payload,
     Purpose,
@@ -20,7 +21,6 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from medical_privacy_guard import Guard
 
 
 def make_guard(**kwargs):
@@ -42,7 +42,7 @@ class TestConstruction:
     def test_custom_profile_path(self, tmp_path):
         from shutil import copyfile
 
-        src = "policies/external-ai-strict.yaml"
+        src = "medical_privacy_guard/policies/external-ai-strict.yaml"
         custom = tmp_path / "custom.yaml"
         copyfile(src, custom)
         guard = Guard(profile_path=str(custom))
@@ -239,7 +239,7 @@ class TestFailClosed:
 
 @pytest.mark.parametrize("profile", ["external-ai-strict", "research"])
 def test_noop_transform_never_releases(profile, monkeypatch, tmp_path):
-    from transformers.base import TransformOutcome
+    from medical_privacy_guard.transformers.base import TransformOutcome
 
     text = "性别：男。病史：脑梗死。就诊日期：2026-08-21"
     monkeypatch.setattr(
@@ -275,7 +275,7 @@ def test_unsupported_payload_block_is_audited(kind, content, tmp_path):
 
 
 def test_unsupported_payload_audit_failure_propagates(monkeypatch, tmp_path):
-    from core.errors import AuditError
+    from medical_privacy_guard.core.errors import AuditError
 
     def fail_record(self, event):
         raise AuditError("synthetic audit failure")

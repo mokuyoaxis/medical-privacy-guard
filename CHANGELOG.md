@@ -5,7 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0-rc.1] - 2026-10-27
+
+### Added
+
+- The public API now exports `Guard`, `Verdict`, the decision/result types and
+  the guard exception classes from `medical_privacy_guard`. Result objects
+  expose `verdict`, `released`, `text` and `public_summary()` so callers do not
+  need to reach into internal modules. Added `py.typed`.
+- `medical-privacy-guard serve` provides a local zero-code HTTP gateway for
+  OpenAI-compatible `/v1/chat/completions` and Anthropic `/v1/messages`
+  clients. It reuses the in-process adapters, forwards to one fixed upstream,
+  streams responses unchanged, binds to loopback by default and returns
+  metadata-only 403 errors for ASK/BLOCK.
+
+### Changed
+
+- The distribution now installs only the `medical_privacy_guard` namespace.
+  Internal modules moved from the top-level `core`, `detectors`, `transformers`,
+  `formats`, `adapters`, `policies`, and `cli` packages to
+  `medical_privacy_guard.*`. This removes the collision with the Hugging Face
+  `transformers` package and other generic top-level names. Import paths are
+  intentionally breaking; no external consumer existed when the change was made.
+
+## [0.5.0] - 2026-10-27
+
+Stable release of the v0.5 approval and security-hardening line. The code and
+validation are the `v0.5.0-rc.3` candidate plus documentation corrections; no
+additional code changes were made for this stable tag.
 
 ## [0.5.0-rc.3] - 2026-10-13
 
@@ -913,7 +940,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.6.0-rc.1...HEAD
+[0.6.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0...v0.6.0-rc.1
+[0.5.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...v0.5.0
 [0.5.0-rc.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...v0.5.0-rc.3
 [0.5.0-rc.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...v0.5.0-rc.2
 [0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1

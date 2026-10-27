@@ -9,7 +9,7 @@ either redacts clinical meaning or pollutes the risk score.
 
 from __future__ import annotations
 
-from detectors import detect_all
+from medical_privacy_guard.detectors import detect_all
 
 
 def types_in(text: str) -> set[str]:
@@ -334,8 +334,8 @@ class TestPlaceholderInertness:
 
     def test_every_emitted_marker_is_inert(self):
         """Drive every marker the transformer layer can emit through detection."""
-        from transformers.generalize import _TYPE_MARKERS
-        from transformers.text import _REDACTED
+        from medical_privacy_guard.transformers.generalize import _TYPE_MARKERS
+        from medical_privacy_guard.transformers.text import _REDACTED
 
         markers = [_REDACTED, *sorted(_TYPE_MARKERS.values())]
         for marker in markers:
@@ -353,7 +353,7 @@ class TestPlaceholderInertness:
             assert found <= {"MEDICAL_CONTENT", "SEX"}, (marker, found)
 
     def test_is_placeholder_recognises_markers_only(self):
-        from core.model import is_placeholder
+        from medical_privacy_guard.core.model import is_placeholder
 
         assert is_placeholder("[LOCATION_GENERALIZED]")
         assert is_placeholder("[PERSON_NAME_001]")

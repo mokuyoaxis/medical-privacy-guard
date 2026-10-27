@@ -8,13 +8,13 @@ from dataclasses import replace
 
 import pytest
 
-from cli.main import EXIT_ASK, EXIT_BLOCK, EXIT_ERROR, EXIT_OK, main
-from core.errors import GrantError
-from core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
-from core.grant_files import read_approval_file, write_approval_file
-from core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
-from core.model import Payload, Purpose
 from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.main import EXIT_ASK, EXIT_BLOCK, EXIT_ERROR, EXIT_OK, main
+from medical_privacy_guard.core.errors import GrantError
+from medical_privacy_guard.core.grant import GRANT_KEY_ENV, ApprovalRequest, Grant
+from medical_privacy_guard.core.grant_files import read_approval_file, write_approval_file
+from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
+from medical_privacy_guard.core.model import Payload, Purpose
 
 KEY = "synthetic-local-approval-key"
 DOCUMENT = {"name": "测试患者甲", "phone": 13800000000, "mobile": "13900000000"}
@@ -187,7 +187,7 @@ def test_malformed_grant_fields_fail_without_disclosing_values(workflow, field, 
 def test_verification_failure_after_approval_still_withholds_and_spends(workflow, monkeypatch, capsys):
     assert _export(workflow) == EXIT_ASK
     assert _issue(workflow) == EXIT_OK
-    monkeypatch.setattr("transformers.text.TextTransformer.apply", lambda self, fact, op, tokens: fact.value)
+    monkeypatch.setattr("medical_privacy_guard.transformers.text.TextTransformer.apply", lambda self, fact, op, tokens: fact.value)
     capsys.readouterr()
     assert _run_source(workflow) == EXIT_BLOCK
     assert not capsys.readouterr().out
@@ -206,7 +206,7 @@ def test_registry_commands_and_a_restarted_cli_share_revocation(workflow, capsys
     assert main(["grant-revoke", grant.grant_id, "--grant-db", database]) == EXIT_OK
     assert json.loads(capsys.readouterr().out)["revoked"]
     run = subprocess.run(
-        [sys.executable, "-B", "-m", "cli.main", "sanitize", str(workflow[0]), *COMMON,
+        [sys.executable, "-B", "-m", "medical_privacy_guard.cli.main", "sanitize", str(workflow[0]), *COMMON,
          "--grant-file", str(workflow[2]), "--grant-db", database],
         capture_output=True, text=True,
         env={**os.environ, GRANT_KEY_ENV: KEY, "PYTHONDONTWRITEBYTECODE": "1"},

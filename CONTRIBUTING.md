@@ -39,7 +39,7 @@ contain synthetic data only.
 python -m pip install -e ".[dev,dicom]"
 python -m pytest -q
 python -m ruff check .
-python -m bandit -q -r core detectors transformers medical_privacy_guard cli
+python -m bandit -q -r medical_privacy_guard
 python -m build
 ```
 

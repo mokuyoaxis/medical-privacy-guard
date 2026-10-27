@@ -13,15 +13,15 @@ from dataclasses import replace
 
 import pytest
 
-from core.audit import (
+from medical_privacy_guard.core.audit import (
     GENESIS_HASH,
     AuditEvent,
     AuditWriter,
     build_audit_event,
     verify_chain,
 )
-from core.errors import AuditError
-from core.model import (
+from medical_privacy_guard.core.errors import AuditError
+from medical_privacy_guard.core.model import (
     Decision,
     DetectedFact,
     DisclosurePlan,
@@ -33,9 +33,9 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from core.policy import PolicyEvaluator, load_builtin_profile
-from detectors import detect_all
-from transformers import apply_plan
+from medical_privacy_guard.core.policy import PolicyEvaluator, load_builtin_profile
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.transformers import apply_plan
 
 
 def external_recipient() -> Recipient:
@@ -331,7 +331,7 @@ class TestFullPipeline:
         facts = detect_all(text)
         decision = PolicyEvaluator(profile).evaluate(facts, recipient, purpose)
         outcome = apply_plan(text, facts, decision.plan)
-        from core.verify import verify_sanitized
+        from medical_privacy_guard.core.verify import verify_sanitized
 
         verification = verify_sanitized(
             profile=profile,

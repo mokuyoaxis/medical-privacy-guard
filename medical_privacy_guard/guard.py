@@ -20,10 +20,10 @@ import os
 from dataclasses import replace
 from typing import Any, Sequence
 
-from core.audit import AuditWriter, build_audit_event
-from core.dictionary import load_dictionary
-from core.errors import ParserError
-from core.grant import (
+from medical_privacy_guard.core.audit import AuditWriter, build_audit_event
+from medical_privacy_guard.core.dictionary import load_dictionary
+from medical_privacy_guard.core.errors import ParserError
+from medical_privacy_guard.core.grant import (
     ApprovalRequest,
     Grant,
     GrantRegistry,
@@ -31,7 +31,7 @@ from core.grant import (
     check_grant,
     env_grant_key,
 )
-from core.model import (
+from medical_privacy_guard.core.model import (
     Decision,
     DetectedFact,
     DisclosurePlan,
@@ -49,18 +49,18 @@ from core.model import (
     Verdict,
     VerificationResult,
 )
-from core.policy import (
+from medical_privacy_guard.core.policy import (
     CONTEXT_ONLY_TYPES,
     PolicyEvaluator,
     PolicyProfile,
     load_builtin_profile,
 )
-from core.textnorm import strip_invisible
-from core.verify import verify_sanitized
-from detectors import detect_all
-from detectors import registry as detector_registry
-from detectors.dictionary import DictionaryDetector
-from formats import (
+from medical_privacy_guard.core.textnorm import strip_invisible
+from medical_privacy_guard.core.verify import verify_sanitized
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.detectors import registry as detector_registry
+from medical_privacy_guard.detectors.dictionary import DictionaryDetector
+from medical_privacy_guard.formats import (
     UnsupportedInput,
     dumps,
     dumps_csv,
@@ -72,8 +72,8 @@ from formats import (
     rebuild_csv,
     reject_if_binary,
 )
-from formats.fhir import inspect_fhir, parse_fhir_payload
-from transformers import TokenRegistry, apply_plan
+from medical_privacy_guard.formats.fhir import inspect_fhir, parse_fhir_payload
+from medical_privacy_guard.transformers import TokenRegistry, apply_plan
 
 __all__ = ["Guard"]
 
@@ -85,7 +85,7 @@ __all__ = ["Guard"]
 #:   ever given the joined text and no pattern can span the separator. The
 #:   character class a detector happens to use is therefore irrelevant; a NUL
 #:   that reaches a leaf is refused before the leaf exists, by
-#:   ``formats.admission.reject_if_binary``.
+#:   ``medical_privacy_guard.formats.admission.reject_if_binary``.
 #: - A NUL cannot occur in a JSON string, so a value the caller sent cannot be
 #:   mistaken for the join.
 _LEAF_SEPARATOR = "\x00"

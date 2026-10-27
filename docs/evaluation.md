@@ -314,6 +314,13 @@ against the exact candidate commit. First adoption is documented, but no actual
 consumer or key has been migrated. Device power loss and old-state rollback
 authentication remain unverified.
 
+The `v0.6.0-rc.1` work on `main` adds 15 tests: 5 public-API tests and 10
+HTTP-gateway tests. The local Python 3.13.5 run is **1459 passed, 1 skipped**
+(the DICOM module skips because the optional extra is absent); with
+`[dev,dicom]`, the expected three-version matrix total is **1475 passed**. This
+work is not part of the `v0.5.0-rc.3` or `v0.5.0` tags; read it against the
+current `v0.6.0-rc.1` commit.
+
 Before the rc.3 review, the local-approval and dataset follow-up on 2026-10-12 passed
 **1446 tests with no skips on each of Python 3.10.21, 3.11.16 and 3.12.14**.
 The 61 added cases cover signed review metadata, private approval file I/O,
@@ -515,12 +522,12 @@ the corpus contains no such document.
 
 Two fixes followed (regression tests in `tests/test_blindspot_fixes.py`):
 
-1. **Shared field separator** (`detectors/field_syntax.py`). Label-anchored
+1. **Shared field separator** (`medical_privacy_guard/detectors/field_syntax.py`). Label-anchored
    detectors each spelled out their own ``\s*[:：]?\s*``, so a field matched with
    a colon and was missed with `=`, SQL-style brackets, or no separator. The
    kinship rules were the clearest defect: ``父亲张伟`` matched while
    ``父亲：张伟`` did not.
-2. **Independent recall guard** (`detectors/recall_guard.py`). The verifier
+2. **Independent recall guard** (`medical_privacy_guard/detectors/recall_guard.py`). The verifier
    re-runs the same detectors, so it cannot see first-pass misses. A second,
    differently-anchored rule now covers the `姓名，性别` opener, a bare name
    before a complaint verb (`陈曦诉头晕`) and a bare name before a connective
@@ -578,7 +585,7 @@ Important limitations include:
   original character spans. This does not imply arbitrary Unicode, OCR-noise
   or date-format coverage; new challenge results must be reported separately.
 - **Limited aggregate combination counts are implemented; re-identification
-  risk is not measured.** `core/dataset.py` reports group sizes, singleton
+  risk is not measured.** `medical_privacy_guard/core/dataset.py` reports group sizes, singleton
   fractions and small-group counts for caller-selected quasi-identifier
   columns. These are engineering measurements over rows, not person-level
   re-identification, population-risk estimation or an anonymity verdict.

@@ -15,11 +15,11 @@ from threading import Barrier, Event, get_ident
 
 import pytest
 
-from core.errors import AuditError, GrantError
-from core.grant import Grant, GrantIssuer
-from core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
-from core.model import Payload, Purpose, Verdict
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.errors import AuditError, GrantError
+from medical_privacy_guard.core.grant import Grant, GrantIssuer
+from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
+from medical_privacy_guard.core.model import Payload, Purpose, Verdict
 
 KEY = b"synthetic-sqlite-grant-key"
 DOCUMENT = {"name": "测试患者甲", "phone": 13800000000, "mobile": "13900000000"}
@@ -276,7 +276,7 @@ def test_lock_timeout_fails_closed_without_fallback(database):
 
 
 def test_expiry_is_checked_after_acquiring_the_write_lock(database, monkeypatch):
-    from core import grant_sqlite
+    from medical_privacy_guard.core import grant_sqlite
 
     grant = _issue()
     registry = SqliteGrantRegistry(database)
@@ -466,7 +466,7 @@ def test_failures_after_consumption_do_not_refund_the_budget(database, monkeypat
     grant = _issue()
     if failure == "transform":
         monkeypatch.setattr(
-            "transformers.text.TextTransformer.apply", lambda self, fact, op, tokens: fact.value
+            "medical_privacy_guard.transformers.text.TextTransformer.apply", lambda self, fact, op, tokens: fact.value
         )
         result = guard.sanitize(
             Payload(kind="json", content=DOCUMENT), RECIPIENT, PURPOSE, grant=grant
@@ -477,7 +477,7 @@ def test_failures_after_consumption_do_not_refund_the_budget(database, monkeypat
         def fail_audit(self, event):
             raise AuditError("synthetic audit failure")
 
-        monkeypatch.setattr("core.audit.AuditWriter.record", fail_audit)
+        monkeypatch.setattr("medical_privacy_guard.core.audit.AuditWriter.record", fail_audit)
         with pytest.raises(AuditError, match="synthetic"):
             guard.sanitize(
                 Payload(kind="json", content=DOCUMENT), RECIPIENT, PURPOSE, grant=grant,

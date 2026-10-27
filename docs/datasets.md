@@ -46,7 +46,7 @@ does not publish a successful manifest or copy withheld original inputs.
 This batch command does not automatically approve records; use the individual
 [approval workflow](approval-workflow.md) for disclosures requiring review.
 
-Python callers can use `core.dataset.sanitize_dataset(...)`, or explicitly
+Python callers can use `medical_privacy_guard.core.dataset.sanitize_dataset(...)`, or explicitly
 inject `Guard(token_registry=TokenRegistry())` for serial calls they manage.
 Default Guard calls still create a fresh map per payload. Maps are not shared
 across processes or protected for concurrent mutation.

@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from core.errors import ParserError
-from core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
-from formats.fhir import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.core.errors import ParserError
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
+from medical_privacy_guard.formats.fhir import (
     FHIR_RESOURCES,
     inspect_fhir,
     parse_fhir_payload,
 )
-from medical_privacy_guard import Guard
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "fhir"
 

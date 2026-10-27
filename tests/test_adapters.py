@@ -10,15 +10,16 @@ from __future__ import annotations
 
 import pytest
 
-from adapters import release_or_raise, verification_details
-from core.errors import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters import release_or_raise, verification_details
+from medical_privacy_guard.core.errors import (
     DisclosureBlocked,
     GuardError,
     HumanApprovalRequired,
     VerificationError,
     VerificationFailed,
 )
-from core.model import (
+from medical_privacy_guard.core.model import (
     Decision,
     Payload,
     Purpose,
@@ -31,7 +32,6 @@ from core.model import (
     Verdict,
     VerificationResult,
 )
-from medical_privacy_guard import Guard
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +86,7 @@ class TestVerdictMapping:
     def test_planned_ask_requires_successful_verification(self, verification):
         from dataclasses import replace
 
-        from core.model import DisclosurePlan
+        from medical_privacy_guard.core.model import DisclosurePlan
 
         result = _synthetic(Verdict.ASK, payload=Payload(kind="text", content="synthetic"),
                             verification=verification)

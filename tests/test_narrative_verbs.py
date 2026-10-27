@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import pytest
 
-from core.model import Verdict
-from detectors import detect_all
-from detectors.recall_guard import NarrativeNameDetector
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Verdict
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.detectors.recall_guard import NarrativeNameDetector
 
 APPROVED = "external_approved"
 UNKNOWN = "external_unknown"

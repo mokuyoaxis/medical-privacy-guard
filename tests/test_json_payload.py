@@ -17,10 +17,10 @@ import json
 
 import pytest
 
-from core.model import Payload, Purpose, Recipient, TrustLevel
-from formats import dumps, from_document, parse_json_payload, rebuild
-from formats.json_payload import label_for
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel
+from medical_privacy_guard.formats import dumps, from_document, parse_json_payload, rebuild
+from medical_privacy_guard.formats.json_payload import label_for
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +83,7 @@ class TestLeafExtraction:
 
     @pytest.mark.parametrize("text", ['"just a string"', "42", "null", "{broken", ""])
     def test_non_containers_are_rejected(self, text):
-        from core.errors import ParserError
+        from medical_privacy_guard.core.errors import ParserError
 
         with pytest.raises(ParserError):
             parse_json_payload(text)

@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.model import Purpose, Recipient, TrustLevel  # noqa: E402
 from medical_privacy_guard import Guard  # noqa: E402
+from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests" / "fixtures"))
 from simulation.cases import CASES  # noqa: E402

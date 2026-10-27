@@ -12,10 +12,10 @@ import json
 
 import pytest
 
-from adapters import evaluate_call, payload_for, sanitize_call
-from core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
-from formats.admission import payload_for_text
 from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters import evaluate_call, payload_for, sanitize_call
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel, Verdict
+from medical_privacy_guard.formats.admission import payload_for_text
 
 
 @pytest.fixture(scope="module")

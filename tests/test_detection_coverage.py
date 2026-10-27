@@ -17,11 +17,11 @@ from datetime import date
 
 import pytest
 
-from core.model import Purpose, Recipient, TrustLevel
-from detectors import detect_all
-from detectors.dates import parse_cn_date
-from detectors.demographics import parse_cn_numeral
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.detectors.dates import parse_cn_date
+from medical_privacy_guard.detectors.demographics import parse_cn_numeral
 
 
 def values_of(text: str, fact_type: str) -> list[str]:

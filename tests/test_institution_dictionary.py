@@ -18,11 +18,11 @@ import json
 
 import pytest
 
-from core.dictionary import InstitutionDictionary, load_dictionary
-from core.errors import DictionaryError
-from core.model import Purpose, Recipient, TrustLevel
-from detectors.dictionary import DictionaryDetector
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.dictionary import InstitutionDictionary, load_dictionary
+from medical_privacy_guard.core.errors import DictionaryError
+from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel
+from medical_privacy_guard.detectors.dictionary import DictionaryDetector
 
 CSV_BODY = """category,name
 institution,望江医院
@@ -202,8 +202,8 @@ class TestDictionaryResidualVerification:
         Otherwise the two disagree and no note containing a referral could ever
         be released.
         """
-        from core.policy import load_builtin_profile
-        from core.verify import Verifier
+        from medical_privacy_guard.core.policy import load_builtin_profile
+        from medical_privacy_guard.core.verify import Verifier
 
         verifier = Verifier(
             load_builtin_profile("external-ai-strict"),
@@ -214,8 +214,8 @@ class TestDictionaryResidualVerification:
     def test_failure_names_the_category_not_the_term(self, csv_path):
         """The vocabulary is a sensitive asset: a failure may say which
         category survived, never which term."""
-        from core.policy import load_builtin_profile
-        from core.verify import Verifier, _CheckFailure
+        from medical_privacy_guard.core.policy import load_builtin_profile
+        from medical_privacy_guard.core.verify import Verifier, _CheckFailure
 
         verifier = Verifier(
             load_builtin_profile("external-ai-strict"),
@@ -227,8 +227,8 @@ class TestDictionaryResidualVerification:
         assert "王建国" not in excinfo.value.detail
 
     def test_clean_text_has_no_dictionary_residual(self, csv_path):
-        from core.policy import load_builtin_profile
-        from core.verify import Verifier
+        from medical_privacy_guard.core.policy import load_builtin_profile
+        from medical_privacy_guard.core.verify import Verifier
 
         verifier = Verifier(
             load_builtin_profile("external-ai-strict"),
@@ -281,8 +281,8 @@ class TestExternalDetectors:
     """Supplied detectors may only extend recall; they never decide."""
 
     def test_a_custom_detector_is_used(self, approved):
-        from core.model import DetectedFact
-        from detectors.base import Detector
+        from medical_privacy_guard.core.model import DetectedFact
+        from medical_privacy_guard.detectors.base import Detector
 
         class MarkerDetector(Detector):
             name = "marker"

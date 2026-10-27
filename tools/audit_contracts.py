@@ -44,10 +44,16 @@ _SCAN_EXCLUDED: frozenset[str] = frozenset(
 )
 sys.path.insert(0, str(ROOT))
 
-from core.errors import GuardError  # noqa: E402
-from core.model import Payload, Purpose, Recipient, TrustLevel, Verdict  # noqa: E402
-from detectors import detect_all  # noqa: E402
 from medical_privacy_guard import Guard  # noqa: E402
+from medical_privacy_guard.core.errors import GuardError  # noqa: E402
+from medical_privacy_guard.core.model import (  # noqa: E402
+    Payload,
+    Purpose,
+    Recipient,
+    TrustLevel,
+    Verdict,
+)
+from medical_privacy_guard.detectors import detect_all  # noqa: E402
 
 #: (label, value, expected fact type) — one field per detector family.
 FIELDS = (
@@ -113,15 +119,15 @@ def separator_matrix() -> list[str]:
 
 def fact_type_coverage() -> list[str]:
     """Fact types emitted by detectors but absent from the policy tables."""
-    policy = (ROOT / "core/policy.py").read_text(encoding="utf-8")
+    policy = (ROOT / "medical_privacy_guard/core/policy.py").read_text(encoding="utf-8")
     reason_block = policy.split("_FACT_REASON_CODES")[1].split("}")[0]
     known = set(re.findall(r'"([A-Z_0-9]+)"\s*:', reason_block))
 
     produced: set[str] = set()
-    for path in sorted((ROOT / "detectors").glob("*.py")):
+    for path in sorted((ROOT / "medical_privacy_guard/detectors").glob("*.py")):
         produced |= set(re.findall(r'fact_type\s*[:=]\s*"([A-Z_0-9]+)"', path.read_text(encoding="utf-8")))
     # The dictionary detector derives its types from the category table.
-    produced |= set(re.findall(r'"([A-Z_0-9]{3,})"', (ROOT / "core/dictionary.py").read_text(encoding="utf-8")))
+    produced |= set(re.findall(r'"([A-Z_0-9]{3,})"', (ROOT / "medical_privacy_guard/core/dictionary.py").read_text(encoding="utf-8")))
     produced.discard("CATEGORY_FACT_TYPES")
 
     missing = sorted(t for t in produced if t not in known)
@@ -221,9 +227,9 @@ def admission_contract() -> list[str]:
     """
     problems: list[str] = []
 
-    canonical = ROOT / "formats/admission.py"
+    canonical = ROOT / "medical_privacy_guard/formats/admission.py"
     if "def classify_text(" not in canonical.read_text(encoding="utf-8"):
-        problems.append("  formats/admission.py no longer defines classify_text")
+        problems.append("  medical_privacy_guard/formats/admission.py no longer defines classify_text")
 
     # Nobody else may keep a private copy of the decision. Non-project
     # directories are skipped so a checkout carrying a virtualenv, a build or
@@ -245,8 +251,8 @@ def admission_contract() -> list[str]:
     # same document was a structured payload to the CLI and prose to a library
     # caller.
     for entry in (
-        "cli/main.py",
-        "adapters/ingress.py",
+        "medical_privacy_guard/cli/main.py",
+        "medical_privacy_guard/adapters/ingress.py",
         "medical_privacy_guard/guard.py",
     ):
         if "payload_for_text" not in (ROOT / entry).read_text(encoding="utf-8"):
@@ -254,7 +260,7 @@ def admission_contract() -> list[str]:
 
     # Behavioural check: a structured call must not reach ALLOW, whether an
     # adapter classified it first or the content went straight to the guard.
-    from adapters.ingress import payload_for as ingress_payload
+    from medical_privacy_guard.adapters.ingress import payload_for as ingress_payload
 
     guard = Guard(profile="external-ai-strict")
     recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
@@ -355,7 +361,7 @@ def unreadable_leaf_coverage() -> list[str]:
 
 def approval_release_contract() -> list[str]:
     """Approved ASK must release consistently across all supported formats."""
-    from core.grant import GrantIssuer, GrantRegistry
+    from medical_privacy_guard.core.grant import GrantIssuer, GrantRegistry
 
     note = "本例为罕见变异型病例，建议多学科会诊。"
     samples = (

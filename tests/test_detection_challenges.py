@@ -2,9 +2,9 @@
 
 import pytest
 
-from core.model import Verdict
-from detectors import CnPhoneDetector, DateDetector
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Verdict
+from medical_privacy_guard.detectors import CnPhoneDetector, DateDetector
 
 
 @pytest.mark.parametrize(("phone", "visit", "month"), [

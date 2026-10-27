@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import pytest
 
-from core.model import DetectedFact, Purpose, Recipient, TrustLevel
-from core.policy import load_builtin_profile
-from core.verify import Verifier, _CheckFailure
-from detectors import detect_all
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import DetectedFact, Purpose, Recipient, TrustLevel
+from medical_privacy_guard.core.policy import load_builtin_profile
+from medical_privacy_guard.core.verify import Verifier, _CheckFailure
+from medical_privacy_guard.detectors import detect_all
 
 
 def values_of(text: str, fact_type: str) -> list[str]:
@@ -153,9 +153,9 @@ class TestTruncatedNameWithholdsRelease:
     def test_a_truncating_detector_cannot_release(
         self, monkeypatch: pytest.MonkeyPatch, approved: Recipient
     ) -> None:
-        import detectors
-        import detectors.registry as registry
-        from detectors.base import Detector
+        import medical_privacy_guard.detectors as detectors
+        import medical_privacy_guard.detectors.registry as registry
+        from medical_privacy_guard.detectors.base import Detector
 
         class TruncatingDetector(Detector):
             """Reproduces the defect: a labelled value captured up to the surname."""

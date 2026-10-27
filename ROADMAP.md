@@ -24,10 +24,13 @@ current capabilities are defined by scope.md and the latest delivered stage.
 | v0.3.2 | Generalisation fixes | Released (`v0.3.2`) |
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
-| v0.5 | ASK approval grants + security hardening | Release candidate (`v0.5.0-rc.3`), including SQLite consumption/revocation, local approvals and initial dataset measurements |
+| v0.5 | ASK approval grants + security hardening | Released (`v0.5.0`), including SQLite consumption/revocation, local approvals and initial dataset measurements |
+| v0.6 | Namespace convergence + zero-code gateway | Release candidate (`v0.6.0-rc.1`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The current package version is `0.5.0rc3`, with candidate tag `v0.5.0-rc.3`. The work that was planned as separate v0.5 (DICOM)
+The current package version is `0.6.0rc1`, with candidate tag `v0.6.0-rc.1`.
+The stable `v0.5.0` tag contains the `v0.5.0-rc.3` code plus documentation
+corrections. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.
 Three version numbers in six days would not have been earned by the release
 process, and a read-only scanner that cannot clear pixel risk does not deserve
@@ -99,7 +102,7 @@ time and quantify the recall/precision change per detector.
   and 14 departments — 140 positive (1474 character-level span annotations)
   and 35 deliberately identifier-free — with a deterministic generator
   (`tools/generate_synthetic_cn_notes.py`);
-- `benchmark` CLI command and `core/benchmark.py` harness reporting span
+- `benchmark` CLI command and `medical_privacy_guard/core/benchmark.py` harness reporting span
   recall/precision, `false_positives_on_clean_documents`,
   `false_allow_count`, `residual_phi_count`, `audit_raw_leak_count`,
   `verification_failure_count` and latency;
@@ -182,11 +185,11 @@ build/test/release checks. This list is an acceptance contract, not new test res
 
 **Delivered**:
 
-- `formats/` module: JSON object/array traversal (`v0.3.0`) and CSV parsing
+- `medical_privacy_guard/formats/` module: JSON object/array traversal (`v0.3.0`) and CSV parsing
   (`v0.3.1`), both flattening a document into addressable string leaves and
   rebuilding it with its structure intact;
 - a key or column name acts as a field label for its value
-  (`formats/leaf.py`), so the label-driven detectors apply to a structured field
+  (`medical_privacy_guard/formats/leaf.py`), so the label-driven detectors apply to a structured field
   that carries no in-band label. Cells and leaves are scanned regardless, so an
   unconventional header costs a label, not detection;
 - one decision per document: a single direct identifier withholds the whole
@@ -239,7 +242,7 @@ why the numbers were collapsed.
 
 ### Delivered
 
-- OpenAI-compatible and Anthropic wrappers (`adapters/`): message content, tool
+- OpenAI-compatible and Anthropic wrappers (`medical_privacy_guard/adapters/`): message content, tool
   arguments, tool descriptions and metadata pass through the guard before the
   SDK call goes out;
 - MCP stdio gateway: `tools/call` is forwarded, rewritten or refused; every
@@ -298,7 +301,7 @@ are delivered in rc.3.
 
 ASK was the one verdict with no working end-to-end path: the guard withheld the
 payload and told the caller a scoped grant was required, with nothing in the
-library able to say what a grant is. ``core/grant.py`` closes it.
+library able to say what a grant is. ``medical_privacy_guard/core/grant.py`` closes it.
 
 The guard does **not** decide who may approve — that stays with the deployment,
 the same way ``EXTERNAL_APPROVED`` does. It describes what needs approving,

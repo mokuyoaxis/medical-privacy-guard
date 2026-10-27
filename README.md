@@ -42,9 +42,12 @@ result = guard.sanitize(
     purpose="EXTERNAL_AI_ASSISTANCE",
 )
 
-if result.sanitized_payload is not None:
-    payload_to_release = result.sanitized_payload.content
+if result.released:
+    payload_to_release = result.text
 ```
+
+`Guard`, `Verdict`, the result types and the guard exception classes are the
+stable public imports; the subpackages remain implementation details.
 
 CLI:
 
@@ -58,6 +61,25 @@ medical-privacy-guard audit-verify audit/
 Exit codes: `0` = ALLOW or verified SANITIZE (for `audit-verify`, an intact
 chain), `2` = BLOCK (for `audit-verify`, a broken chain), `3` = ASK,
 `4` = parser/configuration/internal error.
+
+### Zero-code HTTP gateway
+
+Point an existing SDK at the local gateway; no application code changes:
+
+```bash
+medical-privacy-guard serve --upstream https://api.openai.com --port 8787
+# OpenAI-compatible client: base_url="http://127.0.0.1:8787/v1"
+# Anthropic client:        base_url="http://127.0.0.1:8787"
+```
+
+The gateway supports `/v1/chat/completions` and `/v1/messages`. It evaluates
+and rewrites the request with the same adapters as the in-process wrappers,
+then forwards it to one fixed upstream; responses are passed through and are
+not inspected. It binds to `127.0.0.1` by default, requires a size-limited JSON
+body, and never lets a request choose another upstream. ASK and BLOCK return
+HTTP 403 with reason codes and risk metadata, never payload text. Use
+`--recipient external_approved` only for an endpoint the deployment has
+approved; otherwise medical content remains ASK and the gateway withholds it.
 
 Audit events are chained by hash, so a deleted, reordered or edited record is
 detectable. Set `MEDICAL_PRIVACY_GUARD_AUDIT_KEY` to authenticate records with
@@ -102,14 +124,17 @@ never rewritten, because writing a string over a number would change its type,
 so a number that matches an identifier withholds the record. A FHIR resource outside
 the supported set is withheld.
 
-**Egress adapters.** OpenAI-compatible and Anthropic client wrappers, and an MCP
-stdio gateway. In the gateway, `tools/call` is forwarded, rewritten or refused
-according to the verdict; everything else, including `server/discover`, is
-forwarded byte for byte. Responses are not inspected, and neither adapter covers
-every egress path; see [docs/scope.md](docs/scope.md).
+**Egress adapters.** OpenAI-compatible and Anthropic client wrappers, a local
+zero-code HTTP gateway (`serve`), and an MCP stdio gateway. The HTTP gateway
+accepts `/v1/chat/completions` and `/v1/messages`, rewrites the request, and
+forwards it to one fixed upstream; responses pass through. In the MCP gateway,
+`tools/call` is forwarded, rewritten or refused according to the verdict;
+everything else, including `server/discover`, is forwarded byte for byte.
+Responses are not inspected, and none of these adapters covers every egress
+path; see [docs/scope.md](docs/scope.md).
 
 **Approval grants.** ASK is the one verdict that needs something outside the
-guard. ``core.grant`` describes what needs approving (no raw values), and checks a
+guard. ``medical_privacy_guard.core.grant`` describes what needs approving (no raw values), and checks a
 deployment-issued grant against it: scoped to one disclosure, expiring, one-time,
 and signed with a key the payload cannot hold. An approved release is still a
 minimized release — the grant carries the residual risk of a value that cannot be
@@ -118,7 +143,7 @@ back to ASK. All default Guard instances share a thread-safe consumption
 registry within the process. For durable use limits and ID-based revocation,
 initialize a private local SQLite database and inject `SqliteGrantRegistry`
 through `Guard(registry=...)`; see [deployment instructions](docs/grant-registry.md).
-The `v0.5.0-rc.3` candidate adds [local CLI/MCP approval files](docs/approval-workflow.md),
+The `v0.5.0` release adds [local CLI/MCP approval files](docs/approval-workflow.md),
 with explicit human issuance and signed review metadata.
 It also adds [CSV/JSON batches](docs/datasets.md) with consistent tokens and
 aggregate combination measurements; these measurements do not authorize release.
@@ -140,7 +165,7 @@ to the detectors and is not a build gate.
 typed non-text payloads return BLOCK. Admission rejects known unsupported
 extensions, NUL and other unsupported control characters, and containers that do
 not parse, but it does not identify every disguised format. One rule
-(`formats/admission.py`) serves the CLI, the adapters and the guard's own string
+(`medical_privacy_guard/formats/admission.py`) serves the CLI, the adapters and the guard's own string
 entry, so a document cannot be plain text to one of them and structured to
 another. A `str` is classified rather than trusted: `{"name": "张三"}` is a JSON
 document whether it arrives as text or as a decoded mapping, and scanning it as
@@ -158,7 +183,8 @@ recipient returns `ASK`; a declared purpose is not consent. Use
 - XLSX and TSV (CSV covers the same need)
 - PDF / DOCX
 - DICOM write-back and pixel-risk checking (the shipped scanner is read-only)
-- HTTP egress proxy
+- a general-purpose HTTP egress proxy (the gateway proxies only
+  OpenAI-compatible chat completions and Anthropic Messages paths)
 - full dataset-level re-identification/population-risk analysis and
   anonymization models (limited aggregate combination measurements are
   implemented; see [datasets](docs/datasets.md))
@@ -239,16 +265,21 @@ Single version-based roadmap; details and acceptance criteria in [ROADMAP.md](RO
   UNKNOWN (so `safe_to_release` is false for every file) and never writes a
   file. Responses are not inspected; see [scope](docs/scope.md) for the
   boundaries.
-- **v0.5 — ASK approvals and security hardening**: available in the
-  `v0.5.0-rc.3` release candidate.
+- **v0.5 — ASK approvals and security hardening**: released as `v0.5.0`.
   ASK was the one verdict
   with no working path — the guard withheld the payload and could not say what
   a grant is. A grant is now scoped, expiring and one-time, and an approved
   release is still a minimized release (see [scope](docs/scope.md)).
   Default consumption is shared within a process. An optional SQLite backend
   supplies persistent consumption and revocation on private local disk.
-  This candidate includes local CLI/MCP approvals, batch token consistency
+  This release includes local CLI/MCP approvals, batch token consistency
   and aggregate combination measurements. Broader dataset anonymization remains planned.
+- **v0.6 — Namespace convergence and zero-code gateway**: available in the
+  `v0.6.0-rc.1` release candidate. It installs only the
+  `medical_privacy_guard` namespace (no top-level `transformers` collision),
+  exports a stable public API, and adds the local `serve` HTTP gateway for
+  OpenAI-compatible and Anthropic clients. Import paths are intentionally
+  breaking; see [CHANGELOG](CHANGELOG.md) `[0.6.0-rc.1]`.
 - **v1.0 — Medical AI egress privacy gateway**: target.
 
 ---

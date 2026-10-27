@@ -42,7 +42,7 @@ jobs:
       - name: Lint
         run: python -m ruff check .
       - name: Static security scan
-        run: python -m bandit -q -r core detectors transformers medical_privacy_guard cli formats adapters
+        run: python -m bandit -q -r medical_privacy_guard
       - name: Contract audit
         run: python tools/audit_contracts.py
       - name: Generalisation measurement

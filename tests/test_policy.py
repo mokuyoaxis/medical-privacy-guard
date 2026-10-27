@@ -14,8 +14,8 @@ from copy import deepcopy
 
 import pytest
 
-from core.errors import PolicyError
-from core.model import (
+from medical_privacy_guard.core.errors import PolicyError
+from medical_privacy_guard.core.model import (
     DetectedFact,
     EnvironmentContext,
     Purpose,
@@ -26,7 +26,7 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from core.policy import (
+from medical_privacy_guard.core.policy import (
     PolicyEvaluator,
     PolicyProfile,
     load_builtin_profile,

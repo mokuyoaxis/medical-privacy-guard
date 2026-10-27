@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.anthropic_compat import AnthropicGuard
-from core.errors import DisclosureBlocked, HumanApprovalRequired
 from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters.anthropic_compat import AnthropicGuard
+from medical_privacy_guard.core.errors import DisclosureBlocked, HumanApprovalRequired
 
 
 class StubTransport:
@@ -113,7 +113,7 @@ class TestContentBlocks:
         assert "ZY2026001" not in sent
 
     def test_an_image_block_fails_closed(self, client, transport):
-        from core.errors import VerificationFailed
+        from medical_privacy_guard.core.errors import VerificationFailed
 
         with pytest.raises((VerificationFailed, DisclosureBlocked)):
             client.messages.create(

@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from core.model import Purpose, Recipient, TrustLevel
-from detectors import detect_all
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel
+from medical_privacy_guard.detectors import detect_all
 
 CHALLENGE_ROOT = Path(__file__).resolve().parent / "fixtures" / "challenge"
 REGRESSION_ROOT = CHALLENGE_ROOT / "regression"

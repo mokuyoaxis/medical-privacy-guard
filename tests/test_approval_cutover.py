@@ -5,11 +5,11 @@ import os
 import subprocess
 import sys
 
-from cli.main import EXIT_ASK, EXIT_ERROR, EXIT_OK
-from core.grant import GRANT_KEY_ENV, Grant
-from core.grant_sqlite import SqliteGrantRegistry
-from core.model import Payload, Purpose, Recipient, TrustLevel
 from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.main import EXIT_ASK, EXIT_ERROR, EXIT_OK
+from medical_privacy_guard.core.grant import GRANT_KEY_ENV, Grant
+from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel
 
 OLD_KEY = "synthetic-retired-cutover-key"
 NEW_KEY = "synthetic-active-cutover-key"
@@ -19,7 +19,7 @@ CONTEXT = ["--recipient", "external_approved", "--purpose", "research"]
 
 def _cli(key, *arguments):
     return subprocess.run(
-        [sys.executable, "-B", "-m", "cli.main", *map(str, arguments)],
+        [sys.executable, "-B", "-m", "medical_privacy_guard.cli.main", *map(str, arguments)],
         capture_output=True, text=True, check=False,
         env={**os.environ, GRANT_KEY_ENV: key, "PYTHONDONTWRITEBYTECODE": "1"},
     )

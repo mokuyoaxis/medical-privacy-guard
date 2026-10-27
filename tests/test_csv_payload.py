@@ -19,9 +19,9 @@ import json
 
 import pytest
 
-from core.model import Payload, Purpose, Recipient, TrustLevel
-from formats import dumps_csv, parse_csv_payload, rebuild_csv
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Payload, Purpose, Recipient, TrustLevel
+from medical_privacy_guard.formats import dumps_csv, parse_csv_payload, rebuild_csv
 
 TABLE = "姓名,电话,年龄,备注\n张三,13800000000,67,因脑梗死入院\n李四,13900000000,45,普通随访\n"
 
@@ -81,13 +81,13 @@ class TestCsvParsing:
 
     @pytest.mark.parametrize("text", ["", "\n"])
     def test_empty_payload_is_rejected(self, text):
-        from core.errors import ParserError
+        from medical_privacy_guard.core.errors import ParserError
 
         with pytest.raises(ParserError):
             parse_csv_payload(text)
 
     def test_oversized_field_is_rejected(self):
-        from core.errors import ParserError
+        from medical_privacy_guard.core.errors import ParserError
 
         original = csv.field_size_limit()
         csv.field_size_limit(64)
@@ -117,7 +117,7 @@ class TestCsvRebuild:
         assert parsed.document.rows[0][0] == "张三"
 
     def test_a_path_outside_the_table_is_an_error(self):
-        from core.errors import ParserError
+        from medical_privacy_guard.core.errors import ParserError
 
         parsed = parse_csv_payload(TABLE)
         with pytest.raises(ParserError):

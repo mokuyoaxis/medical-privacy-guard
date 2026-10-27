@@ -12,8 +12,8 @@ Coverage:
 
 import pytest
 
-from core.model import DetectedFact
-from detectors import (
+from medical_privacy_guard.core.model import DetectedFact
+from medical_privacy_guard.detectors import (
     CnIdDetector,
     CnPhoneDetector,
     DateDetector,
@@ -26,7 +26,7 @@ from detectors import (
     UrlDetector,
     detect_all,
 )
-from detectors.registry import _merge
+from medical_privacy_guard.detectors.registry import _merge
 
 # -- CN phone ---------------------------------------------------------------
 

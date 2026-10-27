@@ -19,8 +19,9 @@ import json
 
 import pytest
 
-from cli.main import EXIT_BLOCK, EXIT_OK, main
-from core.model import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.main import EXIT_BLOCK, EXIT_OK, main
+from medical_privacy_guard.core.model import (
     Decision,
     DetectedFact,
     Payload,
@@ -32,8 +33,7 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from core.policy import load_builtin_profile
-from medical_privacy_guard import Guard
+from medical_privacy_guard.core.policy import load_builtin_profile
 from medical_privacy_guard.guard import _rebuilt_document_releasable
 
 INVISIBLE_CHARACTERS: tuple[tuple[str, str], ...] = (
@@ -188,7 +188,7 @@ class TestGuardStringEntryClassifies:
         assert result.decision.verdict is Verdict.SANITIZE
 
     def test_the_guard_agrees_with_the_adapter_route(self, guard, approved):
-        from adapters import payload_for
+        from medical_privacy_guard.adapters import payload_for
 
         text = '{"name": "张三", "mrn": "1234567"}'
         direct = guard.evaluate(text, approved, Purpose.EXTERNAL_AI_ASSISTANCE)

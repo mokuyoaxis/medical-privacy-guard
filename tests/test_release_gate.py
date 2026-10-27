@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from packaging.version import Version
 
-from cli.main import EXIT_ERROR, EXIT_OK, main
-from core.errors import AuditError
-from core.model import ReasonCode, Verdict
 from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.main import EXIT_ERROR, EXIT_OK, main
+from medical_privacy_guard.core.errors import AuditError
+from medical_privacy_guard.core.model import ReasonCode, Verdict
 
 DEMO = """患者：测试患者甲
 电话：13800000000

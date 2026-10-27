@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pytest
 
-from core.model import Purpose, Recipient, TrustLevel
-from detectors import detect_all
 from medical_privacy_guard import Guard
+from medical_privacy_guard.core.model import Purpose, Recipient, TrustLevel
+from medical_privacy_guard.detectors import detect_all
 
 
 def values_of(text: str, fact_type: str) -> list[str]:
@@ -164,8 +164,8 @@ class TestSharedNameBoundary:
         self, guard: Guard, approved: Recipient
     ) -> None:
         """The boundary check must still catch a genuinely truncated span."""
-        from core.policy import load_builtin_profile
-        from core.verify import Verifier, _CheckFailure
+        from medical_privacy_guard.core.policy import load_builtin_profile
+        from medical_privacy_guard.core.verify import Verifier, _CheckFailure
 
         verifier = Verifier(load_builtin_profile("external-ai-strict"))
         with pytest.raises(_CheckFailure):

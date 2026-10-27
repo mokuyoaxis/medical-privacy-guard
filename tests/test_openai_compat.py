@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from adapters.openai_compat import OpenAIGuard
-from core.errors import DisclosureBlocked, HumanApprovalRequired
 from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters.openai_compat import OpenAIGuard
+from medical_privacy_guard.core.errors import DisclosureBlocked, HumanApprovalRequired
 
 
 class StubTransport:
@@ -101,7 +101,7 @@ class TestMessageContent:
         assert parts[1]["text"] == "随访无异常"
 
     def test_an_image_part_fails_closed(self, client, transport):
-        from core.errors import VerificationFailed
+        from medical_privacy_guard.core.errors import VerificationFailed
 
         with pytest.raises((VerificationFailed, DisclosureBlocked)):
             client.chat.completions.create(

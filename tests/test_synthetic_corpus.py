@@ -201,7 +201,7 @@ def test_network_identifiers_use_reserved_ranges(corpus):
 
 
 def test_resident_ids_have_valid_check_digit(corpus):
-    from detectors.cn_identifiers import validate_id18
+    from medical_privacy_guard.detectors.cn_identifiers import validate_id18
 
     checked = 0
     for text, meta in corpus:
@@ -248,8 +248,8 @@ def test_negative_documents_have_no_detectable_identifier(corpus):
     smuggled in an identifier. Both make the corpus lie about what it measures,
     so this fails fast instead of waiting for the full benchmark.
     """
-    from core.benchmark import NON_SPAN_FACT_TYPES
-    from detectors import detect_all
+    from medical_privacy_guard.core.benchmark import NON_SPAN_FACT_TYPES
+    from medical_privacy_guard.detectors import detect_all
 
     for text, meta in corpus:
         if meta["corpus_role"] != "negative":
