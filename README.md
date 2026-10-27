@@ -118,7 +118,7 @@ back to ASK. All default Guard instances share a thread-safe consumption
 registry within the process. For durable use limits and ID-based revocation,
 initialize a private local SQLite database and inject `SqliteGrantRegistry`
 through `Guard(registry=...)`; see [deployment instructions](docs/grant-registry.md).
-The untagged follow-up adds [local CLI/MCP approval files](docs/approval-workflow.md),
+The `v0.5.0-rc.3` candidate adds [local CLI/MCP approval files](docs/approval-workflow.md),
 with explicit human issuance and signed review metadata.
 It also adds [CSV/JSON batches](docs/datasets.md) with consistent tokens and
 aggregate combination measurements; these measurements do not authorize release.
@@ -159,7 +159,9 @@ recipient returns `ASK`; a declared purpose is not consent. Use
 - PDF / DOCX
 - DICOM write-back and pixel-risk checking (the shipped scanner is read-only)
 - HTTP egress proxy
-- dataset-level re-identification and quasi-identifier combination metrics
+- full dataset-level re-identification/population-risk analysis and
+  anonymization models (limited aggregate combination measurements are
+  implemented; see [datasets](docs/datasets.md))
 - multimodal content (images, audio, video)
 - `resources/read` and `prompts/get` inspection in the MCP gateway
 

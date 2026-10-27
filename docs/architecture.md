@@ -10,8 +10,10 @@
 
 The implemented path accepts plain text, JSON, CSV and a minimal FHIR resource
 set. The MCP stdio gateway and the OpenAI-compatible and Anthropic wrappers
-ship; XLSX, DICOM write-back and dataset-level re-identification analysis are
-future work.
+ship. Batch-scoped token consistency and aggregate quasi-identifier combination
+measurements are implemented as engineering aids; XLSX, DICOM write-back, full
+dataset-level re-identification/population-risk analysis and anonymization
+models are future work.
 
 ```text
 Text / JSON / CSV / FHIR (shared admission and normalization)
@@ -175,6 +177,9 @@ These hold for the shipped adapters and for anything built on top of them:
 
 Not yet implemented:
 
+- Full dataset-level re-identification/population-risk analysis and anonymization
+  models. The shipped combination measurements are aggregate engineering aids
+  only.
 - Approval UI, roles and approval chains. Scoped/expiring grants, process-local
   consumption and an optional SQLite consumption/revocation backend are
   implemented; deployment-side code decides who may issue or revoke them.
@@ -283,6 +288,8 @@ medical-privacy-guard/
 - policy-driven transformations followed by mandatory verification;
 - metadata-only JSONL audit before release when configured;
 - JSON, CSV and a minimal FHIR resource set, plus a read-only DICOM scanner;
+- CSV/JSON batch token consistency and aggregate combination measurements
+  (engineering-only; they do not authorize release or claim anonymity);
 - MCP stdio gateway and OpenAI-compatible / Anthropic client wrappers;
 - explicit non-text payloads BLOCK; format admission has the bounded checks
   described in [scope.md](scope.md), not universal format identification;

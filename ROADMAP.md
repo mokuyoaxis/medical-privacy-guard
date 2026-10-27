@@ -198,7 +198,7 @@ build/test/release checks. This list is an acceptance contract, not new test res
   reported rather than silently retried: mojibake that reaches a model is worse
   than an error that reaches the operator.
 
-**Deferred**:
+**Deferred at v0.3 (later status noted below)**:
 
 - XLSX. CSV covers the same need, and an XLSX reader would add a dependency to a
   project that currently has one;
@@ -206,17 +206,23 @@ build/test/release checks. This list is an acceptance contract, not new test res
   `Payload(kind="csv"|"json")` covers the path, and the CLI writes to a separate
   output file rather than overwriting the input;
 - the file-scoped token map, and with it consistent tokenization across a
-  dataset: `TokenRegistry` is in-memory and scoped to one sanitization, so two
-  rows naming the same person do not yet share a token across files;
+  dataset: at v0.3, `TokenRegistry` was in-memory and scoped to one
+  sanitization, so two rows naming the same person did not share a token across
+  files. Batch-scoped consistency was later delivered in rc.3;
 - the dataset-level uniqueness check over quasi-identifier columns, and the
   acceptance criterion that depended on it (unique high-risk combinations
   returning ASK/BLOCK);
 - GBK / GB18030 auto-detection. Declaring the encoding is the deliberate choice
   above, not an omission.
 
+These are v0.3-time deferrals. Batch-scoped token consistency and initial
+aggregate combination measurements were delivered in rc.3; full re-identification
+and anonymity models remain out of scope.
+
 **Test requirements**: format regression tests and audit-no-raw-PHI tests for
-file outputs are in place. Date-shift consistency across a dataset is not
-tested, because the file-scoped token map it would rely on is not implemented.
+file outputs are in place. Date-shift consistency across a dataset is not tested;
+batch token consistency is covered, but no dataset-wide date-shift guarantee is
+claimed.
 
 **Docs**: scope.md; README status flip.
 
@@ -284,7 +290,9 @@ FHIR synthetic fixtures. All are in place.
 ## v0.5 — ASK approvals and security hardening
 
 **Goal**: complete the scoped ASK approval path and verify its release and audit
-contracts, including durable SQLite consumption and revocation. Dataset risk remains planned.
+contracts, including durable SQLite consumption and revocation. Broader dataset
+re-identification risk remains planned; initial aggregate combination measurements
+are delivered in rc.3.
 
 ### Delivered: ASK approval grants
 

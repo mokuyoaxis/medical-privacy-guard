@@ -72,7 +72,7 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额使用。跨进程、重启后的次数限制和
 按 ID 持久化吊销可使用 `SqliteGrantRegistry`：显式初始化私有本地数据库，再通过
 `Guard(registry=...)` 注入。路径、并发设置和切换边界见[部署说明](docs/grant-registry.md)。
-未发布的后续改动已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
+`v0.5.0-rc.3` 候选版已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
 人工明确签发、私有凭证文件和持久化消费；客户端的批准字段不构成授权。
 同时加入 [CSV/JSON 批次](docs/datasets.md)的按值 token 一致性与准标识符组合工程指标，
 风险报告不自动授权放行，也不构成匿名化保证。

@@ -577,8 +577,11 @@ Important limitations include:
   including YMD and MDY forms with non-zero-padded months/days, and preserves
   original character spans. This does not imply arbitrary Unicode, OCR-noise
   or date-format coverage; new challenge results must be reported separately.
-- **Quasi-identifier combination risk is not measured.** Document-level rule
-  signals are not dataset-level re-identification analysis.
+- **Limited aggregate combination counts are implemented; re-identification
+  risk is not measured.** `core/dataset.py` reports group sizes, singleton
+  fractions and small-group counts for caller-selected quasi-identifier
+  columns. These are engineering measurements over rows, not person-level
+  re-identification, population-risk estimation or an anonymity verdict.
 
 **Precision is a proportion, not a lower bound on false positives.** Under
 strict matching it is `TP / (TP + FP)`. It is distinct from a false-positive
@@ -605,7 +608,7 @@ survive both initial detection and verification.
 | Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb and a clause-boundary connective; a bare name in ordinary prose is still missed |
 | Department mentions outside labelled/movement context | Not detected by design |
 | Local institution dictionaries | Implemented (`v0.2.5`): local CSV/JSON vocabulary, detected and used as an independent verification signal |
-| Dataset-level quasi-identifier combination risk | Planned |
+| Quasi-identifier combination risk | Limited aggregate combination counts implemented (`v0.5.0-rc.3`): group sizes, singleton/small-group counts over caller-selected CSV/JSON columns; full re-identification/anonymization remains planned |
 | Real-world clinical text | Not measured |
 
 ## Verification requirements
