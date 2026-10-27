@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-27
+
+Stable release of the v0.5 approval and security-hardening line. The code and
+validation are the `v0.5.0-rc.3` candidate plus documentation corrections; no
+additional code changes were made for this stable tag.
+
+This release retains the legacy top-level package layout, including a top-level
+`transformers` package. It is a historical stable tag for the v0.5 line; use
+`v0.6.0-rc.1` for the collision-free `medical_privacy_guard` namespace.
+
 ## [0.5.0-rc.3] - 2026-10-13
 
 ### Added
@@ -913,7 +923,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-transformation verification and residual policy re-evaluation.
 - Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
 
-[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...HEAD
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...v0.5.0
 [0.5.0-rc.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...v0.5.0-rc.3
 [0.5.0-rc.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...v0.5.0-rc.2
 [0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1

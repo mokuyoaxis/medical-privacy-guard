@@ -300,8 +300,9 @@ given character is outside the inventory is still missed in the adjacent form.
 
 ## Test and packaging status
 
-The rc.3 release validation on 2026-10-13 passes **1460 tests with no skips on
-each of Python 3.10.21, 3.11.16 and 3.12.14**. Fourteen additional cases cover
+The `v0.5.0` stable release uses the `v0.5.0-rc.3` code and its 2026-10-13
+validation: **1460 tests with no skips on each of Python 3.10.21, 3.11.16 and
+3.12.14**. Fourteen additional cases cover
 dataset/MCP audit aliases, audit/output-directory conflicts, JSON exponent
 overflow, unrepresentable grant expiry, private partial output on write failure
 and no partial MCP forwarding or refund after a later field failure. All 75
@@ -310,9 +311,10 @@ Ruff, Bandit, the contract audit, sdist rebuilding and isolated installed-wheel
 CLI/MCP/dataset checks pass. The audited PyYAML 6.0.3 and optional pydicom 3.0.2
 have no known vulnerabilities reported by pip-audit at this validation date.
 CI now exercises these installed-wheel workflows; read GitHub Actions results
-against the exact candidate commit. First adoption is documented, but no actual
+against the exact release commit. First adoption is documented, but no actual
 consumer or key has been migrated. Device power loss and old-state rollback
-authentication remain unverified.
+authentication remain unverified. The stable tag changes only package version
+metadata and documentation; no code changes were made after the rc.3 validation.
 
 Before the rc.3 review, the local-approval and dataset follow-up on 2026-10-12 passed
 **1446 tests with no skips on each of Python 3.10.21, 3.11.16 and 3.12.14**.

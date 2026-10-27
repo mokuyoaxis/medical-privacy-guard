@@ -72,7 +72,7 @@ medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额使用。跨进程、重启后的次数限制和
 按 ID 持久化吊销可使用 `SqliteGrantRegistry`：显式初始化私有本地数据库，再通过
 `Guard(registry=...)` 注入。路径、并发设置和切换边界见[部署说明](docs/grant-registry.md)。
-`v0.5.0-rc.3` 候选版已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
+`v0.5.0` 已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
 人工明确签发、私有凭证文件和持久化消费；客户端的批准字段不构成授权。
 同时加入 [CSV/JSON 批次](docs/datasets.md)的按值 token 一致性与准标识符组合工程指标，
 风险报告不自动授权放行，也不构成匿名化保证。
@@ -121,11 +121,11 @@ Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额�
   版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
   UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
   边界见 [scope](docs/scope.md)。
-- **v0.5 — ASK 审批与安全加固**：已纳入 `v0.5.0-rc.3` 候选版。ASK
+- **v0.5 — ASK 审批与安全加固**：已发布 `v0.5.0`。ASK
   是唯一没有闭环的裁决——guard 扣留载荷却说不出凭证是什么。现在凭证有范围、会过期、
   一次性，且批准后的释放仍是最小化后的释放（见 [scope](docs/scope.md)）。
   默认消费状态在进程内共享；可选 SQLite 后端提供私有本地磁盘上的持久化消费与吊销，
-  本候选版包含本地 CLI/MCP 审批、批次 token 一致性与组合工程指标；更完整匿名化仍为后续计划。
+  本版本包含本地 CLI/MCP 审批、批次 token 一致性与组合工程指标；更完整匿名化仍为后续计划。
 - **v1.0 — 医疗 AI 出站隐私网关**：目标。
 
 ---
