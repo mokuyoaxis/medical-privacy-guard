@@ -64,11 +64,11 @@ jobs:
           from importlib.metadata import version
           from pathlib import Path
 
-          from adapters import release_or_raise
-          from core.errors import HumanApprovalRequired
-          from core.grant import GrantIssuer
-          from core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
-          from core.model import Payload
+          from medical_privacy_guard.adapters import release_or_raise
+          from medical_privacy_guard.core.errors import HumanApprovalRequired
+          from medical_privacy_guard.core.grant import GrantIssuer
+          from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
+          from medical_privacy_guard.core.model import Payload
           from medical_privacy_guard import Guard, __version__
 
           assert __version__ == version("medical-privacy-guard")
