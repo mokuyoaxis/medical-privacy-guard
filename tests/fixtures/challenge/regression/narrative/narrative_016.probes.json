@@ -1,0 +1,12 @@
+{
+  "doc_id": "narrative_016",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "父亲同意"
+  ],
+  "probe_note": "over-redaction control: kinship words with no name attached"
+}

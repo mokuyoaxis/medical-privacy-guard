@@ -1,0 +1,147 @@
+# Policy profile: research
+# Version: 1
+# Purpose: Research-oriented disclosure with longitudinal consistency concerns.
+# Principle: allow date shifts, stricter rare-condition checks.
+
+profile: research
+version: "1"
+
+rules:
+  hard:
+    - condition:
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: UNTRUSTED_RECIPIENT
+
+    - condition:
+        facts_contain: [GOVERNMENT_ID]
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: GOVERNMENT_ID_PRESENT
+
+    - condition:
+        facts_contain: [BIOMETRIC, GENETIC]
+        recipient_trust_level: [EXTERNAL_BLOCKED]
+      verdict: BLOCK
+      reason_code: BIOMETRIC_DATA_PRESENT
+
+    - condition:
+        facts_contain: [PARSER_FAILURE]
+      verdict: BLOCK
+      reason_code: PARSER_FAILURE
+
+    - condition:
+        facts_contain: [UNSUPPORTED_FORMAT]
+      verdict: BLOCK
+      reason_code: UNSUPPORTED_FORMAT
+
+  identifiers:
+    PHONE:
+      action: REMOVE
+      risk_score: 20
+    EMAIL:
+      action: REMOVE
+      risk_score: 20
+    URL:
+      action: REMOVE
+      risk_score: 15
+    IP_ADDRESS:
+      action: REMOVE
+      risk_score: 15
+    PERSON_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    GOVERNMENT_ID:
+      action: REMOVE
+      risk_score: 40
+    MEDICAL_RECORD_NUMBER:
+      action: REMOVE
+      risk_score: 25
+    EXACT_DATE:
+      action: DATE_SHIFT
+      risk_score: 10
+    PRECISE_LOCATION:
+      action: GENERALIZE
+      risk_score: 15
+    BIOMETRIC:
+      action: BLOCK
+      risk_score: 50
+    GENETIC:
+      action: BLOCK
+      risk_score: 50
+    # v0.2 clinical-narrative and institution types
+    AGE:
+      action: GENERALIZE
+      risk_score: 8
+    HOSPITAL_NAME:
+      action: GENERALIZE
+      risk_score: 15
+    DEPARTMENT:
+      action: GENERALIZE
+      risk_score: 12
+    WARD:
+      action: GENERALIZE
+      risk_score: 15
+    BED_NUMBER:
+      action: REMOVE
+      risk_score: 15
+    DOCTOR_NAME:
+      action: TOKENIZE
+      risk_score: 15
+    NURSE_NAME:
+      action: TOKENIZE
+      risk_score: 15
+    RELATIVE_NAME:
+      action: TOKENIZE
+      risk_score: 20
+    SPECIMEN_ID:
+      action: TOKENIZE
+      risk_score: 20
+    ACCESSION_NUMBER:
+      action: TOKENIZE
+      risk_score: 20
+    LANDLINE:
+      action: REMOVE
+      risk_score: 15
+    POSTAL_CODE:
+      action: REMOVE
+      risk_score: 15
+    SOCIAL_MEDIA_ID:
+      action: REMOVE
+      risk_score: 20
+
+  medical:
+    MEDICAL_CONTENT:
+      risk_score: 5
+    RARE_CONDITION:
+      risk_score: 30
+    # Non-transformable context signals (see external-ai-strict).
+    RARE_CONTEXT:
+      risk_score: 35
+    SEX:
+      risk_score: 5
+
+recipient_risk:
+  LOCAL: 0
+  INTERNAL_TRUSTED: 0
+  EXTERNAL_APPROVED: 5
+  EXTERNAL_UNKNOWN: 15
+  EXTERNAL_BLOCKED: 100
+
+purpose_risk:
+  TREATMENT: 0
+  RESEARCH: 0
+  EDUCATION: 5
+  OPERATIONS: 5
+  PUBLICATION: 15
+  EXTERNAL_AI_ASSISTANCE: 15
+  UNKNOWN: 30
+
+# Engineering score reference bands; not standalone disclosure authorization.
+thresholds:
+  allow_max: 10
+  sanitize_max: 70
+
+verification:
+  required: true
+  fail_verdict: BLOCK

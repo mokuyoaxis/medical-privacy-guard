@@ -1,0 +1,68 @@
+{
+  "doc_id": "imaging_report_003",
+  "language": "zh-CN",
+  "document_type": "imaging_report",
+  "department": "骨科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 13,
+      "end": 23
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 29,
+      "end": 32
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 38,
+      "end": 40
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 46,
+      "end": 48
+    },
+    {
+      "type": "SEX",
+      "start": 52,
+      "end": 53
+    },
+    {
+      "type": "AGE",
+      "start": 57,
+      "end": 60
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 65,
+      "end": 75
+    },
+    {
+      "type": "ACCESSION_NUMBER",
+      "start": 80,
+      "end": 89
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 160,
+      "end": 163
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 172,
+      "end": 174
+    },
+    {
+      "type": "IP_ADDRESS",
+      "start": 187,
+      "end": 198
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

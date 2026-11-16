@@ -1,0 +1,78 @@
+{
+  "doc_id": "outpatient_note_004",
+  "language": "zh-CN",
+  "document_type": "outpatient_note",
+  "department": "骨科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 10,
+      "end": 14
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 20,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 38
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 44,
+      "end": 47
+    },
+    {
+      "type": "SEX",
+      "start": 51,
+      "end": 52
+    },
+    {
+      "type": "AGE",
+      "start": 56,
+      "end": 59
+    },
+    {
+      "type": "PHONE",
+      "start": 65,
+      "end": 76
+    },
+    {
+      "type": "PRECISE_LOCATION",
+      "start": 82,
+      "end": 98
+    },
+    {
+      "type": "EMAIL",
+      "start": 104,
+      "end": 125
+    },
+    {
+      "type": "POSTAL_CODE",
+      "start": 131,
+      "end": 137
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 142,
+      "end": 152
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 331,
+      "end": 333
+    },
+    {
+      "type": "URL",
+      "start": 341,
+      "end": 379
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

@@ -17,12 +17,14 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[test]"
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[test,dicom]"
+      - name: Require DICOM extra
+        run: python -c "import pydicom; print(pydicom.__version__)"
       - name: Run tests
         run: python -m pytest -q
 
@@ -31,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -40,7 +42,13 @@ jobs:
       - name: Lint
         run: python -m ruff check .
       - name: Static security scan
-        run: python -m bandit -q -r core detectors transformers medical_privacy_guard cli
+        run: python -m bandit -q -r medical_privacy_guard
+      - name: Contract audit
+        run: python tools/audit_contracts.py
+      - name: Generalisation measurement
+        # Recorded, not gated: the corpus is deliberately not tuned to the
+        # detectors, so its number is information rather than a pass/fail.
+        run: python tools/evaluate_simulation.py
       - name: Dependency audit
         run: python -m pip_audit
       - name: Build distributions
@@ -51,8 +59,19 @@ jobs:
           python -m venv /tmp/mpg-wheel-venv
           /tmp/mpg-wheel-venv/bin/python -m pip install dist/*.whl
           cd /tmp
-          /tmp/mpg-wheel-venv/bin/python - <<'PY'
-          from medical_privacy_guard import Guard
+          /tmp/mpg-wheel-venv/bin/python -I - <<'PY'
+          import tempfile
+          from importlib.metadata import version
+          from pathlib import Path
+
+          from medical_privacy_guard.adapters import release_or_raise
+          from medical_privacy_guard.core.errors import HumanApprovalRequired
+          from medical_privacy_guard.core.grant import GrantIssuer
+          from medical_privacy_guard.core.grant_sqlite import SqliteGrantRegistry, initialize_grant_registry
+          from medical_privacy_guard.core.model import Payload
+          from medical_privacy_guard import Guard, __version__
+
+          assert __version__ == version("medical-privacy-guard")
 
           result = Guard().sanitize(
               "患者：测试患者甲，电话13800000000",
@@ -61,4 +80,41 @@ jobs:
           )
           assert result.sanitized_payload is not None
           assert result.verification is not None and result.verification.passed
+          # The adapter package must be packaged, not just present in the tree.
+          assert release_or_raise(result) is result.sanitized_payload
+
+          # A number that is an identifier cannot be rewritten, so it has to be
+          # withheld rather than released as a sanitized payload.
+          try:
+              release_or_raise(
+                  Guard().sanitize(
+                      Payload(kind="json", content='{"mrn": 1234567}'),
+                      "external_approved",
+                      "EXTERNAL_AI_ASSISTANCE",
+                  )
+              )
+          except HumanApprovalRequired:
+              pass
+          else:
+              raise AssertionError("a read-only identifier must not be released")
+
+          with tempfile.TemporaryDirectory(prefix="mpg-wheel-grants-") as folder:
+              database = Path(folder) / "grants.sqlite3"
+              initialize_grant_registry(database)
+              registry = SqliteGrantRegistry(database)
+              key = b"synthetic-ci-grant-key"
+              guard = Guard(grant_key=key, registry=registry)
+              payload = Payload(kind="json", content={"phone": 13800000000})
+              request = guard.sanitize(payload, "external_approved", "RESEARCH").approval_request
+              issuer = GrantIssuer(key, issuer="synthetic-ci")
+              grant = issuer.issue(request, ttl_seconds=300, accepted_types=("PHONE",))
+              accepted = guard.sanitize(payload, "external_approved", "RESEARCH", grant=grant)
+              assert release_or_raise(accepted).content
+              other = Guard(grant_key=key, registry=SqliteGrantRegistry(database))
+              assert other.sanitize(payload, "external_approved", "RESEARCH", grant=grant).sanitized_payload is None
+              revoked = issuer.issue(request, ttl_seconds=300, accepted_types=("PHONE",))
+              assert registry.revoke(revoked.grant_id)
+              assert other.sanitize(payload, "external_approved", "RESEARCH", grant=revoked).sanitized_payload is None
+              assert registry.remaining(revoked.grant_id) == 0
           PY
+          /tmp/mpg-wheel-venv/bin/python -I -B "$GITHUB_WORKSPACE/tools/smoke_local_workflows.py"

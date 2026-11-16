@@ -1,0 +1,88 @@
+{
+  "doc_id": "outpatient_note_016",
+  "language": "zh-CN",
+  "document_type": "outpatient_note",
+  "department": "血液科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 10,
+      "end": 14
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 20,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 39
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 45,
+      "end": 47
+    },
+    {
+      "type": "SEX",
+      "start": 51,
+      "end": 52
+    },
+    {
+      "type": "AGE",
+      "start": 56,
+      "end": 59
+    },
+    {
+      "type": "PHONE",
+      "start": 65,
+      "end": 76
+    },
+    {
+      "type": "EMAIL",
+      "start": 82,
+      "end": 103
+    },
+    {
+      "type": "LANDLINE",
+      "start": 109,
+      "end": 121
+    },
+    {
+      "type": "POSTAL_CODE",
+      "start": 127,
+      "end": 133
+    },
+    {
+      "type": "SOCIAL_MEDIA_ID",
+      "start": 138,
+      "end": 150
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 155,
+      "end": 165
+    },
+    {
+      "type": "RELATIVE_NAME",
+      "start": 337,
+      "end": 339
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 350,
+      "end": 353
+    },
+    {
+      "type": "URL",
+      "start": 361,
+      "end": 399
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

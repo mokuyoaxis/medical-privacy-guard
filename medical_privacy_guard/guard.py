@@ -15,10 +15,26 @@ pipelines and agents:
 
 from __future__ import annotations
 
-from core.audit import AuditError, AuditWriter, build_audit_event
-from core.model import (
+import json
+import os
+from dataclasses import replace
+from typing import Any, Sequence
+
+from medical_privacy_guard.core.audit import AuditWriter, build_audit_event
+from medical_privacy_guard.core.dictionary import load_dictionary
+from medical_privacy_guard.core.errors import ParserError
+from medical_privacy_guard.core.grant import (
+    ApprovalRequest,
+    Grant,
+    GrantRegistry,
+    approval_request_for,
+    check_grant,
+    env_grant_key,
+)
+from medical_privacy_guard.core.model import (
     Decision,
     DetectedFact,
+    DisclosurePlan,
     EnvironmentContext,
     EvaluationResult,
     Payload,
@@ -33,20 +49,130 @@ from core.model import (
     Verdict,
     VerificationResult,
 )
-from core.policy import PolicyEvaluator, PolicyProfile, load_builtin_profile
-from core.verify import verify_sanitized
-from detectors import detect_all
-from transformers import apply_plan
+from medical_privacy_guard.core.policy import (
+    CONTEXT_ONLY_TYPES,
+    PolicyEvaluator,
+    PolicyProfile,
+    load_builtin_profile,
+)
+from medical_privacy_guard.core.textnorm import strip_invisible
+from medical_privacy_guard.core.verify import verify_sanitized
+from medical_privacy_guard.detectors import detect_all
+from medical_privacy_guard.detectors import registry as detector_registry
+from medical_privacy_guard.detectors.dictionary import DictionaryDetector
+from medical_privacy_guard.formats import (
+    UnsupportedInput,
+    dumps,
+    dumps_csv,
+    from_document,
+    parse_csv_payload,
+    parse_json_payload,
+    payload_for_text,
+    rebuild,
+    rebuild_csv,
+    reject_if_binary,
+)
+from medical_privacy_guard.formats.fhir import inspect_fhir, parse_fhir_payload
+from medical_privacy_guard.transformers import TokenRegistry, apply_plan
 
 __all__ = ["Guard"]
 
 
+#: Separator between leaf values when a structured payload is flattened for the
+#: text pipeline. Two things make it safe to join leaves with it:
+#:
+#: - Detection runs one leaf at a time (see ``_detect_leaves``), so no rule is
+#:   ever given the joined text and no pattern can span the separator. The
+#:   character class a detector happens to use is therefore irrelevant; a NUL
+#:   that reaches a leaf is refused before the leaf exists, by
+#:   ``medical_privacy_guard.formats.admission.reject_if_binary``.
+#: - A NUL cannot occur in a JSON string, so a value the caller sent cannot be
+#:   mistaken for the join.
+_LEAF_SEPARATOR = "\x00"
+#: Payload kinds that are walked as structured documents. A FHIR resource is
+#: JSON on the wire, and the traversal, the leaf normalisation and the rebuild
+#: are the shared ones. Only the admission differs: a FHIR document is also
+#: asked which resource it is, and a resource outside the supported set is
+#: withheld rather than walked.
+#: Returned by :meth:`Guard._parse_structured` when a FHIR document parsed but
+#: names a resource outside the supported set. Distinct from ``None`` because
+#: the two are different failures to report: an unreadable file is a parser
+#: failure, while a resource the guard was never taught is an unsupported
+#: format, and the audit distinguishes them.
+_UNSUPPORTED_RESOURCE = "<unsupported-fhir-resource>"
+
+_STRUCTURED_KINDS = frozenset({"json", "csv", "fhir"})
+
+
+#: Environment variable holding the optional audit HMAC key. Read from the
+#: environment rather than a parameter default so a key never lands in argv.
+_AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
+
+#: Distinguishes "caller passed nothing" from "caller passed None meaning no
+#: key", so an explicit None disables grants instead of falling back to the
+#: environment.
+_UNSET = object()
+
+#: Share consumed grants across default Guard instances in this process.
+_DEFAULT_GRANT_REGISTRY = GrantRegistry()
+
+
+def _env_audit_key() -> bytes | None:
+    """Return the configured audit HMAC key, if any.
+
+    Without a key the audit chain still detects deleted, reordered and edited
+    records, but anyone able to write the log can recompute the whole chain.
+    """
+    raw = os.environ.get(_AUDIT_KEY_ENV)
+    return raw.encode("utf-8") if raw else None
+
+
 def _coerce_payload(payload: str | Payload) -> Payload:
+    """Turn a caller's payload into the form the guard will actually scan.
+
+    A string is *classified*, never trusted. The detectors are label-driven, so
+    a JSON document scanned as prose loses the keys that supply its field
+    labels: ``{"name": "张三"}`` yields no fact at all, reaches ALLOW and is
+    released with the name intact. The rule is the shared one in
+    ``formats.admission`` -- the same rule the CLI and the adapters use -- so
+    one piece of content cannot be plain text to this entry point and a
+    structured document to the others.
+
+    Content that is recognisably not text the guard can read is declared
+    unsupported rather than guessed at, which fails closed.
+    """
     if isinstance(payload, Payload):
         return payload
     if isinstance(payload, str):
-        return Payload(kind="text", content=payload)
+        try:
+            reject_if_binary(payload)
+        except UnsupportedInput:
+            return Payload(kind="unsupported", content="")
+        return payload_for_text(strip_invisible(payload))
+    if isinstance(payload, (dict, list)):
+        # A decoded document is already structured, so it is declared as such.
+        # The adapters accept this shape; an entry point that refused it would
+        # be the divergence this module exists to prevent.
+        return Payload(kind="json", content=payload)
     raise TypeError(f"payload must be str or Payload, got {type(payload).__name__}")
+
+
+def _strip_text_payload(payload: Payload) -> Payload:
+    """Remove characters that render as nothing from a declared text payload.
+
+    An explicit ``Payload(kind="text")`` bypasses classification but not the
+    normalisation: a caller that declares plain text is still describing text a
+    human would read, and a zero-width character is not part of what that
+    reader sees. The strip happens here, before any detection, so the string
+    that is scanned, transformed, verified and released is the same one
+    throughout.
+    """
+    if payload.kind != "text" or not isinstance(payload.content, str):
+        return payload
+    stripped = strip_invisible(payload.content)
+    if stripped == payload.content:
+        return payload
+    return Payload(kind="text", content=stripped, provenance=payload.provenance)
 
 
 def _coerce_recipient(recipient: str | Recipient) -> Recipient:
@@ -81,6 +207,221 @@ def _coerce_environment(environment: EnvironmentContext | None) -> EnvironmentCo
     )
 
 
+def _flatten(leaves) -> tuple[str, list[tuple[int, int, object]]]:
+    """Join leaf values into one text; return it and each leaf's span."""
+    parts: list[str] = []
+    spans: list[tuple[int, int, object]] = []
+    offset = 0
+    for leaf in leaves:
+        parts.append(leaf.text)
+        spans.append((offset, offset + len(leaf.text), leaf))
+        offset += len(leaf.text) + len(_LEAF_SEPARATOR)
+    return _LEAF_SEPARATOR.join(parts), spans
+
+
+def _rebuild_payload(parsed, replacements: dict[str, str]):
+    """Write replacements back into the document and re-read the result.
+
+    The re-read is *not* what verification runs over: verification sees the
+    flattened text, which is a different string from the serialised document
+    that would be released. That is why the caller re-decides policy on the
+    rebuilt document before releasing it -- the gap between "the text we
+    checked" and "the document we send" has to be closed by a check, not by an
+    assumption about the rebuild being faithful.
+    """
+    if parsed.kind == "csv":
+        serialized = dumps_csv(rebuild_csv(parsed.document, replacements))
+        return serialized, parse_csv_payload(serialized)
+    serialized = dumps(rebuild(parsed.document, replacements))
+    return serialized, parse_json_payload(serialized)
+
+
+def _detect_leaves(
+    leaves, spans: list[tuple[int, int, object]], detectors
+) -> tuple:
+    """Detect over each leaf, offsetting the facts into the flattened text.
+
+    A leaf whose key implies a field label is probed as "label：value" so the
+    label-driven detectors apply, and the label's own span is discarded. The
+    flattened text itself carries no labels, so the transformation never sees
+    them.
+
+    Every spelling the key implies is probed, not only the Chinese label. An
+    English key is translated so the Chinese rules apply, but the translation
+    would otherwise hide the value from the English rules -- they look for
+    ``name:``/``patient:`` and find neither in ``姓名：John Smith`` -- and
+    ``{"name": "John Smith"}`` was released with the name intact. The passes are
+    merged, so a value that both spellings match is still one fact.
+    """
+    from dataclasses import replace as _replace
+
+    facts: list[DetectedFact] = []
+    for leaf, (start, end, _) in zip(leaves, spans):
+        probes = leaf.probes or ((leaf.label,) if leaf.label else ())
+        if not probes:
+            # No label to prepend, so the offsets are the leaf's own -- but the
+            # leaf still starts somewhere in the flattened text, and a fact left
+            # at its leaf-local offset lands on an unrelated value: it is then
+            # either merged away as an overlap or transformed in the wrong place.
+            for fact in detect_all(leaf.text, detectors):
+                facts.append(
+                    _replace(
+                        fact,
+                        start=fact.start + start,
+                        end=fact.end + start,
+                        read_only=leaf.read_only,
+                    )
+                )
+            continue
+        for probe_label in probes:
+            # A half-width colon: every label-driven rule accepts it
+            # (``field_syntax.FIELD_SEP`` matches ``[:：=]``), and the English
+            # rules accept only it or a space. The full-width form used here
+            # before meant an English key's probe could not reach the English
+            # rules at all.
+            probe = f"{probe_label}:{leaf.text}"
+            offset = len(probe_label) + 1
+            for fact in detect_all(probe, detectors):
+                if fact.start < offset:
+                    continue
+                facts.append(
+                    _replace(
+                        fact,
+                        start=fact.start - offset + start,
+                        end=fact.end - offset + start,
+                        read_only=leaf.read_only,
+                    )
+                )
+        # A format that splits one value across leaves offers the whole value
+        # here. The fact it yields covers the completed string, not the leaf's
+        # own text, so it is clamped to the leaf: the leaf is what can be
+        # rewritten, and a span wider than it would overwrite its neighbours.
+        if leaf.completed:
+            for probe_label in probes or ("姓名",):
+                probe = f"{probe_label}:{leaf.completed}"
+                offset = len(probe_label) + 1
+                for fact in detect_all(probe, detectors):
+                    if fact.start < offset:
+                        continue
+                    facts.append(
+                        _replace(
+                            fact,
+                            # Span and value are the leaf's own: the leaf is
+                            # what the transformer can rewrite, and it must
+                            # agree with the text it is replacing or the
+                            # transformation refuses the span.
+                            start=start,
+                            end=start + len(leaf.text),
+                            value=leaf.text,
+                            confidence=fact.confidence,
+                            read_only=leaf.read_only,
+                        )
+                    )
+    return detector_registry.merge_facts(facts)
+
+
+#: Actions that leave a fact in the output on purpose. A residual of one of
+#: these types was produced by the plan and was verified against its execution
+#: evidence; every other type is a value the transformation failed to remove.
+_REBUILD_TRANSFORM_ACTIONS = frozenset({"GENERALIZE", "DATE_SHIFT"})
+
+
+def _accepted_types(grant: Grant | None) -> tuple[str, ...]:
+    """The fact types a grant covers, for the verifier to exempt."""
+    if grant is None:
+        return ()
+    return tuple(grant.accepted_types)
+
+
+def _releasable(decision: Decision) -> bool:
+    """True when a decision authorizes transformation followed by verification.
+
+    SANITIZE always does. ASK does only once a valid grant has been offered,
+    which is recorded by giving the decision a plan: an ASK with no plan is the
+    ordinary "withhold and wait" answer, and an ASK carrying a plan is one a
+    human has authorized.
+
+    The verdict deliberately stays ASK through the release. Rewriting it to
+    SANITIZE would tell the audit that policy became comfortable with the
+    payload, when the truth is that a person accepted a residual risk the policy
+    itself never clears.
+    """
+    if decision.verdict is Verdict.SANITIZE:
+        return True
+    return decision.verdict is Verdict.ASK and decision.plan is not None
+
+
+def _rebuilt_document_releasable(
+    profile: PolicyProfile,
+    decision: Decision,
+    residual: tuple[DetectedFact, ...],
+    accepted_types: frozenset[str] = frozenset(),
+    approval_granted: bool = False,
+) -> bool:
+    """True when the rebuilt document may still be released.
+
+    ALLOW is releasable. SANITIZE is releasable only when every residual fact is
+    either a context-only signal or one whose configured action leaves it in
+    place by design (a generalised date or age band, a shifted date). ASK is
+    releasable only when a grant covers every residual that is not context-only;
+    BLOCK never is. This mirrors the policy re-run inside verification, so the
+    two checks cannot disagree about what "releasable" means — and they are given
+    the same grant, for the same reason.
+    """
+    if decision.verdict is Verdict.ALLOW:
+        return True
+    if decision.verdict is Verdict.ASK:
+        # Without a grant there is nothing to release, whatever the residual is.
+        # An ASK is releasable only because someone accepted its risk.
+        if not approval_granted:
+            return False
+        return all(
+            (fact.read_only and fact.type in accepted_types)
+            or fact.type in CONTEXT_ONLY_TYPES
+            for fact in residual
+        )
+    if decision.verdict is not Verdict.SANITIZE or not residual:
+        return False
+    return all(
+        profile.action_for(fact.type) in _REBUILD_TRANSFORM_ACTIONS
+        for fact in residual
+        if fact.type not in CONTEXT_ONLY_TYPES
+    )
+
+
+def _split(
+    text: str,
+    output: str,
+    spans: list[tuple[int, int, object]],
+    evidence,
+) -> dict[str, str]:
+    """Map each leaf to its sanitized value.
+
+    The transformation guarantees untargeted context is byte-identical, so a
+    leaf's output span is its input span shifted by the net length change of
+    every replacement before it.
+    """
+    def net(record) -> int:
+        return (record.output_end - record.output_start) - (record.end - record.start)
+
+    replacements: dict[str, str] = {}
+    for start, end, leaf in spans:
+        if leaf.read_only:
+            # The policy refuses SANITIZE whenever a read-only leaf carries a
+            # fact, so no plan should ever reach here with one as a target.
+            # Skipping it keeps the value byte-identical instead of writing a
+            # string over a number and changing the document's type. Offsets
+            # for the other leaves are unaffected: ``before`` sums over the
+            # evidence, not over the spans visited so far.
+            continue
+        inner = [r for r in evidence if start <= r.start < end]
+        before = sum(net(r) for r in evidence if r.start < start)
+        out_start = start + before
+        out_end = out_start + (end - start) + sum(net(r) for r in inner)
+        replacements[leaf.path] = output[out_start:out_end]
+    return replacements
+
+
 class Guard:
     """Privacy guard for one policy profile.
 
@@ -93,6 +434,12 @@ class Guard:
         profile: str = "external-ai-strict",
         profile_path: str | None = None,
         audit_dir: str | None = None,
+        audit_key: bytes | None = None,
+        dictionary_path: str | None = None,
+        detectors: Sequence | None = None,
+        grant_key: object = _UNSET,
+        registry: GrantRegistry | None = None,
+        token_registry: TokenRegistry | None = None,
     ) -> None:
         """Create a Guard bound to one policy profile.
 
@@ -100,20 +447,221 @@ class Guard:
             profile: builtin profile name (external-ai-strict, research, ...).
             profile_path: optional explicit path to a custom profile YAML.
             audit_dir: optional directory for append-only audit events.
+            audit_key: optional HMAC key for the audit chain. When omitted, the
+                ``MEDICAL_PRIVACY_GUARD_AUDIT_KEY`` environment variable is
+                used if set; otherwise the chain is unkeyed.
+            dictionary_path: optional ``.csv`` or ``.json`` institution
+                vocabulary. Its terms are detected alongside the built-in
+                rules and give verification a signal independent of them.
+            detectors: optional replacement detector set. Supplied detectors
+                may only extend recall; they must return ``DetectedFact`` and
+                must not decide verdicts, bypass verification or write audit.
+            registry: optional deployment-controlled consumption registry.
+                When omitted, all Guard instances share one process-local,
+                thread-safe registry. A custom registry must consume atomically.
+            token_registry: optional batch-scoped in-memory token map. Identical
+                type/value pairs share tokens across calls; the caller owns its
+                serial use and lifetime. Omitted means a new map per payload.
         """
         self.profile: PolicyProfile = (
             PolicyProfile.load(profile_path) if profile_path else load_builtin_profile(profile)
         )
         self._evaluator = PolicyEvaluator(self.profile)
         self.audit_dir = audit_dir
+        self.audit_key = audit_key if audit_key is not None else _env_audit_key()
+        self.dictionary = load_dictionary(dictionary_path) if dictionary_path else None
+        # The dictionary is a detector like any other, so detection and
+        # verification always see the same set — a mismatch there is how a
+        # fact gets transformed but not verified, or vice versa.
+        # Read the registry attribute at call time rather than binding the name
+        # at import time, so a caller (or a test) that replaces the default set
+        # is actually honoured.
+        base = (
+            tuple(detectors)
+            if detectors is not None
+            else tuple(detector_registry.DEFAULT_DETECTORS)
+        )
+        if (
+            self.dictionary is not None
+            and not self.dictionary.is_empty()
+            and not any(isinstance(d, DictionaryDetector) for d in base)
+        ):
+            # A caller that supplied its own detector set may already carry a
+            # dictionary detector. Registering a second one would only duplicate
+            # every fact it reports, and the registry's merge would then have to
+            # pick between two identical claims.
+            base = base + (DictionaryDetector(self.dictionary),)
+        self._detectors = base
+        #: Key used to build approval fingerprints and to verify grants. Read
+        #: from the environment by default, so a key never lands in argv. An
+        #: explicit None disables grants: every ASK then stays an ASK.
+        self.grant_key = grant_key if grant_key is not _UNSET else env_grant_key()
+        #: Consumed grants, so a one-time approval cannot be replayed.
+        self._grants = registry if registry is not None else _DEFAULT_GRANT_REGISTRY
+        self._tokens = token_registry
+
+    def _grant_approval(
+        self,
+        *,
+        decision: Decision,
+        facts: tuple[DetectedFact, ...],
+        payload_kind: str,
+        content: Any,
+        recipient: Recipient,
+        purpose: Purpose,
+        grant: Grant | None,
+    ) -> tuple[ApprovalRequest | None, str | None, bool]:
+        """Return the request, the rejection reason, and whether release is granted.
+
+        ``(request, None, False)``: the ASK stands, *request* describes it.
+        ``(request, reason, False)``: a grant was rejected; a fresh request permits review.
+        ``(None, None, True)``: the grant is valid; proceed to release.
+
+        The guard never issues a grant. It only describes what needs approving
+        and checks what came back, because a library that also decides who may
+        approve would be the authorization service ``docs/scope.md`` says it is
+        not.
+        """
+        if decision.verdict is not Verdict.ASK:
+            return None, None, False
+        if grant is None:
+            # No grant offered: the ASK stands as a plain withhold, and the
+            # request describes what needs approving.
+            return self._approval_request(decision, facts, payload_kind, content,
+                                          recipient, purpose), None, False
+        if not self.grant_key:
+            return None, "no grant key is configured", False
+        request = self._approval_request(decision, facts, payload_kind, content,
+                                         recipient, purpose)
+        untransformable = sorted(
+            {f.type for f in facts if f.read_only and f.type not in CONTEXT_ONLY_TYPES}
+        )
+        reason = check_grant(
+            grant,
+            request,
+            key=self.grant_key,
+            untransformable_types=untransformable,
+        )
+        if reason is not None:
+            return request, reason, False
+        if not self._grants.consume(grant):
+            return request, "grant has expired, been revoked, or has already been used", False
+        # Authorized. The plan is attached only here, so an ASK nobody approved
+        # never reaches the transformation branch — it stays a withhold.
+        return None, None, True
+
+    def _ask_plan(self, facts: Sequence[DetectedFact]) -> DisclosurePlan | None:
+        """Build the plan a granted ASK releases: everything except what cannot be rewritten.
+
+        This is the whole point of a grant. An approved disclosure is still a
+        minimized one — the human takes on the residual risk of a value the
+        transformation layer cannot touch (a JSON number), not of the values it
+        can. Releasing the original instead would mean an approval silently
+        undoes every detector that did fire.
+
+        An empty plan is returned, not None, when nothing is transformable: a
+        narrative with no identifiers still has to be releasable once a human
+        approves it — that is the whole point of asking. None is reserved for
+        "nobody approved this", which is what keeps the ungranted ASK a withhold.
+        """
+        return self._evaluator._build_plan([f.type for f in facts if not f.read_only])
+
+    def _approval_request(self, decision, facts, payload_kind, content, recipient, purpose):
+        """Build the ApprovalRequest for an ASK, or None with no key configured.
+
+        Without a key there is nothing to bind a grant to, so there is no point
+        issuing a request the deployment could never satisfy. The ASK still
+        stands.
+        """
+        if decision.verdict is not Verdict.ASK or not self.grant_key:
+            return None
+        return approval_request_for(
+            decision=decision,
+            facts=facts,
+            recipient=recipient,
+            purpose=purpose,
+            payload_kind=payload_kind,
+            content=content,
+            key=self.grant_key,
+        )
+
+    def _parse_structured(self, content, kind: str = "json"):
+        """Parse a structured payload, or None when it cannot be parsed.
+
+        Accepts either serialised text or an already-decoded object, so a caller
+        holding a document does not have to serialise it to hand it back.
+
+        ``None`` means the payload is refused. ``_UNSUPPORTED_RESOURCE`` is the
+        narrower reason: the document parsed, but as a FHIR resource the guard
+        does not support, which is a format the guard declines rather than a
+        file it could not read.
+        """
+        if kind == "csv":
+            if not isinstance(content, str):
+                return None
+            try:
+                return parse_csv_payload(content)
+            except ParserError:
+                return None
+        if kind == "fhir" and isinstance(content, str):
+            # A serialised resource is decoded first, so the resource check
+            # sees the same document whether the caller sent text or an object.
+            try:
+                content = json.loads(content)
+            except (json.JSONDecodeError, RecursionError, ValueError):
+                return None
+        if kind == "fhir":
+            # A payload declared FHIR is held to FHIR's shape. A document with
+            # no resourceType, or one whose resource is outside the supported
+            # set, is not "unknown JSON that happens to be safe": its fields
+            # mean something this pipeline was never taught, and an identifier
+            # in one of them would never be looked for. Withheld before any
+            # leaf exists, which is why this is checked here rather than after
+            # detection -- and why a caller cannot route around it by
+            # declaring FHIR and sending an untyped object, which would
+            # otherwise fall through to the JSON path and be sanitized.
+            try:
+                resources = inspect_fhir(content)
+            except ParserError:
+                # Not FHIR at all, despite being declared as such. The document
+                # itself is readable -- it simply is not the thing the caller
+                # said it was -- so this is an unsupported format rather than a
+                # parse failure, and a caller cannot reach the JSON path by
+                # misdeclaring an object as FHIR.
+                return _UNSUPPORTED_RESOURCE
+            if not resources or any(not res.supported for res in resources):
+                return _UNSUPPORTED_RESOURCE
+        if isinstance(content, (dict, list)):
+            # A decoded document is inspected here rather than at rebuild time.
+            # A value the guard cannot read or address (a non-string key, a
+            # value JSON cannot carry) is an admission failure, not a crash
+            # from inside the transformation: the routes into this method must
+            # fail the same way.
+            try:
+                if kind == "fhir":
+                    return parse_fhir_payload(content)
+                return from_document(content)
+            except ParserError:
+                return None
+        if not isinstance(content, str):
+            return None
+        try:
+            return parse_json_payload(content)
+        except ParserError:
+            return None
 
     # -- detection ----------------------------------------------------------
 
     def detect(self, text: str) -> tuple[DetectedFact, ...]:
-        """Run all detectors; returns internal facts (may contain raw values)."""
+        """Run all detectors; returns internal facts (may contain raw values).
+
+        Invisible format characters are removed first, so a caller reaching for
+        this method directly gets the same reading as one going through
+        :meth:`evaluate`.
+        """
         if not isinstance(text, str):
             raise TypeError(f"detect expects str, got {type(text).__name__}")
-        return detect_all(text)
+        return detect_all(strip_invisible(text), self._detectors)
 
     # -- evaluation ---------------------------------------------------------
 
@@ -129,20 +677,43 @@ class Guard:
         The returned EvaluationResult carries DetectedFact objects which may
         contain raw values; use `result.public_facts` for logging or audit.
         """
-        request_payload = _coerce_payload(payload)
+        request_payload = _strip_text_payload(_coerce_payload(payload))
         recipient_obj = _coerce_recipient(recipient)
         purpose_obj = _coerce_purpose(purpose)
         env = _coerce_environment(environment)
 
         text = request_payload.content
+        if request_payload.kind in _STRUCTURED_KINDS:
+            parsed = self._parse_structured(text, request_payload.kind)
+            if parsed is None:
+                return EvaluationResult(
+                    decision=self._decision_fail_closed(ReasonCode.PARSER_FAILURE), facts=()
+                )
+            if parsed is _UNSUPPORTED_RESOURCE:
+                return EvaluationResult(
+                    decision=self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT), facts=()
+                )
+            _, spans = _flatten(parsed.leaves)
+            facts = _detect_leaves(parsed.leaves, spans, self._detectors)
+            decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
+            return EvaluationResult(
+                decision=decision, facts=facts,
+                approval_request=self._approval_request(
+                    decision, facts, request_payload.kind, request_payload.content, recipient_obj, purpose_obj
+                ),
+            )
         if request_payload.kind != "text" or not isinstance(text, str):
-            # v0.1 supports text payloads only; structured formats fail closed.
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
             return EvaluationResult(decision=decision, facts=())
 
-        facts = detect_all(text)
+        facts = detect_all(text, self._detectors)
         decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
-        return EvaluationResult(decision=decision, facts=facts)
+        return EvaluationResult(
+            decision=decision, facts=facts,
+            approval_request=self._approval_request(
+                decision, facts, "text", text, recipient_obj, purpose_obj
+            ),
+        )
 
     def _decision_fail_closed(self, reason_code: ReasonCode) -> Decision:
         return Decision(
@@ -167,20 +738,39 @@ class Guard:
         purpose: str | Purpose,
         environment: EnvironmentContext | None = None,
         audit_dir: str | None = None,
+        grant: Grant | None = None,
     ) -> SanitizationResult:
         """Run the full pipeline: evaluate → transform → verify → (audit).
 
         Returns a SanitizationResult; `sanitized_payload` is None when the
-        verdict is BLOCK/ASK or verification failed (nothing to release).
+        verdict is BLOCK, an ASK is unapproved, or verification failed.
+
+        *grant* may authorize an ASK. A granted release is still the
+        minimized payload, not the original: the grant carries the residual
+        risk of what could not be transformed, it does not switch the
+        transformation off.
         """
-        request_payload = _coerce_payload(payload)
+        request_payload = _strip_text_payload(_coerce_payload(payload))
         recipient_obj = _coerce_recipient(recipient)
         purpose_obj = _coerce_purpose(purpose)
         env = _coerce_environment(environment)
         text = request_payload.content
 
+        if request_payload.kind in _STRUCTURED_KINDS:
+            return self._sanitize_structured(
+                request_payload,
+                recipient_obj,
+                purpose_obj,
+                env,
+                audit_dir or self.audit_dir,
+                grant,
+            )
+
         if request_payload.kind != "text" or not isinstance(text, str):
             decision = self._decision_fail_closed(ReasonCode.UNSUPPORTED_FORMAT)
+            self._maybe_audit(
+                audit_dir or self.audit_dir, decision, (), recipient_obj, purpose_obj, None
+            )
             return SanitizationResult(
                 decision_before=decision,
                 sanitized_payload=None,
@@ -188,22 +778,50 @@ class Guard:
                 decision_after=None,
             )
 
-        facts = detect_all(text)
+        facts = detect_all(text, self._detectors)
         decision = self._evaluator.evaluate(facts, recipient_obj, purpose_obj, env)
         verification: VerificationResult | None = None
         sanitized: Payload | None = None
         decision_after: Decision | None = None
 
+        approval, grant_reason, granted = self._grant_approval(
+            decision=decision,
+            facts=facts,
+            payload_kind=request_payload.kind,
+            content=text,
+            recipient=recipient_obj,
+            purpose=purpose_obj,
+            grant=grant,
+        )
+        approved_grant = grant if granted else None
+        if grant_reason is not None:
+            # A rejected grant leaves the ASK standing. It can never widen the
+            # verdict: every failure path here withholds, none of them allow.
+            decision = replace(decision, explanation=f"{decision.explanation} Grant rejected: {grant_reason}.")
+        elif granted:
+            decision = replace(decision, plan=self._ask_plan(facts))
+
         if decision.verdict is Verdict.ALLOW:
             sanitized = request_payload
-        elif decision.verdict is Verdict.SANITIZE and decision.plan is not None:
-            outcome = apply_plan(text, facts, decision.plan)
+        elif _releasable(decision) and decision.plan is not None:
+            outcome = (
+                apply_plan(text, facts, decision.plan)
+                if self._tokens is None
+                else apply_plan(text, facts, decision.plan, tokens=self._tokens)
+            )
             verification = verify_sanitized(
                 profile=self.profile,
                 sanitized_text=outcome.text,
                 original_facts=facts,
                 recipient=recipient_obj,
                 purpose=purpose_obj,
+                original_text=text,
+                plan=decision.plan,
+                outcome=outcome,
+                detectors=self._detectors,
+                dictionary=self.dictionary,
+                accepted_types=_accepted_types(approved_grant),
+                approval_granted=granted,
             )
             if verification.passed:
                 sanitized = Payload(
@@ -211,7 +829,7 @@ class Guard:
                     content=outcome.text,
                     provenance=request_payload.provenance,
                 )
-                residual = detect_all(outcome.text)
+                residual = detect_all(outcome.text, self._detectors)
                 decision_after = self._evaluator.evaluate(
                     residual, recipient_obj, purpose_obj, env
                 )
@@ -224,12 +842,130 @@ class Guard:
             recipient_obj,
             purpose_obj,
             verification,
+            approved_grant,
         )
         return SanitizationResult(
             decision_before=decision,
             sanitized_payload=sanitized,
             verification=verification,
             decision_after=decision_after,
+            approval_request=approval,
+        )
+
+    def _sanitize_structured(
+        self,
+        payload: Payload,
+        recipient: Recipient,
+        purpose: Purpose,
+        env: EnvironmentContext | None,
+        audit_dir: str | None,
+        grant: Grant | None = None,
+    ) -> SanitizationResult:
+        """Sanitize a structured payload: one decision, per-leaf transformation.
+
+        The leaves are flattened into a single text so detection, transformation
+        and verification all run unchanged; the result is split back and written
+        into a copy of the original structure. The verdict covers the whole
+        document, not individual fields — a single direct identifier withholds
+        the record, because a partially released record is exactly where
+        cross-field quasi-identifiers do their damage.
+        """
+        parsed = self._parse_structured(payload.content, payload.kind)
+        if parsed is None or parsed is _UNSUPPORTED_RESOURCE:
+            decision = self._decision_fail_closed(
+                ReasonCode.PARSER_FAILURE
+                if parsed is None
+                else ReasonCode.UNSUPPORTED_FORMAT
+            )
+            self._maybe_audit(audit_dir, decision, (), recipient, purpose, None)
+            return SanitizationResult(
+                decision_before=decision,
+                sanitized_payload=None,
+                verification=None,
+                decision_after=None,
+            )
+
+        text, spans = _flatten(parsed.leaves)
+        facts = _detect_leaves(parsed.leaves, spans, self._detectors)
+        decision = self._evaluator.evaluate(facts, recipient, purpose, env)
+        verification: VerificationResult | None = None
+        sanitized: Payload | None = None
+        decision_after: Decision | None = None
+
+        approval, grant_reason, granted = self._grant_approval(
+            decision=decision,
+            facts=facts,
+            payload_kind=payload.kind,
+            content=payload.content,
+            recipient=recipient,
+            purpose=purpose,
+            grant=grant,
+        )
+        approved_grant = grant if granted else None
+        if grant_reason is not None:
+            decision = replace(decision, explanation=f"{decision.explanation} Grant rejected: {grant_reason}.")
+        elif granted:
+            decision = replace(decision, plan=self._ask_plan(facts))
+
+        if decision.verdict is Verdict.ALLOW:
+            sanitized = payload
+        elif _releasable(decision) and decision.plan is not None:
+            outcome = (
+                apply_plan(text, facts, decision.plan)
+                if self._tokens is None
+                else apply_plan(text, facts, decision.plan, tokens=self._tokens)
+            )
+            verification = verify_sanitized(
+                profile=self.profile,
+                sanitized_text=outcome.text,
+                original_facts=facts,
+                recipient=recipient,
+                purpose=purpose,
+                original_text=text,
+                plan=decision.plan,
+                outcome=outcome,
+                detectors=self._detectors,
+                dictionary=self.dictionary,
+                accepted_types=_accepted_types(approved_grant),
+                approval_granted=granted,
+            )
+            if verification.passed:
+                replacements = _split(text, outcome.text, spans, outcome._evidence)
+                serialized, reparsed = _rebuild_payload(parsed, replacements)
+                residual_spans = _flatten(reparsed.leaves)[1]
+                residual = _detect_leaves(reparsed.leaves, residual_spans, self._detectors)
+                decision_after = self._evaluator.evaluate(residual, recipient, purpose, env)
+                # The document that would be released is the rebuilt one, and
+                # it is a different string from the flattened text verification
+                # approved. Re-deciding on it turns "the transformation ran" and
+                # "the payload is releasable" into the same claim: a rebuild
+                # that dropped, mis-keyed or reintroduced a value shows up here
+                # as a verdict that is not releasable, and the release is
+                # withheld rather than reported as verified.
+                if _rebuilt_document_releasable(
+                    self.profile, decision_after, residual,
+                    frozenset(_accepted_types(approved_grant)), approval_granted=granted,
+                ):
+                    sanitized = Payload(
+                        kind=payload.kind, content=serialized, provenance=payload.provenance
+                    )
+                else:
+                    verification = VerificationResult(
+                        passed=False,
+                        reason_codes=(ReasonCode.VERIFICATION_FAILED,),
+                        details=(
+                            "the rebuilt document does not satisfy policy "
+                            f"({decision_after.verdict.value}); release withheld"
+                        ),
+                    )
+
+        self._maybe_audit(audit_dir, decision, facts, recipient, purpose, verification, approved_grant)
+        return SanitizationResult(
+            decision_before=decision,
+            sanitized_payload=sanitized,
+            verification=verification,
+            decision_after=decision_after,
+            approval_request=approval,
         )
 
     # -- audit --------------------------------------------------------------
@@ -242,6 +978,7 @@ class Guard:
         recipient: Recipient,
         purpose: Purpose,
         verification: VerificationResult | None,
+        grant: Grant | None = None,
     ) -> None:
         if not audit_dir:
             return
@@ -250,13 +987,16 @@ class Guard:
             status = "PASS" if verification.passed else "FAIL"
         elif decision.verdict is Verdict.ALLOW:
             status = "N/A (ALLOW)"
-        try:
-            writer = AuditWriter(audit_dir)
-            event = build_audit_event(
-                decision, facts, recipient, purpose, verification=status
-            )
-            writer.record(event)
-        except AuditError:
-            # Audit is part of the fail-closed contract for sanitize; surface
-            # it rather than silently dropping the record.
-            raise
+        writer = AuditWriter(audit_dir, key=self.audit_key)
+        event = build_audit_event(
+            decision,
+            facts,
+            recipient,
+            purpose,
+            verification=status,
+            dictionary_loaded=self.dictionary is not None,
+            dictionary_entries=len(self.dictionary) if self.dictionary else 0,
+            grant_id=grant.grant_id if grant else "",
+            grant_issuer=grant.issuer if grant else "",
+        )
+        writer.record(event)

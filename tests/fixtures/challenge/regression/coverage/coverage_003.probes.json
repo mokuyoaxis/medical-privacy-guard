@@ -1,0 +1,12 @@
+{
+  "doc_id": "coverage_003",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "女性"
+  ],
+  "probe_note": "over-redaction control: 女性家属 names a relative, not the patient"
+}

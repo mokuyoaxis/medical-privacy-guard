@@ -126,6 +126,8 @@ Recipient trust levels are `local`, `internal_trusted`, `external_approved`,
 the deploying organization has approved that endpoint; a declared purpose is
 not consent.
 
-Unsupported JSON-like payloads, FHIR, DICOM, and arbitrary binary files fail
-closed in v0.1. Do not describe them as supported or assume an unsupported
-payload is clean.
+JSON, CSV and a minimal FHIR resource set are supported. Other explicitly
+typed non-text payloads fail closed. DICOM is read-only inspection:
+`dicom-inspect` reports identifying metadata but never writes a file and
+leaves pixel risk UNKNOWN, so `safe_to_release` is false for every file. Do
+not describe an unsupported payload as clean.

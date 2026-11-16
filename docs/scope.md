@@ -1,0 +1,412 @@
+# Scope
+
+The authoritative capability boundary for medical-privacy-guard. This file,
+[README.md](../README.md), and [architecture.md](architecture.md) must agree;
+when they disagree, this file wins and the other two are updated.
+
+## Supported
+
+- UTF-8 plain text input (Python API and CLI);
+- CSV files (``Payload(kind="csv")`` or a ``.csv`` file): cells are sanitized
+  and the header/row/column structure is preserved. A column name acts as a
+  field label for its cells; cells are scanned regardless, so an unconventional
+  header costs labels but not detection. The encoding is stated with
+  ``--encoding`` and never guessed;
+- JSON objects and arrays (``Payload(kind="json")`` or a ``.json`` file): leaves
+  are sanitized and the structure is preserved. A key acts as a field label for
+  its value. Numeric leaves are inspected but never rewritten: writing a string
+  over a number would change the document's JSON type, so a number that matches
+  an identifier withholds the record (ASK, or BLOCK under a hard rule) rather
+  than producing a SANITIZE that quietly left the value in place. Booleans and
+  null carry no identifier and produce no leaf; keys themselves are not treated
+  as values;
+- deterministic baseline detectors: CN mobile numbers, landlines, CN resident
+  ID candidates (GB 11643-1999 check digit), email, social-media handles,
+  exact dates, labelled patient names, narrative names anchored on a gender
+  marker (``张伟，男，67岁``), a complaint verb (``陈曦诉头晕``) or a connective
+  at a clause boundary (``陈曦因胸痛入院``),
+  staff names (title, suffix, signature or assistant form), relatives named in
+  the history (including a kinship term repeated after a label), medical
+  record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
+  precise addresses, postal codes (label-required), institution names,
+  department names (labelled, or reached by a movement verb), ward designations,
+  bed numbers (suffix and labelled forms),
+  ages in digits and in Chinese numerals, sex (clinical-context only, adjacent
+  or comma-separated) and a baseline medical-content signal; addresses with a
+  residence verb and no field label are detected when the value ends at an
+  administrative or street suffix; Label/value
+  separators — colon, equals, whitespace, none, or a bracketed value — are
+  shared across detectors (``medical_privacy_guard/detectors/field_syntax.py``), so every labelled
+  field accepts the same spellings — a detector that spells out its own
+  separator silently diverges and is caught by ``tools/audit_contracts.py``;
+- whole-name spans: a labelled name value is bounded by its separator and a
+  following-boundary word rather than by the given-name inventory, so a name
+  whose given character is outside that inventory is still captured whole. A
+  staff or relative label carrying no name (``责任护士每班交接``) yields no fact,
+  and verification withholds release when a name span stops inside a name or is
+  followed by text no boundary word explains;
+  the boundary word list (``medical_privacy_guard/detectors/surnames.py``) therefore carries the
+  clinical titles *and* the academic, professional and administrative ranks a
+  note writes after a name — ``主治医师：李国强教授`` captures ``李国强`` and
+  releases the rank as the context it is. A rank with no name in front of it
+  yields no fact; a bare name with no label and no rank is still not detected;
+- mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
+  valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
+  and day, and fully Chinese-numeral dates (``二〇二六年九月二十一日``). Detection retains original source spans; these are bounded format
+  families, not universal Unicode or OCR normalization;
+- ages in years and in months (1–36 months, the primary infant form), kept
+  distinct from a duration ("反复头痛3个月");
+- institution names even when preceded by function words ("患者在宣武医院住院");
+- address labels that carry a full street address, including 户籍地 and 工作单位;
+- medical-content signals beyond label words, including encounter/action terms
+  (入院, 出院, 主诉, 既往, 会诊, 急诊, 病程, 转科, 服药, 住院). A bare
+  diagnosis with no such term ("考虑脑梗死") is still not detected; the baseline
+  is a term list, not medical NER;
+- policy-driven decisions: ALLOW / SANITIZE / ASK / BLOCK;
+- transformations: REMOVE, MASK, TOKENIZE and GENERALIZE (dates to month, ages
+  to bands, location/institution/department/ward to type markers), plus
+  DATE_SHIFT;
+- post-transformation verification and residual policy re-evaluation; the
+  hardening contract requires independent checks of execution evidence and
+  type-specific postconditions, not exemptions for untransformed dates;
+- metadata-only JSONL audit when configured (no raw PHI, token maps or internal
+  transformation evidence); incomplete/short writes must prevent release;
+- an optional local institution vocabulary (``.csv`` or ``.json``) supplying
+  institution, department, ward and staff terms. Terms are detected alongside
+  the built-in rules and give verification a signal independent of them: a term
+  that survives into the released text fails verification. Terms in a referral
+  context stay undetected, exactly as in the deliberate non-detection table
+  below — the vocabulary does not override that judgement. The vocabulary is a
+  sensitive asset: audit records carry only whether it was loaded and how many
+  terms it held, and failures name the category, never the term;
+- chained audit integrity: each event carries the previous event's hash, so a
+  deleted, reordered or edited record is detectable, with an optional HMAC key
+  for records that must be authenticated rather than merely consistent. What the
+  chain does not cover is stated in [evaluation.md](evaluation.md) and the
+  design note: tail truncation, whole-chain rewriting without a key, and
+  timestamp authenticity;
+- audit-chain reads preserve the stored field set and value types: missing
+  optional fields in older records are not hashed as newly inserted defaults.
+  Type changes cannot be hidden by coercion, and unknown fields are refused.
+  Existing logs are read without rewriting or migration;
+- FHIR resources (``Payload(kind="fhir")``, or a ``.fhir``/``.json`` file whose
+  content declares a ``resourceType``): a minimal set — ``Patient``,
+  ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
+  ``Encounter``, ``ImagingStudy`` and ``Bundle``. A resource outside that set is
+  withheld (BLOCK), including one nested in an otherwise supported Bundle,
+  because its fields mean something the pipeline was never taught and an
+  identifier in one of them would never be looked for. A FHIR name split across
+  ``Patient.name.family`` and ``Patient.name.given`` is completed to a whole
+  name before detection, since neither component alone is detectable; the
+  replacement is still written through each component's own path, so the
+  document keeps its shape. This is not FHIR de-identification: no value-domain
+  or reference-integrity claim is made. Name completion is restricted to
+  ``name`` objects; annotation fields such as ``note[].text`` remain prose;
+- an MCP stdio gateway (``medical-privacy-guard mcp-gateway -- <server command>``):
+  a transparent proxy that spawns an MCP server and mediates one stdio session
+  with it. Newline-delimited JSON-RPC is forwarded byte for byte, except for
+  ``tools/call``, which is forwarded, rewritten or refused according to the
+  verdict — a SANITIZE verdict rewrites ``params.arguments`` (and
+  ``params.inputResponses``) before forwarding. An unapproved ASK or BLOCK returns
+  a JSON-RPC error and never reaches the server. Configured local grants can
+  approve only verified minimized ASK fields; their fingerprint binds the
+  configured server scope, actual tool name and field. It does not participate in
+  protocol negotiation: a modern client's ``server/discover`` probe and a legacy
+  client's ``initialize`` are forwarded untouched, because the server's era is
+  the server's business. The wrapped server's exit code is propagated;
+- a local HTTP gateway (``medical-privacy-guard serve --upstream URL``):
+  OpenAI-compatible ``/v1/chat/completions`` and Anthropic ``/v1/messages``
+  endpoints that evaluate and rewrite the request with the same adapters as
+  the in-process wrappers. The upstream is fixed at startup, the default bind
+  is loopback-only, request bodies are size-limited JSON objects, and responses
+  are passed through without inspection. ASK and BLOCK return HTTP 403 with
+  reason codes and risk metadata only; client credentials are forwarded, never
+  stored. Non-loopback binding requires an explicit ``--allow-remote`` and an
+  external authenticated reverse proxy is the deployment's responsibility;
+- BLOCK for explicitly typed unsupported payloads and failed verification;
+- an evaluation harness over 175 synthetic Chinese clinical notes (140 with
+  labelled identifiers, 1474 spans, and 35 identifier-free notes). Expected
+  paths are **135 SANITIZE, 5 ASK, 35 ALLOW**. The hardened contract adds strict
+  one-to-one exact-span scoring and per-document release/verification/audit
+  gates — see [evaluation.md](evaluation.md) for validation status.
+
+## Measured vs unmeasured
+
+The normal corpus is generated to match detector capabilities. Its historical
+1.0 **overlap** recall shows agreement with those templates, not strict full-span
+coverage or real-world generalisation. Narrative names, uncommon surnames, local
+institution vocabulary and quasi-identifier combination risk are not
+comprehensively evaluated by it.
+
+The corpus also cannot see forms its templates never produce: every document
+carries a medical-content label and writes names after an explicit field label,
+so a narrative opener (``张伟，男，67岁``) was invisible to every gate until an
+independent probe found it reaching release with the name intact. The
+`姓名，性别` opener, a bare name before a complaint verb (``陈曦诉头晕``) and a
+bare name before a connective at a clause boundary (``陈曦因胸痛入院``) are now
+covered. A bare name in ordinary prose is still not detected, and a
+clause-initial common word shaped like a surname plus a given-name character
+(``文明因交流``) is read as a person; the connective anchor cannot tell the two
+apart without semantic knowledge. See [evaluation.md](evaluation.md).
+
+The challenge corpus under `tests/fixtures/challenge/` holds independent probes
+for these forms. Its `regression/` half runs in CI; its `exploratory/` half
+records forms that are outside the baseline and is expected to fail.
+
+Adjacent person fields (`患者张三`, `其妻郑爽`) require the given name to come
+from the name-character inventory in `medical_privacy_guard/detectors/surnames.py`. An ordinary word
+following a surname is therefore not read as a name — `患者周转正常` does not
+yield a person called 周转正常 — at the cost of missing a real name whose given
+character is outside that inventory. A *labelled* value (`姓名：`, `主治医师：`) is
+bounded by its separator instead and does not have this limitation, which is why
+`主治医师欧阳修远` yields no fact while `主治医师：欧阳修远` yields the whole name.
+A bare name token without a supported label, title or narrative anchor is not
+detected.
+
+The historical run released 135 sanitized notes and 35 unchanged ALLOW notes;
+the five annotated rare-context notes correctly returned ASK. That run did not
+prove the gates reject failures: verification failures and missing audit records
+could pass the old benchmark. The hardened contract checks each expected
+lifecycle, verification failure, and missing/corrupt/mismatched audit events.
+Those stronger requirements need fresh validation, not reuse of historical
+scores. Over-redaction is measurable on both annotated and identifier-free
+notes; withholding every note cannot satisfy the expected SANITIZE/ALLOW paths.
+
+## Deliberate non-detection
+
+Some identifier-shaped text is left alone on purpose, because redacting it
+removes clinical meaning while protecting nobody. The test in each case is
+whether the value is attributed to *this patient*:
+
+| Pattern | Example | Why it is not redacted |
+|---|---|---|
+| population age | `多见于50岁以上人群` | describes a cohort, not the patient |
+| generic institution | `转诊至上级医院`, `三级甲等医院` | names no institution |
+| referral target | `建议神经内科会诊` | names a service, not the patient's department |
+| generic ward | `本病区`, `各病区` | refers to no specific ward |
+| rare-disease policy | `加强罕见病诊疗管理` | names no patient |
+| capacity concept | `床位紧张` | a bed count, not a bed identifier |
+
+These are measured, not assumed: the benchmark's 35 identifier-free documents
+contain them, and a detector firing on one of them fails the precision gate.
+
+## DICOM scanner boundary
+
+`dicom-inspect` reads a DICOM file and reports identifying metadata; it never
+writes. The report separates metadata findings, private tags and pixel risk:
+
+- metadata findings come from two signals: a closed list of known-PHI tags
+  (``PatientName``, ``PatientID``, ``PatientBirthDate``, ``AccessionNumber``,
+  study dates, institution and staff names...), and, for free-text values, the
+  guard's own text detectors run over the decoded value. A ``PN`` element is a
+  personal name by construction -- the tag is the label -- so its components
+  are probed with the name rules directly rather than guessed at;
+- private tags are counted and marked HIGH, never decoded: their meaning is
+  unknowable by construction, and claiming otherwise would be a guess;
+- pixel risk (`pixel_annotation_risk`, `recognizable_visual_features_risk`) is
+  UNKNOWN because no check is implemented, so `safe_to_release` is false for
+  every file. A metadata-only pass cannot clear pixel risk, and a claim that
+  it can is a prohibited claim;
+- raw element values never enter the report: findings carry the tag, the
+  category and (for detector matches) the detector types, not the value.
+
+pydicom is an optional extra (`medical-privacy-guard[dicom]`). A missing extra
+is a parser error, not a degraded scan.
+
+## ASK approval grants
+
+ASK is the one verdict that needs something outside the guard to complete it.
+The library says *what* needs approving and checks *whether* an approval covers
+this disclosure; it never decides who may approve, for the same reason it is not
+an authorization service for self-declared ``EXTERNAL_APPROVED`` values.
+
+- With a configured grant key, ``ApprovalRequest`` is produced on ASK and
+  carries no raw values: a fingerprint, the reason codes, the risk summary,
+  fact-type counts and the
+  policy version. The fingerprint binds the payload's hash, the recipient, the
+  purpose and the policy version, so one changed byte invalidates every grant
+  issued for it.
+- Generated request metadata is signed as well as fingerprint-bound. Local
+  CLI issuance requires a valid metadata signature and explicit `--approve`;
+  private grant files can be consumed by CLI/MCP through an explicitly selected
+  SQLite backend. Read-only evaluation does not consume a grant. See
+  [local approval workflow](approval-workflow.md).
+- A ``Grant`` is issued deployment-side and HMAC-signed with a key the payload
+  being authorized cannot hold. It names an expiry and a number of uses; without
+  an expiry it would be a blanket allow, which is what this design exists to
+  prevent.
+- **An approved release is still a minimized release.** The grant covers the
+  residual risk of a value the transformation layer cannot rewrite — ``read_only``
+  facts such as a JSON number — and only those. Everything the plan could have
+  handled is still transformed and still verified. The verdict stays ASK and the
+  audit records ``grant_id`` / ``grant_issuer`` only for a grant actually
+  validated and consumed. Its verification status distinguishes success from
+  a failed approved attempt. Rejected or unused grants supply no audit identity.
+  Approval state is explicit: an empty accepted-type list may authorize
+  context-only risk, but a type list alone cannot authorize release;
+- The verifier covers only exact output spans traced to approved read-only
+  input facts. Another writable value of that type must still be transformed
+  and verified; adapters require PASS verification for a granted ASK too;
+- Grant JSON fields retain their declared types. Use budgets are positive
+  integers, accepted types are an array of strings, and malformed data raises
+  ``GrantError`` rather than being silently coerced or treated as approval;
+- Explicit issuance clocks must be timezone-aware and are converted to UTC;
+  their offsets cannot shift the signed validity window. The guard's default
+  clock is UTC;
+- Every failure mode (no key, bad signature, wrong fingerprint, expired, already
+  used, type not accepted) falls back to ASK. None widens the verdict.
+- **Single-use is process-local.** All default Guard instances share one
+  registry, whose locked read/update enforces the use budget under concurrent
+  calls. It does not survive a restart and is not shared between processes.
+  Passing ``Guard(registry=...)`` replaces that default. The optional
+  ``SqliteGrantRegistry`` shares committed budgets and ID-based revocation
+  between processes using the same private local database. It requires explicit
+  initialization, checks expiry after obtaining the write lock and never
+  recreates missing state or falls back to memory. Storage faults raise
+  ``GrantError``; expiry, exhaustion and revocation withhold the ASK. See
+  [persistent consumption](grant-registry.md). Consumption occurs
+  before transformation and audit, so a subsequent failure still spends the use.
+
+SQLite revocation persists even for an unused grant ID and prevents new
+consumption after its commit. It cannot retract a previously accepted release.
+Restoring old state can restore spent uses and remove later revocations; the
+deployment must isolate old grants before a backend switch or restore.
+
+Not covered: an institutional approval UI, roles and approval chains, multi-machine
+state, and authenticated detection of database replacement or backup rollback.
+
+## Unsupported
+
+The initial [dataset scope](datasets.md) provides batch token consistency and
+selected-column combination counts for CSV/JSON rows. It does not authenticate
+person identity, estimate population risk or enforce an anonymity threshold.
+Reports do not override per-file Guard decisions.
+
+No parsers or sanitization support exist for:
+
+- XLSX (deferred: CSV covers the need), TSV (needs a delimiter choice)
+- PDF / DOCX
+- DICOM write-back / de-identification (the scanner reads and reports only)
+- arbitrary binary files
+- multimodal content (images / audio / video)
+- streaming request inspection
+
+The HTTP gateway supports only the two chat/messages paths above. It does not
+proxy OpenAI Responses, embeddings, image/audio endpoints, arbitrary paths or
+WebSocket traffic, and it does not inspect responses. It serves plain HTTP on
+loopback by default; TLS termination, client authentication and network access
+control for any non-loopback deployment are the deployment's responsibility.
+
+The MCP gateway's boundaries are narrower than "traffic through it is
+inspected", and the gap is worth naming precisely:
+
+- **Responses are not inspected.** This is an egress guard; what a server or a
+  model returns is out of scope, for the MCP gateway and the OpenAI-compatible
+  wrapper alike.
+- **Only ``tools/call`` requests are inspected.** ``prompts/get`` takes an
+  argument map of the same shape and ``resources/read`` takes a URI that can name
+  a record, so both are egress paths this version does not cover.
+- **A JSON-RPC batch carrying a ``tools/call`` is refused whole**, because a batch
+  cannot be rewritten in part. MCP does not define batching, so any batch is
+  already outside the protocol. A batch without a tool call is forwarded.
+- **The MRTR ``requestState`` field cannot be examined.** The specification
+  forbids a client from inspecting, parsing or modifying it, and the gateway
+  stands in the client's position.
+- **The server's ``stderr`` is passed through** untouched; if a server logs PHI
+  there, the gateway does not see it.
+- **Only stdio is supported; the OpenAI-compatible and Anthropic wrappers
+  reach their APIs through the caller's own client.** The wrapper never holds credentials: it
+  receives a configured client and rewrites the kwargs mapping before the SDK
+  sends it. ``messages[].content``, ``metadata`` and tool-call arguments are
+  sanitized; ``tools[].function`` descriptions are evaluated but never
+  rewritten, because a caller-authored interface cannot be safely paraphrased;
+  ``user`` is evaluated and only ever refused, never rewritten, because the
+  field is an opaque identifier. Non-text content parts fail closed. The
+  Anthropic wrapper handles the same fields under the Messages API's shape: a
+  top-level ``system`` (a data channel in medical deployments, and sanitized as
+  one), per-block content with ``tool_use.input`` as JSON and ``tool_result``
+  replayed output as text, and ``metadata.user_id`` as an opaque identifier.
+
+See [architecture.md](architecture.md) for the trust boundary.
+
+Explicit non-text `Payload.kind` values return BLOCK. A `str` is *classified*,
+not trusted: the guard decides what it is looking at rather than accepting the
+caller's word for it, because a JSON document scanned as prose loses the
+key-derived field labels and the label-driven detectors then see nothing at all.
+`Payload(kind="text")` is a caller declaration that skips classification but not
+normalisation — the caller states the content is text, and the guard still reads
+what a human would read.
+
+The admission contract blocks known unsupported extensions, NUL and other
+unsupported control characters, and recognized malformed containers before
+detection. Valid JSON/FHIR containers take their supported structured path.
+Every string leaf of a structured payload passes the same check, so a control
+character that arrives as a JSON escape (`"\u0000"`, whose bytes are ordinary
+ASCII) is refused rather than reaching the detectors. UTF-8 decoding is necessary
+but is not format validation. Extension/content checks cannot reliably recognize
+arbitrary disguised formats: a renamed CSV or encoded structured value is not
+made supported by escaping those checks.
+
+Characters that render as nothing — format characters, variation selectors and
+the tag block — are removed before detection, once, at the entry to the
+pipeline. The name detectors end a value on punctuation, whitespace or a
+boundary word, and a zero-width character is none of those: a single U+200B
+after or inside a name used to make every name detector miss while verification,
+which re-runs the same detectors, reported success. Removing them is not a loss
+of content: they are formatting controls with no rendered glyph, and their only
+effect here was to hide a value from the rules meant to find it. The detectors'
+end conditions accept them as boundaries as well, so a rule that reads text
+without going through an entry point cannot be blinded either.
+
+The classification itself is shared: ``medical_privacy_guard/formats/admission.py`` holds the rule used
+by the CLI, the adapters and the guard's own string entry, so a payload cannot be
+plain text to one entry point and a structured document to another. An adapter
+does not accept the caller's word for what its content is — ``medical_privacy_guard.adapters.ingress``
+classifies it.
+
+CLI output must not alias its input or the configured audit log, including
+existing hard-link aliases. Collision checks must happen before writes. These
+checks do not promise protection against concurrent filesystem changes in
+attacker-writable directories; use deployment-controlled paths. Configured
+audit writes must be complete and durable before release: short/zero writes
+and persistence errors must withhold the payload. These hardening requirements
+need implementation-level regression validation, not just documentation.
+
+## Experimental
+
+The read-only DICOM metadata scanner is experimental and requires the optional
+``dicom`` extra. It reports identifiers without rewriting the file; pixel risk
+remains UNKNOWN and no file is reported safe to release.
+
+## Definitions
+
+- **Direct identifier**: a value that identifies a person on its own (name,
+  phone, government ID, MRN).
+- **Quasi-identifier**: a value that identifies only in combination (age,
+  sex, region, exact dates, rare diagnosis).
+- **PHI**: protected health information — any health-related data tied to an
+  identifiable person.
+- **Trust boundary**: the edge where data leaves the deploying organization's
+  control (external LLM API, MCP tool, HTTP endpoint, file upload).
+- **Fail closed**: withhold content on recognized unsupported types, failed
+  verification, configured audit failures or policy uncertainty; errors may
+  raise/exit rather than produce a verdict. This does not mean all unrecognized
+  sensitive content is detected and blocked. No facts is not proof of safety.
+- **Residual PHI**: sensitive values surviving a required transformation;
+  benchmark counts are bounded checks, not proof that all residual PHI is found.
+
+## Safety claims allowed
+
+- "reduces accidental disclosure risk before data crosses a trust boundary"
+- "detects a defined baseline of deterministic identifier patterns"
+- "withholds release on explicitly unsupported payload types and failed verification"
+- "produces metadata-only audit records when configured"
+
+## Safety claims prohibited
+
+- HIPAA / GDPR / PIPL / institutional compliance certification of any kind
+- "fully anonymized" / "de-identified data is anonymous"
+- "guarantees data safety" / "prevents all leaks"
+- "replaces ethics review, legal review, or institutional data governance"
+- DICOM pixel-clean claims before an implemented pixel-risk check exists
+- any claim that a declared purpose equals patient consent

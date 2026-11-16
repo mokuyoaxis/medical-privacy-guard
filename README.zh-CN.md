@@ -37,31 +37,73 @@ result = guard.sanitize(
     purpose="EXTERNAL_AI_ASSISTANCE",
 )
 
-if result.sanitized_payload is not None:
-    payload_to_release = result.sanitized_payload.content
+if result.released:
+    payload_to_release = result.text
 ```
+
+`Guard`、`Verdict`、结果类型和 Guard 异常类是稳定的公共导入；各子包仍属于实现细节。
 
 CLI：
 
 ```bash
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
+medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 ```
 
 退出码：`0` = ALLOW 或验证通过的 SANITIZE，`2` = BLOCK，`3` = ASK，`4` = 解析器、配置或内部错误。
 
+### 零代码 HTTP 网关
+
+把现有 SDK 的 `base_url` 指向本地网关即可，不需要改应用代码：
+
+```bash
+medical-privacy-guard serve --upstream https://api.openai.com --port 8787
+# OpenAI 兼容客户端：base_url="http://127.0.0.1:8787/v1"
+# Anthropic 客户端：  base_url="http://127.0.0.1:8787"
+```
+
+网关支持 `/v1/chat/completions` 与 `/v1/messages`，复用与进程内包装器相同的评估和改写逻辑，然后转发到固定的上游；响应原样透传，不做检查。默认只监听 `127.0.0.1`，要求大小受限的 JSON 请求体，请求不能自选上游。ASK 和 BLOCK 返回 HTTP 403，只包含 reason code 与风险元数据，不包含载荷文本。只有部署方已批准的端点才应使用 `--recipient external_approved`；否则医疗内容会保持 ASK 并被网关扣留。
+
 报告的风险是输入在转换前的工程风险。即使输入风险为 high 或 critical，只要每个直接标识符都有确定的转换操作，仍可能得到 SANITIZE；只有验证通过的输出可以被外发。
 
-### v0.1 支持范围
+### 已实现能力
 
 - UTF-8 纯文本；
-- 确定性检测中国大陆手机号、邮箱、中国居民身份证候选值、精确日期、带标签的患者姓名和病历号、HTTP(S) URL、IPv4 地址、带标签的精确地址，以及基础医疗内容信号；
-- REMOVE、MASK、TOKENIZE、日期/位置 GENERALIZE 和 DATE_SHIFT；
-- 仅记录元数据的 JSONL 审计。
+- 确定性检测：中国大陆手机号与固定电话、邮箱、社交账号、居民身份证候选值、精确日期、带标签患者姓名、医护姓名（职称或后缀形式）、病史中提到的家属姓名、病历号/标本号/检查号、HTTP(S) URL、IPv4 地址、带标签精确地址（含户籍地/工作单位）、带标签邮编、医院名称（含虚词前导）、科室名称、病区、床号、年龄（周岁与月龄）、临床语境下的性别，以及基础医疗内容信号（含就诊行为词）；
+- 无字段标签的叙述式姓名覆盖三种形态：性别开头（`张伟，男，67岁`）、主诉动词（`陈曦诉头晕`、`潘婷主诉腹痛`，锚点 `诉/主诉/自诉/自述`）、分句边界上的连接词（`陈曦因胸痛入院`、`汪洋由急诊科转入`，锚点 `因/由/以`）。普通行文中的裸人名仍不检测；分句开头、形如「姓氏+名字用字」的常用词（`文明因交流`）会被当作人名，边界见 [scope](docs/scope.md)；
+- 手机号支持 3-4-4 分组与 ASCII/全角数字；日期支持 1900–2099 年真实日历日期及月日不补零的 YMD/MDY 形式，并保留原始字符跨度；具体边界见 [scope](docs/scope.md)；
+- REMOVE、MASK、TOKENIZE、GENERALIZE（日期到月、年龄到年龄段、位置/机构/科室/病区到类型标记）和 DATE_SHIFT；
+- 配置后仅记录元数据的 JSONL 审计；
+- 评估工具 `benchmark`，基于 175 份合成中文病历——140 份带标识符标注（1474 个 span、24 种类型），35 份不含标识符。预期路径为 **135 SANITIZE、5 ASK、35 ALLOW**，不是 140 份有标注文档全部脱敏放行；有标注和无标注文档都会计入误报。强化后的评测契约包括逐文档生命周期核对、验证失败及审计缺失/损坏门禁，以及严格一对一精确跨度检测指标。历史 overlap 得分不能证明这些更强检查已经通过；基线与验证状态见 [docs/evaluation.md](docs/evaluation.md)。
 
-JSON-like payload、FHIR、DICOM 和任意二进制文件在 v0.1 中尚不支持，并会默认阻止。医疗内容分类只是保守的规则基线，不是完整的医疗 NER，也不能证明数据已经匿名化。
+支持纯文本、JSON 对象/数组、CSV 以及最小 FHIR 资源集；其他显式声明为非文本类型的 API 载荷返回 BLOCK。准入检查拒绝已知不支持的扩展名、NUL 等不支持的控制字符及无法解析的容器，但不能可靠识别任意伪装格式。CLI、适配器与 Guard 的字符串入口共用同一条准入规则（`medical_privacy_guard/formats/admission.py`），同一份内容不会在一个入口是纯文本、在另一个入口是结构化文档。`str` 会被分类而不是被信任：`{"name": "张三"}` 无论以文本还是已解码映射传入都是 JSON 文档，按散文扫描会直接放行姓名。医疗内容分类只是规则基线，不是完整的医疗 NER，也不能证明数据已经匿名化。
 
 不含直接标识符的医疗内容仍属于敏感数据。在严格 profile 下，它可以留在本地或可信内部环境，但发送给 `EXTERNAL_UNKNOWN` 接收方会返回 `ASK`。调用方不得把声明的用途视为同意；只有经部署机构批准的端点才能使用 `EXTERNAL_APPROVED`。
+
+配置授权密钥后，ASK 可生成不含原始值的审批请求，并通过 `Guard.sanitize(..., grant=...)`
+校验部署方签发的限范围、限时效凭证。获批后仍转换并验证可处理的标识符。同一进程内的默认
+Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额使用。跨进程、重启后的次数限制和
+按 ID 持久化吊销可使用 `SqliteGrantRegistry`：显式初始化私有本地数据库，再通过
+`Guard(registry=...)` 注入。路径、并发设置和切换边界见[部署说明](docs/grant-registry.md)。
+`v0.5.0` 已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
+人工明确签发、私有凭证文件和持久化消费；客户端的批准字段不构成授权。
+同时加入 [CSV/JSON 批次](docs/datasets.md)的按值 token 一致性与准标识符组合工程指标，
+风险报告不自动授权放行，也不构成匿名化保证。
+
+### 尚未实现
+
+- XLSX、TSV（CSV 已覆盖同类需求）
+- PDF / DOCX
+- DICOM 回写与像素风险检查（现有扫描器只读）
+- 通用 HTTP 出站代理（网关只代理 OpenAI 兼容 chat completions 与 Anthropic Messages 路径）
+- 更完整的数据集重识别风险、泛化/抑制与匿名化模型（组合工程指标已实现）
+- 多模态内容（图像、音频、视频）
+- MCP 网关中的 `resources/read` 与 `prompts/get` 检查
+
+### 永不承诺
+
+本项目不认证 HIPAA、GDPR、个保法（PIPL）或任何机构合规性；它降低意外披露风险，但不能证明完全匿名化。
 
 ### 仅使用合成数据
 
@@ -76,18 +118,33 @@ JSON-like payload、FHIR、DICOM 和任意二进制文件在 v0.1 中尚不支�
 1. **不是法律意见，也不是 HIPAA/GDPR 认证。** 本工具用于降低意外披露风险，不能替代法律审查、机构政策或正式合规审计。
 2. **不保证完全匿名化。** 去标识化只能降低风险，不能消除风险；残留的准标识符在特定条件下仍可能导致重识别。
 3. **无法阻止同权限恶意绕过。** 已经能够直接访问原始 PHI 的进程可以跳过 Guard。本工具防范 Agent 和数据管线的意外或非故意披露，不用于防御有意的内部攻击者。
-4. **默认 fail-closed。** 无法证明安全时会阻止或请求人工判断，这是设计特性。
+4. **对已识别的失败采取 fail-closed。** 不支持的声明类型、验证失败或已配置的审计失败会阻止放行；部分 CLI 错误以非零错误退出而非策略判定结束。未被检测到的标识符仍可能通过；没有检测事实不等于证明安全，验证复用同一组检测器也不能消除共同盲区。
 
 ---
 
 ## 当前状态
 
-- **Phase 0**（骨架与核心类型）：✅ 已完成
-- **Phase 1**（文本 MVP 实现）：✅ 已完成
-- **v0.1 发布稳定化**（打包与发布门禁测试）：✅ 已完成；等待 CI/版本流程
-- **Phase 1.2**（重识别风险强化）：尚未开始
-- **Phase 2**（FHIR + MCP）：尚未开始
-- **Phase 3**（DICOM）：尚未开始
+采用单一版本编号路线；详细目标与验收标准见 [ROADMAP.md](ROADMAP.md)。
+
+- **v0.1 — 文本核心 MVP**：已发布 `v0.1.0`（基线检测器、决策协议、转换、验证、仅元数据审计）。
+- **v0.2 — 中文医疗文本检测与评估体系**：已发布 `v0.2.0`。严格评测结果与故障注入证据见 [docs/evaluation.md](docs/evaluation.md)；语料由模板生成，严格 1.0 只证明内部一致性，不代表真实泛化。
+- **v0.3 — CSV / XLSX / JSON**：**JSON 已完成**（`v0.3.0`）、**CSV 已完成**（`v0.3.1`）；XLSX 推迟（CSV 已覆盖该需求）。`v0.3.2` 修复六个泛化缺口，`v0.3.4` 修复准入、不可见字符与重建文档闸门。
+- **v0.4 — 结构化格式 + 出站适配器**：已发布 `v0.4.0`。包含 OpenAI 兼容与
+  Anthropic 客户端封装、MCP stdio 网关、最小 FHIR 资源集，以及只读的 DICOM 扫描器
+  `dicom-inspect`。原计划的 v0.5（DICOM）与 v0.6（FHIR）合并到此版本——一周内推进三个
+  版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
+  UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
+  边界见 [scope](docs/scope.md)。
+- **v0.5 — ASK 审批与安全加固**：已发布 `v0.5.0`。ASK
+  是唯一没有闭环的裁决——guard 扣留载荷却说不出凭证是什么。现在凭证有范围、会过期、
+  一次性，且批准后的释放仍是最小化后的释放（见 [scope](docs/scope.md)）。
+  默认消费状态在进程内共享；可选 SQLite 后端提供私有本地磁盘上的持久化消费与吊销，
+  本版本包含本地 CLI/MCP 审批、批次 token 一致性与组合工程指标；更完整匿名化仍为后续计划。
+- **v0.6 — 命名空间收敛与零代码网关**：已进入 `v0.6.0-rc.1` 候选版。安装后只存在
+  `medical_privacy_guard` 命名空间（不再与顶层 `transformers` 冲突），导出稳定公共 API，
+  并新增面向 OpenAI 兼容与 Anthropic 客户端的本地 `serve` HTTP 网关。导入路径是有意的
+  breaking change，详见 [CHANGELOG](CHANGELOG.md) 的 `[0.6.0-rc.1]`。
+- **v1.0 — 医疗 AI 出站隐私网关**：目标。
 
 ---
 

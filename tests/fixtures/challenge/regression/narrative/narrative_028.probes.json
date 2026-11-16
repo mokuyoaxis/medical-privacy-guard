@@ -1,0 +1,12 @@
+{
+  "doc_id": "narrative_028",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "高峰"
+  ],
+  "probe_note": "over-redaction: 高峰 is a common word, not a person"
+}

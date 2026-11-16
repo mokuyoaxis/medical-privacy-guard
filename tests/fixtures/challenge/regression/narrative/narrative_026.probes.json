@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_026",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "潘婷"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "bare name + 主诉, the form that was released verbatim before"
+}

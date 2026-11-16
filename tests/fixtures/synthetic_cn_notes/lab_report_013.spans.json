@@ -1,0 +1,63 @@
+{
+  "doc_id": "lab_report_013",
+  "language": "zh-CN",
+  "document_type": "lab_report",
+  "department": "心内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 11,
+      "end": 21
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 27,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 39
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 43,
+      "end": 46
+    },
+    {
+      "type": "SEX",
+      "start": 50,
+      "end": 51
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 56,
+      "end": 66
+    },
+    {
+      "type": "AGE",
+      "start": 70,
+      "end": 73
+    },
+    {
+      "type": "SPECIMEN_ID",
+      "start": 78,
+      "end": 86
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 145,
+      "end": 148
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 157,
+      "end": 167
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

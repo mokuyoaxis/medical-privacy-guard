@@ -1,0 +1,13 @@
+{
+  "resourceType": "Observation",
+  "id": "syn-002",
+  "status": "final",
+  "effectiveDateTime": "2026-03-12T10:00:00+08:00",
+  "subject": {
+    "reference": "Patient/syn-001"
+  },
+  "valueQuantity": {
+    "value": 7.2,
+    "unit": "mmol/L"
+  }
+}

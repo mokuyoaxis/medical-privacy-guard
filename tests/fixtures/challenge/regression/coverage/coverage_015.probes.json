@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_015",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "NURSE_NAME",
+      "text": "郑沫"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "nurse suffix form with an out-of-inventory given name"
+}

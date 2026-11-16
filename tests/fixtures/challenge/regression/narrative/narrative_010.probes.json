@@ -1,0 +1,12 @@
+{
+  "doc_id": "narrative_010",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "该院为三级甲等医院"
+  ],
+  "probe_note": "over-redaction: generic institution"
+}

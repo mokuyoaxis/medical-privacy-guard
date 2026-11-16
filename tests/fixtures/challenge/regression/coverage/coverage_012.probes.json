@@ -1,0 +1,12 @@
+{
+  "doc_id": "coverage_012",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "二〇二三年二月三十日"
+  ],
+  "probe_note": "over-redaction control: an impossible calendar date is not a fact"
+}

@@ -1,0 +1,53 @@
+{
+  "doc_id": "consultation_note_013",
+  "language": "zh-CN",
+  "document_type": "consultation_note",
+  "department": "消化内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 10,
+      "end": 20
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 26,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 40
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 44,
+      "end": 46
+    },
+    {
+      "type": "SEX",
+      "start": 50,
+      "end": 51
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 56,
+      "end": 66
+    },
+    {
+      "type": "AGE",
+      "start": 70,
+      "end": 73
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 151,
+      "end": 153
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_004",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张三"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "bracketed field value"
+}

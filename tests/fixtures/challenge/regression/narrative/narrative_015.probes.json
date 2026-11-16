@@ -1,0 +1,12 @@
+{
+  "doc_id": "narrative_015",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "每班交接"
+  ],
+  "probe_note": "over-redaction control: a title followed by prose is not a person"
+}

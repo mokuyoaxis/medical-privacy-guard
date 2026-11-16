@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_009",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PRECISE_LOCATION",
+      "text": "广州市天河区"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "unlabelled address with a multi-word residence verb"
+}

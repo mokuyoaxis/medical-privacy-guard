@@ -14,8 +14,8 @@ from copy import deepcopy
 
 import pytest
 
-from core.errors import PolicyError
-from core.model import (
+from medical_privacy_guard.core.errors import PolicyError
+from medical_privacy_guard.core.model import (
     DetectedFact,
     EnvironmentContext,
     Purpose,
@@ -26,7 +26,7 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from core.policy import (
+from medical_privacy_guard.core.policy import (
     PolicyEvaluator,
     PolicyProfile,
     load_builtin_profile,
@@ -224,6 +224,24 @@ class TestDecisionBehavior:
     def test_unknown_fact_type_fails_closed(self, strict):
         decision = strict.evaluate(
             (fact("SOME_WEIRD_ENTITY"),),
+            external_unknown_recipient(),
+            Purpose.EXTERNAL_AI_ASSISTANCE,
+        )
+        assert decision.verdict is Verdict.BLOCK
+        assert ReasonCode.TRANSFORMATION_INCOMPLETE in decision.reason_codes
+
+    def test_unknown_fact_type_fails_closed_in_research_profile(self, research):
+        decision = research.evaluate(
+            (fact("SOME_WEIRD_ENTITY"),),
+            external_unknown_recipient(),
+            Purpose.RESEARCH,
+        )
+        assert decision.verdict is Verdict.BLOCK
+        assert ReasonCode.TRANSFORMATION_INCOMPLETE in decision.reason_codes
+
+    def test_unknown_fact_type_blocks_even_when_mixed_with_transformable(self, strict):
+        decision = strict.evaluate(
+            (fact("PERSON_NAME"), fact("SOME_WEIRD_ENTITY")),
             external_unknown_recipient(),
             Purpose.EXTERNAL_AI_ASSISTANCE,
         )

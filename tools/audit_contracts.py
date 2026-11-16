@@ -1,0 +1,431 @@
+"""Audit the project's shared contracts for "declared but not wired".
+
+This project has repeatedly hit the same failure shape: a shared module defines
+a capability, and one consumer keeps its own hand-rolled version, so behaviour
+diverges silently. Three instances so far:
+
+- v0.2.1: ``person.py`` was fixed for name spans, ``clinical_context.py`` was not;
+- v0.2.4: Chinese numeral ages were detected but the transformer could not
+  execute them, turning a silent release into a raised error;
+- v0.2.6+: ``person.py`` never adopted ``field_syntax``, so ``姓名=张伟`` was
+  missed while every other field accepted the equals sign;
+- v0.3.x: detection and transformation disagreed about JSON numbers, so
+  ``{"mrn": 1234567}`` was reported ALLOW and released intact;
+- v0.3.3: the CLI classified a payload by content and an adapter would have had
+  to write its own copy of that decision, one layer above the detectors.
+
+Run this after touching detectors, transformers or policy: it is cheap and it
+catches the class of defect that unit tests miss, because each consumer is
+tested against its own convention.
+
+    python tools/audit_contracts.py
+"""
+
+from __future__ import annotations
+
+import collections
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+#: Directory subtrees that are never project code. Kept out of the source scans
+#: below so a local virtualenv or a build tree cannot produce a finding: the
+#: audit is about the project's own modules drifting apart, and a vendored
+#: dependency's ``classify`` is not that.
+_SCAN_EXCLUDED: frozenset[str] = frozenset(
+    {
+        ".git", ".agent-trash", "tests",
+        ".venv", "venv", ".tox", ".nox", ".mypy_cache", ".ruff_cache",
+        ".pytest_cache", "build", "dist", ".eggs", "site-packages",
+        "__pycache__",
+    }
+)
+sys.path.insert(0, str(ROOT))
+
+from medical_privacy_guard import Guard  # noqa: E402
+from medical_privacy_guard.core.errors import GuardError  # noqa: E402
+from medical_privacy_guard.core.model import (  # noqa: E402
+    Payload,
+    Purpose,
+    Recipient,
+    TrustLevel,
+    Verdict,
+)
+from medical_privacy_guard.detectors import detect_all  # noqa: E402
+
+#: (label, value, expected fact type) — one field per detector family.
+FIELDS = (
+    ("姓名", "张伟", "PERSON_NAME"),
+    ("电话", "13800000000", "PHONE"),
+    ("地址", "北京市朝阳区建国路1号", "PRECISE_LOCATION"),
+    ("病历号", "ZY2026001", "MEDICAL_RECORD_NUMBER"),
+    ("科室", "神经内科", "DEPARTMENT"),
+    ("年龄", "67岁", "AGE"),
+    ("标本号", "SP123456", "SPECIMEN_ID"),
+    ("邮编", "100020", "POSTAL_CODE"),
+)
+
+#: Separator spellings field_syntax claims to unify.
+SEPARATORS = (
+    ("full-width colon", "{}：{}"),
+    ("ascii colon", "{}:{}"),
+    ("equals", "{}={}"),
+    ("space", "{} {}"),
+    ("ideographic space", "{}\u3000{}"),
+    ("none", "{}{}"),
+    ("brackets", "{}（{}）"),
+)
+
+SAMPLES = {
+    "PHONE": "电话 13800000000",
+    "LANDLINE": "电话 010-66668888",
+    "EMAIL": "邮箱 a@example.com",
+    "URL": "网址 https://example.com/x",
+    "IP_ADDRESS": "IP 10.0.0.1",
+    "PERSON_NAME": "患者姓名：张伟",
+    "MEDICAL_RECORD_NUMBER": "病历号 ZY2026001",
+    "SPECIMEN_ID": "标本号 SP123456",
+    "ACCESSION_NUMBER": "检查号 IM2026001",
+    "POSTAL_CODE": "邮编 100020",
+    "SOCIAL_MEDIA_ID": "微信 zhangsan2026",
+    "PRECISE_LOCATION": "住址：北京市朝阳区建国路1号",
+    "HOSPITAL_NAME": "患者在协和医院住院",
+    "WARD": "患者神内二病区住院",
+    "BED_NUMBER": "床号 12",
+    "DOCTOR_NAME": "主治医师：张伟",
+    "NURSE_NAME": "责任护士：李娜",
+    "RELATIVE_NAME": "家属：王强陪同",
+    "AGE": "患者 67岁",
+    "EXACT_DATE": "就诊日期 2026年3月12日",
+    "GOVERNMENT_ID": "身份证号 110101199003078888",
+}
+
+
+def separator_matrix() -> list[str]:
+    """Fields whose detection depends on how the separator is spelled."""
+    problems = []
+    for label, value, expected in FIELDS:
+        marks = []
+        for name, template in SEPARATORS:
+            types = {f.type for f in detect_all(template.format(label, value))}
+            marks.append((name, expected in types))
+        failed = [name for name, ok in marks if not ok]
+        if failed:
+            problems.append(f"  {label} ({expected}): not detected with {', '.join(failed)}")
+    return problems
+
+
+def fact_type_coverage() -> list[str]:
+    """Fact types emitted by detectors but absent from the policy tables."""
+    policy = (ROOT / "medical_privacy_guard/core/policy.py").read_text(encoding="utf-8")
+    reason_block = policy.split("_FACT_REASON_CODES")[1].split("}")[0]
+    known = set(re.findall(r'"([A-Z_0-9]+)"\s*:', reason_block))
+
+    produced: set[str] = set()
+    for path in sorted((ROOT / "medical_privacy_guard/detectors").glob("*.py")):
+        produced |= set(re.findall(r'fact_type\s*[:=]\s*"([A-Z_0-9]+)"', path.read_text(encoding="utf-8")))
+    # The dictionary detector derives its types from the category table.
+    produced |= set(re.findall(r'"([A-Z_0-9]{3,})"', (ROOT / "medical_privacy_guard/core/dictionary.py").read_text(encoding="utf-8")))
+    produced.discard("CATEGORY_FACT_TYPES")
+
+    missing = sorted(t for t in produced if t not in known)
+    return [f"  {t}: emitted by a detector, absent from _FACT_REASON_CODES (fails closed to BLOCK)" for t in missing]
+
+
+def transformation_coverage() -> list[str]:
+    """Fact types that policy plans to transform but no transformer can execute."""
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    problems = []
+    for fact_type, text in sorted(SAMPLES.items()):
+        try:
+            result = guard.sanitize(text, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        except GuardError as exc:
+            problems.append(f"  {fact_type}: raised {type(exc).__name__}: {exc}")
+            continue
+        if result.decision_before.verdict.value == "SANITIZE" and (
+            result.verification is None or not result.verification.passed
+        ):
+            detail = result.verification.details if result.verification else "no verification"
+            problems.append(f"  {fact_type}: planned a transformation but verification failed ({detail})")
+    return problems
+
+
+#: Identifiers carried in a value the transformer cannot rewrite. Each of these
+#: must be withheld; reporting SANITIZE would release the number untouched.
+READ_ONLY_SAMPLES: dict[str, dict] = {
+    "numeric MRN": {"mrn": 1234567},
+    "numeric phone": {"phone": 13800000000},
+    "numeric government ID": {"id_card": 110101199003078888},
+    "nested numeric phone": {"patient": {"phone": 13800000000}},
+    "numeric phone in an array": {"phones": [13800000000]},
+}
+
+#: The same values as strings, which the transformer can execute. A regression
+#: here would mean the read-only path swallowed the writable one.
+WRITABLE_SAMPLES: dict[str, dict] = {
+    "string MRN": {"mrn": "1234567"},
+    "string phone": {"phone": "13800000000"},
+}
+
+
+def read_only_leaf_coverage() -> list[str]:
+    """A detected identifier the transformer cannot rewrite must not be released.
+
+    This is the same declared-but-not-wired shape as the separator defects: the
+    detectors can read a JSON number, the transformer cannot write over one, and
+    nothing compared the two. The verdict must therefore be ASK or BLOCK, never
+    a SANITIZE whose plan silently skipped the value.
+    """
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    problems: list[str] = []
+    for name, document in sorted(READ_ONLY_SAMPLES.items()):
+        result = guard.sanitize(
+            Payload(kind="json", content=document), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        verdict = result.decision_before.verdict.value
+        if verdict not in {"ASK", "BLOCK"}:
+            problems.append(
+                f"  {name}: released as {verdict}; a value the transformer cannot "
+                "rewrite must be withheld, not sanitized"
+            )
+        elif result.sanitized_payload is not None:
+            problems.append(f"  {name}: verdict {verdict} but a payload was released")
+    for name, document in sorted(WRITABLE_SAMPLES.items()):
+        result = guard.sanitize(
+            Payload(kind="json", content=document), recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        verdict = result.decision_before.verdict.value
+        if verdict != "SANITIZE":
+            problems.append(f"  {name}: expected SANITIZE, got {verdict}")
+        elif result.sanitized_payload is None:
+            problems.append(f"  {name}: SANITIZE with nothing released")
+    return problems
+
+
+#: Content that must be recognised as structured. If an entry point scans any of
+#: these as prose, the key-derived field labels vanish and the call is released
+#: with its identifier intact.
+STRUCTURED_CALL_SAMPLES: tuple[tuple[str, object], ...] = (
+    ("JSON string with a labelled key", '{"mrn": "1234567"}'),
+    ("JSON string with a bare name", '{"name": "张三"}'),
+    ("decoded mapping", {"mrn": "1234567"}),
+    ("decoded list of mappings", [{"name": "张三"}]),
+)
+
+
+def admission_contract() -> list[str]:
+    """Both entry points must classify content from one shared rule.
+
+    The CLI and an adapter each decide what a piece of content is before the
+    guard sees it. A structured payload scanned as prose loses the labels the
+    detectors depend on, and the call goes out with the identifier intact: the
+    same declared-but-not-wired shape as the separator defects, one layer up.
+    """
+    problems: list[str] = []
+
+    canonical = ROOT / "medical_privacy_guard/formats/admission.py"
+    if "def classify_text(" not in canonical.read_text(encoding="utf-8"):
+        problems.append("  medical_privacy_guard/formats/admission.py no longer defines classify_text")
+
+    # Nobody else may keep a private copy of the decision. Non-project
+    # directories are skipped so a checkout carrying a virtualenv, a build or
+    # an editor's scratch tree cannot fail this check on a file that is not
+    # ours: a vendored dependency defining ``classify`` would otherwise read as
+    # drift in the guard's own entry points.
+    for path in sorted(ROOT.rglob("*.py")):
+        relative = path.relative_to(ROOT)
+        if path == canonical or relative.parts[0] in _SCAN_EXCLUDED:
+            continue
+        if re.search(r"^def _?classify\w*\(", path.read_text(encoding="utf-8"), re.MULTILINE):
+            problems.append(
+                f"  {relative}: defines its own classifier; use formats.admission "
+                "so the entry points cannot drift"
+            )
+
+    # Every entry point must go through the shared rule. The guard's own string
+    # entry is one of them: it used to declare every string plain text, so the
+    # same document was a structured payload to the CLI and prose to a library
+    # caller.
+    for entry in (
+        "medical_privacy_guard/cli/main.py",
+        "medical_privacy_guard/adapters/ingress.py",
+        "medical_privacy_guard/guard.py",
+    ):
+        if "payload_for_text" not in (ROOT / entry).read_text(encoding="utf-8"):
+            problems.append(f"  {entry}: does not classify through formats.admission")
+
+    # Behavioural check: a structured call must not reach ALLOW, whether an
+    # adapter classified it first or the content went straight to the guard.
+    from medical_privacy_guard.adapters.ingress import payload_for as ingress_payload
+
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    for name, content in STRUCTURED_CALL_SAMPLES:
+        for route, value in (("via adapter", ingress_payload(content)), ("direct", content)):
+            result = guard.evaluate(value, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+            if result.decision.verdict is Verdict.ALLOW:
+                problems.append(
+                    f"  {name} ({route}): reached ALLOW; a structured call was scanned as prose"
+                )
+    return problems
+
+
+#: A character that renders as nothing, placed where it would otherwise end a
+#: labelled value. Each of these blinded the name detectors: the end condition
+#: was punctuation, whitespace or a boundary word, and a format character is
+#: none of them. The value was then released with the name intact, and
+#: verification -- which re-runs the same detectors -- agreed.
+#: Only characters that render as nothing belong here. A *visible* separator
+#: inserted inside a value (``张ⸯ伟``) is not a bypass: it changes what the
+#: reader sees, exactly as ``张-伟`` does, and a detector that reported a name
+#: across it would be guessing. The end conditions do accept a visible
+#: separator after the value, which is what ``\u2e2f`` covers.
+INVISIBLE_TAIL_SAMPLES: tuple[tuple[str, str], ...] = (
+    ("zero-width space", "\u200b"),
+    ("zero-width joiner", "\u200d"),
+    ("word joiner", "\u2060"),
+    ("byte order mark", "\ufeff"),
+    ("soft hyphen", "\u00ad"),
+    ("variation selector", "\ufe0f"),
+    ("tag character", "\U000e0001"),
+)
+
+
+def invisible_character_coverage() -> list[str]:
+    """A character nobody can see must not change what the guard detects."""
+    problems: list[str] = []
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    for name, char in INVISIBLE_TAIL_SAMPLES:
+        for shape, text in (
+            ("after the value", f"患者姓名：张伟{char}"),
+            ("inside the value", f"患者姓名：张{char}伟"),
+        ):
+            facts = {f.type for f in guard.detect(text)}
+            if "PERSON_NAME" not in facts:
+                problems.append(
+                    f"  {name} {shape}: the name was not detected"
+                )
+        result = guard.evaluate(
+            f"患者姓名：张伟{char}", recipient, Purpose.EXTERNAL_AI_ASSISTANCE
+        )
+        if result.decision.verdict is Verdict.ALLOW:
+            problems.append(f"  {name}: a payload with a name reached ALLOW")
+
+    # A visible separator after the value must also end it: it is punctuation
+    # the note's author typed, not an invisible character.
+    if "PERSON_NAME" not in {f.type for f in guard.detect("患者姓名：张伟\u2e2f")}:
+        problems.append("  visible separator after the value: the name was not detected")
+
+    # The same character inside a structured leaf, where the file's own bytes
+    # carry no control character at all (a JSON escape).
+    for name, char in INVISIBLE_TAIL_SAMPLES[:1]:
+        escaped = f'{{"name": "张伟{char}"}}'
+        result = guard.evaluate(escaped, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        if result.decision.verdict is Verdict.ALLOW:
+            problems.append(f"  {name} in a JSON leaf: reached ALLOW")
+    return problems
+
+
+def unreadable_leaf_coverage() -> list[str]:
+    """A leaf the guard cannot read or address must be withheld, not released.
+
+    A NUL inside a JSON escape leaves the file's bytes clean, so the text-path
+    admission check never sees it; a non-string key cannot be addressed by the
+    JSON Pointer built from it, so writing a replacement back would add a key
+    and release the original value; a value JSON cannot carry would surface as
+    a serialisation error from inside the transformation.
+    """
+    problems: list[str] = []
+    guard = Guard(profile="external-ai-strict")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel("EXTERNAL_APPROVED"))
+    samples: dict[str, object] = {
+        "NUL inside a JSON escape": '{"name": "张伟\u0000"}',
+        "control character in a leaf": {"name": "张伟\u0001"},
+        "non-string object key": {1: "姓名：张伟"},
+        "value JSON cannot carry": {"name": "姓名：张伟", "blob": b"x"},
+    }
+    for name, content in samples.items():
+        result = guard.sanitize(content, recipient, Purpose.EXTERNAL_AI_ASSISTANCE)
+        verdict = result.decision_before.verdict.value
+        if verdict not in {"BLOCK", "ASK"}:
+            problems.append(f"  {name}: released as {verdict}")
+        elif result.sanitized_payload is not None:
+            problems.append(f"  {name}: verdict {verdict} but a payload was released")
+    return problems
+
+
+def approval_release_contract() -> list[str]:
+    """Approved ASK must release consistently across all supported formats."""
+    from medical_privacy_guard.core.grant import GrantIssuer, GrantRegistry
+
+    note = "本例为罕见变异型病例，建议多学科会诊。"
+    samples = (
+        ("text context", Payload(kind="text", content=note), ()),
+        ("JSON context", Payload(kind="json", content={"note": note}), ()),
+        ("CSV context", Payload(kind="csv", content="note\n" + note + "\n"), ()),
+        ("FHIR annotation", Payload(kind="fhir", content={
+            "resourceType": "Condition", "note": [{"text": note}],
+        }), ()),
+        ("numeric phone", Payload(kind="json", content={
+            "name": "张三", "phone": 13800000000,
+        }), ("PHONE",)),
+        ("mixed MRN types", Payload(kind="json", content={
+            "mrn": 1234567, "medical_record_number": "ZY2026001",
+        }), ("MEDICAL_RECORD_NUMBER",)),
+    )
+    problems = []
+    key = b"synthetic-contract-audit-key"
+    issuer = GrantIssuer(key, issuer="synthetic-contract-audit")
+    recipient = Recipient(kind="audit", trust_level=TrustLevel.EXTERNAL_APPROVED)
+    for name, payload, accepted in samples:
+        guard = Guard(grant_key=key, registry=GrantRegistry())
+        before = guard.sanitize(payload, recipient, Purpose.RESEARCH)
+        if (before.decision_before.verdict is not Verdict.ASK
+                or before.sanitized_payload is not None or before.approval_request is None):
+            problems.append(f"  {name}: did not withhold for approval")
+            continue
+        grant = issuer.issue(before.approval_request, ttl_seconds=300, accepted_types=accepted)
+        after = guard.sanitize(payload, recipient, Purpose.RESEARCH, grant=grant)
+        if (after.decision_before.verdict is not Verdict.ASK
+                or after.sanitized_payload is None
+                or after.verification is None or not after.verification.passed):
+            problems.append(f"  {name}: approved release was not verified and released")
+        replay = guard.sanitize(payload, recipient, Purpose.RESEARCH, grant=grant)
+        if replay.sanitized_payload is not None:
+            problems.append(f"  {name}: consumed grant was replayed")
+    return problems
+
+
+def main() -> int:
+    sections = collections.OrderedDict(
+        (
+            ("Separator spelling (field_syntax)", separator_matrix()),
+            ("Fact types vs policy tables", fact_type_coverage()),
+            ("Detection vs transformation", transformation_coverage()),
+            ("Read-only leaves vs verdict", read_only_leaf_coverage()),
+            ("Admission contract (CLI, adapters, guard)", admission_contract()),
+            ("Invisible characters vs detection", invisible_character_coverage()),
+            ("Unreadable leaves vs verdict", unreadable_leaf_coverage()),
+            ("ASK approval vs release", approval_release_contract()),
+        )
+    )
+    failed = False
+    for title, problems in sections.items():
+        print(f"== {title} ==")
+        if problems:
+            failed = True
+            print("\n".join(problems))
+        else:
+            print("  consistent")
+        print()
+    print("FAIL" if failed else "OK")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

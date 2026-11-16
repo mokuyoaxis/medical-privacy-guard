@@ -1,11 +1,16 @@
 """Release-gate integration, adversarial and cross-interface tests."""
 
 import json
+import re
+from pathlib import Path
 
-from cli.main import EXIT_ERROR, EXIT_OK, main
-from core.errors import AuditError
-from core.model import ReasonCode, Verdict
+import pytest
+from packaging.version import Version
+
 from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.main import EXIT_ERROR, EXIT_OK, main
+from medical_privacy_guard.core.errors import AuditError
+from medical_privacy_guard.core.model import ReasonCode, Verdict
 
 DEMO = """患者：测试患者甲
 电话：13800000000
@@ -108,3 +113,172 @@ def test_cli_audit_failure_releases_no_output(tmp_path, capsys, monkeypatch):
     assert not output.exists()
     assert captured.out == ""
     assert "audit failure" in captured.err
+
+
+# -- the release path on a full clinical note -------------------------------
+#
+# Every other test here sanitizes a payload with no clinical content, which is
+# a shape no real note has. A note that mentions history, sex and an age
+# exercises a different branch of verification, and that branch was broken:
+# nothing was ever released, and the benchmark reported zero residual PHI
+# because it never had a payload to inspect.
+
+NOTE = """患者：测试患者甲，性别：男，年龄：67岁
+联系地址：北京市朝阳区建国路88号院2号楼
+住院号：SYNTH-MRN-0001
+就诊日期：2026-08-21
+主诉：突发右侧肢体无力3小时。
+既往史：高血压病史10年。
+诊断：脑梗死
+"""
+
+RAW_VALUES = (
+    "测试患者甲",
+    "67岁",
+    "建国路88号院2号楼",
+    "SYNTH-MRN-0001",
+    "2026-08-21",
+)
+
+
+def test_clinical_note_is_released_and_verified():
+    result = Guard().sanitize(NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_before.verdict is Verdict.SANITIZE
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None, "a verified note must be released"
+    output = result.sanitized_payload.content
+    for raw in RAW_VALUES:
+        assert raw not in output, raw
+
+
+def test_clinical_note_output_converges_to_allow():
+    """Re-running policy on the released note must not still demand work.
+
+    If it does, the guard is telling itself the output is unsafe, which is how
+    the release path silently produced nothing.
+    """
+    result = Guard().sanitize(NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_after is not None
+    assert result.decision_after.verdict is Verdict.ALLOW
+
+
+def test_clinical_note_keeps_clinical_meaning():
+    """De-identification must not strip the clinical content itself."""
+    output = Guard().sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    ).sanitized_payload.content
+    for kept in ("脑梗死", "高血压", "突发右侧肢体无力"):
+        assert kept in output, kept
+
+
+def test_clinical_note_generalizes_rather_than_erases_age():
+    output = Guard().sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    ).sanitized_payload.content
+    assert "60-69岁" in output
+
+
+def test_clinical_note_to_unknown_recipient_never_releases():
+    """Medical content to an unknown endpoint needs consent, so nothing ships."""
+    result = Guard().sanitize(NOTE, "external_unknown", "EXTERNAL_AI_ASSISTANCE")
+    assert result.decision_before.verdict is Verdict.ASK
+    assert result.sanitized_payload is None
+
+
+def test_date_shift_profile_releases_with_residual_dates():
+    """Under DATE_SHIFT a shifted date is still a date, so the policy re-run
+    returns SANITIZE rather than ALLOW. The note must still be released."""
+    result = Guard(profile="research").sanitize(
+        NOTE, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    )
+    assert result.decision_before.verdict is Verdict.SANITIZE
+    assert result.verification is not None and result.verification.passed
+    assert result.sanitized_payload is not None
+    output = result.sanitized_payload.content
+    assert "2026-08-21" not in output
+    for raw in ("测试患者甲", "67岁", "SYNTH-MRN-0001"):
+        assert raw not in output, raw
+
+
+# -- version consistency -----------------------------------------------------
+#
+# ROADMAP's release gate lists "``__version__`` consistent with pyproject" and
+# "CHANGELOG updated" among its conditions. Both were verified by hand until
+# now, which is the same declared-but-not-wired shape ``tools/audit_contracts.py``
+# exists to catch — this time in the release gate itself.
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _pyproject_version() -> str:
+    """Read ``[project].version`` without adding a dependency.
+
+    ``tomllib`` is stdlib from 3.11 and the project still supports 3.10, so the
+    fallback matches the one line we care about instead of taking ``tomli``.
+    """
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        assert match is not None, "pyproject.toml declares no [project].version"
+        return match.group(1)
+    return str(tomllib.loads(text)["project"]["version"])
+
+
+def _changelog_versions() -> list[str]:
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    return [
+        version
+        for version in re.findall(r"^## \[([^\]]+)\]", text, re.MULTILINE)
+        if version != "Unreleased"
+    ]
+
+
+def _key(version: str) -> Version:
+    return Version(version)
+
+
+@pytest.mark.parametrize(
+    ("older", "newer"),
+    [("0.4.0", "0.5.0-rc.1"), ("0.5.0-rc.1", "0.5.0-rc.2"), ("0.5.0-rc.2", "0.5.0")],
+)
+def test_release_order_places_candidates_before_the_final_version(older, newer):
+    assert _key(older) < _key(newer)
+
+
+def test_release_candidate_tag_and_package_versions_are_equivalent():
+    assert _key("0.5.0-rc.1") == _key("0.5.0rc1")
+
+
+def test_version_matches_pyproject():
+    from medical_privacy_guard import __version__
+
+    assert __version__ == _pyproject_version()
+
+
+def test_the_current_version_has_a_changelog_section():
+    """A release records what changed before the version number moves."""
+    from medical_privacy_guard import __version__
+
+    assert _key(__version__) in [_key(v) for v in _changelog_versions()], (
+        f"CHANGELOG.md has no '## [{__version__}]' section"
+    )
+
+
+def test_changelog_sections_are_unique_and_newest_first():
+    versions = _changelog_versions()
+    keys = [_key(v) for v in versions]
+    assert len(keys) == len(set(keys)), "duplicate version section in CHANGELOG.md"
+    assert keys == sorted(keys, reverse=True), "CHANGELOG.md sections are not newest-first"
+
+
+def test_no_changelog_section_runs_ahead_of_the_version():
+    """A section for a future version means the version number was not bumped."""
+    from medical_privacy_guard import __version__
+
+    current = _key(__version__)
+    ahead = [v for v in _changelog_versions() if _key(v) > current]
+    assert ahead == [], (
+        f"CHANGELOG.md documents {ahead} but __version__ is {__version__}"
+    )

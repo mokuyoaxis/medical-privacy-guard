@@ -1,0 +1,73 @@
+{
+  "doc_id": "outpatient_note_006",
+  "language": "zh-CN",
+  "document_type": "outpatient_note",
+  "department": "普通外科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 10,
+      "end": 14
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 20,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 40
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 46,
+      "end": 48
+    },
+    {
+      "type": "SEX",
+      "start": 52,
+      "end": 53
+    },
+    {
+      "type": "AGE",
+      "start": 57,
+      "end": 60
+    },
+    {
+      "type": "PHONE",
+      "start": 66,
+      "end": 77
+    },
+    {
+      "type": "POSTAL_CODE",
+      "start": 83,
+      "end": 89
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 94,
+      "end": 104
+    },
+    {
+      "type": "RELATIVE_NAME",
+      "start": 279,
+      "end": 281
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 292,
+      "end": 295
+    },
+    {
+      "type": "URL",
+      "start": 303,
+      "end": 341
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

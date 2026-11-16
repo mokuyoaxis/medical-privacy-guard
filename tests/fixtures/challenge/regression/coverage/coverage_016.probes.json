@@ -1,0 +1,12 @@
+{
+  "doc_id": "coverage_016",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "名医生"
+  ],
+  "probe_note": "over-redaction control: a measure word before a title is not a name"
+}

@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_014",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "欧阳修远"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "compound surname plus out-of-inventory given name"
+}

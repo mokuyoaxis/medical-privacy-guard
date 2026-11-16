@@ -1,0 +1,68 @@
+{
+  "doc_id": "discharge_summary_010",
+  "language": "zh-CN",
+  "document_type": "discharge_summary",
+  "department": "消化内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 10,
+      "end": 20
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 27,
+      "end": 37
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 41,
+      "end": 45
+    },
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 51,
+      "end": 55
+    },
+    {
+      "type": "WARD",
+      "start": 56,
+      "end": 59
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 65,
+      "end": 68
+    },
+    {
+      "type": "SEX",
+      "start": 72,
+      "end": 73
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 78,
+      "end": 88
+    },
+    {
+      "type": "AGE",
+      "start": 92,
+      "end": 95
+    },
+    {
+      "type": "PRECISE_LOCATION",
+      "start": 101,
+      "end": 115
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 277,
+      "end": 279
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

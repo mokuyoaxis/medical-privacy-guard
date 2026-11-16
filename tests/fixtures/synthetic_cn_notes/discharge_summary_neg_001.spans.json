@@ -1,0 +1,12 @@
+{
+  "doc_id": "discharge_summary_neg_001",
+  "language": "zh-CN",
+  "document_type": "discharge_summary",
+  "department": "神经内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "negative",
+  "spans": [],
+  "expected_verdict": "ALLOW",
+  "text_policy": "do_not_store_in_audit"
+}

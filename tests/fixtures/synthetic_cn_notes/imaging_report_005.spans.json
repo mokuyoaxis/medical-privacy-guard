@@ -1,0 +1,68 @@
+{
+  "doc_id": "imaging_report_005",
+  "language": "zh-CN",
+  "document_type": "imaging_report",
+  "department": "影像科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "EXACT_DATE",
+      "start": 13,
+      "end": 23
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 29,
+      "end": 32
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 38,
+      "end": 42
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 48,
+      "end": 50
+    },
+    {
+      "type": "SEX",
+      "start": 54,
+      "end": 55
+    },
+    {
+      "type": "AGE",
+      "start": 59,
+      "end": 62
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 67,
+      "end": 77
+    },
+    {
+      "type": "ACCESSION_NUMBER",
+      "start": 82,
+      "end": 91
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 166,
+      "end": 168
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 177,
+      "end": 179
+    },
+    {
+      "type": "IP_ADDRESS",
+      "start": 192,
+      "end": 202
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

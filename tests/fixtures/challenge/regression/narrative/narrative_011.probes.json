@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_011",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "NURSE_NAME",
+      "text": "郑爽"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "labelled value whose given character (爽) was outside the name inventory"
+}

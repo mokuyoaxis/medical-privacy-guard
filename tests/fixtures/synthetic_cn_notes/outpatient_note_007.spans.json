@@ -1,0 +1,58 @@
+{
+  "doc_id": "outpatient_note_007",
+  "language": "zh-CN",
+  "document_type": "outpatient_note",
+  "department": "神经内科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 10,
+      "end": 14
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 20,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 40
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 46,
+      "end": 48
+    },
+    {
+      "type": "SEX",
+      "start": 52,
+      "end": 53
+    },
+    {
+      "type": "AGE",
+      "start": 57,
+      "end": 60
+    },
+    {
+      "type": "PHONE",
+      "start": 66,
+      "end": 77
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 82,
+      "end": 92
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 278,
+      "end": 280
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

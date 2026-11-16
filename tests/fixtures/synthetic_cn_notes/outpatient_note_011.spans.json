@@ -1,0 +1,83 @@
+{
+  "doc_id": "outpatient_note_011",
+  "language": "zh-CN",
+  "document_type": "outpatient_note",
+  "department": "内分泌科",
+  "synthetic": true,
+  "generator_seed": 20260912,
+  "corpus_role": "positive",
+  "spans": [
+    {
+      "type": "HOSPITAL_NAME",
+      "start": 10,
+      "end": 14
+    },
+    {
+      "type": "EXACT_DATE",
+      "start": 20,
+      "end": 30
+    },
+    {
+      "type": "DEPARTMENT",
+      "start": 36,
+      "end": 40
+    },
+    {
+      "type": "PERSON_NAME",
+      "start": 46,
+      "end": 49
+    },
+    {
+      "type": "SEX",
+      "start": 53,
+      "end": 54
+    },
+    {
+      "type": "AGE",
+      "start": 58,
+      "end": 61
+    },
+    {
+      "type": "PHONE",
+      "start": 67,
+      "end": 78
+    },
+    {
+      "type": "EMAIL",
+      "start": 84,
+      "end": 105
+    },
+    {
+      "type": "GOVERNMENT_ID",
+      "start": 111,
+      "end": 129
+    },
+    {
+      "type": "LANDLINE",
+      "start": 135,
+      "end": 148
+    },
+    {
+      "type": "SOCIAL_MEDIA_ID",
+      "start": 153,
+      "end": 165
+    },
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "start": 170,
+      "end": 180
+    },
+    {
+      "type": "DOCTOR_NAME",
+      "start": 354,
+      "end": 357
+    },
+    {
+      "type": "URL",
+      "start": 365,
+      "end": 403
+    }
+  ],
+  "expected_verdict": "SANITIZE",
+  "text_policy": "do_not_store_in_audit"
+}

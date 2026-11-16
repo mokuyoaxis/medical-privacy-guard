@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_011",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "二〇二六年九月二十一日"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "fully Chinese-numeral date"
+}

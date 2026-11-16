@@ -1,0 +1,961 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.6.0-rc.1] - 2026-10-27
+
+### Added
+
+- The public API now exports `Guard`, `Verdict`, the decision/result types and
+  the guard exception classes from `medical_privacy_guard`. Result objects
+  expose `verdict`, `released`, `text` and `public_summary()` so callers do not
+  need to reach into internal modules. Added `py.typed`.
+- `medical-privacy-guard serve` provides a local zero-code HTTP gateway for
+  OpenAI-compatible `/v1/chat/completions` and Anthropic `/v1/messages`
+  clients. It reuses the in-process adapters, forwards to one fixed upstream,
+  streams responses unchanged, binds to loopback by default and returns
+  metadata-only 403 errors for ASK/BLOCK.
+
+### Changed
+
+- The distribution now installs only the `medical_privacy_guard` namespace.
+  Internal modules moved from the top-level `core`, `detectors`, `transformers`,
+  `formats`, `adapters`, `policies`, and `cli` packages to
+  `medical_privacy_guard.*`. This removes the collision with the Hugging Face
+  `transformers` package and other generic top-level names. Import paths are
+  intentionally breaking; no external consumer existed when the change was made.
+
+## [0.5.0] - 2026-10-27
+
+Stable release of the v0.5 approval and security-hardening line. The code and
+validation are the `v0.5.0-rc.3` candidate plus documentation corrections; no
+additional code changes were made for this stable tag.
+
+## [0.5.0-rc.3] - 2026-10-13
+
+### Added
+
+- Local CLI approval workflow: signed request export, explicitly confirmed
+  issuance to private files, SQLite-backed grant input, status and revocation.
+  Review signatures cover the request metadata. Read-only evaluation prepares
+  requests without consumption; rejected grants permit fresh review.
+- MCP local grant-file input and private request export with deployment/tool/
+  field scope binding, multi-field preflight and verified minimized release.
+  Client approval fields do not authorize release; upstream processes do not
+  inherit the grant or audit signing-key environment variables.
+- CSV/JSON batch token consistency using one serial in-memory registry, private
+  verified per-file outputs and a value-free manifest. Added aggregate counts
+  for caller-selected quasi-identifier combinations: group sizes, singleton
+  fraction and rows below a configurable engineering threshold. These reports
+  do not change Guard verdicts or claim anonymization.
+
+### Fixed
+
+- Grant body fields with invalid Unicode raise `GrantError` at construction;
+  malformed local files cannot crash signature encoding or be treated as approval.
+- Dataset sanitization rejects audit logs that alias an input through a path,
+  symlink or hardlink before creating logs or changing input permissions. Audit
+  directories inside the new output directory are rejected before side effects.
+- MCP initialization rejects audit logs that alias grant files or the shared
+  credential database before opening an audit writer, preserving approval state.
+- Grant issuance rejects expiry values outside the supported timestamp range
+  with `GrantError`, without creating a credential file or leaking a traceback.
+- Dataset JSON parsing rejects exponent overflow to infinity, including values
+  outside the selected quasi-identifier columns.
+
+### Changed
+
+- Installed-wheel CI smoke checks now exercise the real CLI request/issuance/
+  consume/replay/revocation workflow, MCP scoped approvals and dataset commands.
+
+### Notes
+
+- Git tag `v0.5.0-rc.3` corresponds to Python package version `0.5.0rc3`.
+  First adoption is documented; no actual consumer or key has been migrated.
+  Dataset reports remain engineering measurements and do not authorize release.
+
+## [0.5.0-rc.2] - 2026-10-12
+
+### Added
+
+- Optional `SqliteGrantRegistry` for one machine sharing a private local disk:
+  explicitly initialized state, atomic committed use budgets across processes
+  and restarts, and persistent revocation by grant ID, including unused IDs.
+  Uses standard-library SQLite with DELETE/EXTRA and a configurable lock timeout;
+  no new production dependency. Guard's default remains process-local memory.
+  Missing, corrupt or unsupported state and storage errors fail explicitly;
+  there is no automatic recreation, migration or memory fallback. Deployment
+  and recovery boundaries are documented in `docs/grant-registry.md`.
+
+### Changed
+
+- The installed-wheel CI smoke test now exercises persistent consumption,
+  replay refusal and ID revocation. Public deployment examples use a portable
+  home-relative path.
+
+### Notes
+
+- Git tag `v0.5.0-rc.2` corresponds to Python package version `0.5.0rc2`.
+  CLI/MCP approval input and dataset-level risk remain follow-up work.
+
+## [0.5.0-rc.1] - 2026-10-11
+
+### Added
+
+- **Scoped, expiring approval grants for ASK** (``core.grant``). ASK was the one
+  verdict with no working end-to-end path: the guard withheld the payload and
+  ``HumanApprovalRequired`` said a scoped grant was required without anything
+  able to say what a grant is. The guard now builds an ``ApprovalRequest`` (no
+  raw values) on ASK, and ``Guard.sanitize(..., grant=...)`` checks a
+  deployment-issued grant against it. A grant binds a fingerprint over the
+  payload, recipient, purpose, policy version and decision, is HMAC-signed with
+  a key the payload cannot hold, carries an expiry and a use count, and is
+  consumed on use. ``adapters.release_or_raise`` releases a granted ASK and
+  still raises for an unapproved one. Audit records ``grant_id`` /
+  ``grant_issuer``.
+
+  The important semantic: **an approved release is still a minimized release.**
+  The grant covers the residual risk of a value the transformer cannot rewrite
+  (``read_only`` facts such as a JSON number) and only those; everything the plan
+  could have handled is still transformed and verified. Releasing the original
+  instead would let an approval silently undo every detector that fired. The
+  verdict stays ASK through a granted release, so the audit shows a person
+  accepted a risk rather than policy relaxing.
+
+### Fixed
+
+- ASK verification now requires an explicit accepted approval, including when
+  no read-only types remain. Text and structured release gates use the same
+  approval state; a context-only JSON/CSV/FHIR disclosure with a valid grant no
+  longer fails solely because its accepted-type list is empty.
+- Read-only leaves are skipped by transformers even when a writable leaf has
+  the same fact type. Verification restores only the exact approved read-only
+  output spans, so numeric identifiers may survive their scoped approval while
+  writable identifiers still require successful transformation.
+- ``release_or_raise`` requires successful verification for a granted ASK as
+  well as SANITIZE. Rejected and unused grants no longer populate audit fields
+  reserved for accepted grants.
+- FHIR name completion is restricted to ``name`` objects; annotation ``text``
+  no longer becomes a manufactured person-name field that removes clinical
+  context.
+- Grant parsing rejects invalid field types instead of coercing strings,
+  booleans or fractional use budgets. Invalid Unicode signatures are rejected
+  without raising a comparison error. Removed the unused timedelta wrapper,
+  serialization fallback and redundant audit catch/rethrow.
+- Grant issuance converts supplied timezone-aware clock values to UTC before
+  adding the ``Z`` suffix; non-UTC offsets no longer shift the validity window.
+  Naive clock values have explicit failures instead of ambiguous validity.
+- Audit-chain verification preserves each stored record's original field set
+  and value types. Older chained schemas keep verifying after optional fields
+  are added; type changes cannot disappear through coercion, and unknown fields
+  are rejected instead of being left outside the integrity check. Existing logs
+  are not rewritten. The contract audit now checks ASK release across formats.
+- Default Guard instances now share one process-local grant registry, so
+  creating another Guard cannot replay a consumed approval. Registry consumption
+  is locked so concurrent callers cannot exceed ``uses_allowed``. Added
+  cross-instance, concurrent single-use/multi-use and injected-registry tests.
+- The CI test matrix installs the existing ``dicom`` extra and requires its
+  import before running tests, so the DICOM scanner regressions are exercised
+  rather than silently skipped.
+- Release gates recognize prerelease versions, match candidate tag spelling to
+  Python package versions, and sort candidates before the final release.
+- Architecture, decision protocol, threat model and scope now describe the
+  implemented structured admission and granted ASK paths; DICOM inspection is
+  consistently documented as experimental and read-only.
+- The audit field set grew with the grant fields and the benchmark's exact-set
+  gate rejected all 175 records until it was updated deliberately. The gate is
+  doing what it is there for: an audit record that grows an unexpected field is
+  a schema change, not something to accept silently.
+
+### Notes
+
+- This is a release candidate: the Git tag is ``v0.5.0-rc.1`` and the Python
+  package version is ``0.5.0rc1``.
+- Single-use is enforced by an in-memory registry. It stops a replay inside the
+  process and stops accidental double use, but it does not survive a restart and
+  is not shared between processes. That boundary is documented in
+  ``docs/scope.md`` rather than implied. A deployment needing durable single-use
+  injects its own store.
+- The guard does not decide who may approve. Issuing is deployment-side
+  (``GrantIssuer``), the same way ``EXTERNAL_APPROVED`` is: the library is not
+  an authorization service.
+
+## [0.4.0] - 2026-10-03
+
+### Added
+
+- **Narrative names anchored on a complaint verb or a connective**
+  (``detectors/recall_guard.py``). The recall guard covered only the
+  ``姓名，性别`` opener, so a progress note that named the patient in a sentence —
+  ``今日查房，陈曦诉头晕`` / ``上午9时，潘婷主诉腹痛`` — matched nothing, reached
+  ALLOW and was released with the name intact under an approved recipient. Two
+  more anchors are now recognised: a complaint verb
+  (``诉``/``主诉``/``自诉``/``自述``) and a connective (``因``/``由``/``以``). The
+  connective is the weaker anchor, so the name must also sit at a clause
+  boundary; the complaint-verb form requires the given name to come from the
+  name-character inventory. Both constraints are measured at zero false
+  positives on the 175-document benchmark and on the hand-written simulation
+  corpus, which now reports no missed values. ``以`` joined
+  ``NAME_FOLLOW_BOUNDARY`` so verification accepts the new connective. Covered
+  by ``tests/test_narrative_verbs.py`` and four new challenge probes
+  (``narrative_025``–``narrative_028``).
+
+- **FHIR minimal resource set** (``formats.fhir``, ``Payload(kind="fhir")``,
+  ``.fhir`` / ``.json`` files declaring a ``resourceType``): ``Patient``,
+  ``Observation``, ``DiagnosticReport``, ``Condition``, ``MedicationRequest``,
+  ``Encounter``, ``ImagingStudy`` and ``Bundle`` are walked; any other resource
+  is withheld (BLOCK), including one nested inside an otherwise supported
+  Bundle. A document with no ``resourceType`` is an unsupported format, not
+  ordinary JSON -- a caller cannot reach the JSON path by misdeclaring an
+  object as FHIR. Leaf collection, normalisation and rebuild are the shared
+  JSON ones, so FHIR gets the same control-character refusal and the same
+  read-only numeric leaves as any other structured payload.
+- **FHIR name completion.** A FHIR name is split across
+  ``Patient.name.family`` and ``Patient.name.given``, and neither component
+  alone is a name the detectors can see: ``姓名：张`` and ``姓名：伟`` match
+  nothing, while ``姓名：张伟`` does, so a Patient resource was released with
+  the surname intact. The components are now also offered joined, as a probe
+  only -- the replacement is still written through each component's own path.
+  ``name.text`` and the narrative ``text`` key are told apart, so narrative
+  prose is not read as a person.
+- FHIR element labels (``family``, ``given``, ``birthDate``, ``telecom``,
+  ``identifier`` ...) so a resource's English field names reach the
+  label-driven detectors at all.
+- FHIR synthetic fixtures under ``tests/fixtures/fhir/``.
+
+- **OpenAI-compatible client wrapper** (``adapters.openai_compat``): wrap a
+  configured client with ``OpenAIGuard(client, guard)`` and every egress field
+  is evaluated before the SDK call goes out — ``messages[].content`` (strings,
+  content-part lists, tool-call arguments), ``metadata``, ``tools[].function``
+  descriptions and the ``user`` identifier. SANITIZE rewrites in place, BLOCK
+  and ASK raise, non-text content parts fail closed, responses are not
+  inspected. The wrapper holds no credentials; the transport is duck-typed
+  (``client.chat.completions.create``).
+
+- **Anthropic Messages client wrapper** (``adapters.anthropic_compat``): the
+  same verdict semantics under the Messages API's shape. A top-level ``system``
+  is sanitized as the data channel it is; ``tool_use.input`` goes through the
+  JSON path and ``tool_result`` content through the text path; ``image`` and
+  ``document`` blocks fail closed; ``tools[].description`` is evaluated but
+  never rewritten; ``metadata.user_id`` is an opaque identifier that is only
+  ever refused, never rewritten.
+
+- **DICOM metadata scanner** (``formats.dicom_inspect``, ``dicom-inspect``
+  CLI; optional ``dicom`` extra): a read-only report of identifying metadata —
+  known-PHI tags, detector matches over free-text values, private tags counted
+  and marked HIGH, and pixel risk left UNKNOWN so `safe_to_release` is false
+  for every file. The scanner never writes a DICOM file; write-back is
+  deferred with the DATE_SHIFT it would need. Chinese values under
+  ``SpecificCharacterSet: ISO_IR 192`` are decoded and detected.
+
+### Fixed
+
+- **``UNSUPPORTED_RESOURCE_VERDICT`` was dead code that contradicted the
+  docs.** ``formats/fhir.py`` exported a constant saying an unsupported FHIR
+  resource should return ASK, but nothing read it. The guard has always mapped
+  an unsupported resource to ``UNSUPPORTED_FORMAT`` and BLOCK, which is what
+  ``docs/scope.md`` says; the constant is removed and the module docstring now
+  states the real verdict. An unreachable duplicate ``return`` in
+  ``parse_fhir_payload`` was removed in the same pass.
+
+- **An academic or administrative rank after a labelled name switched the name
+  off entirely.** ``NAME_FOLLOW_BOUNDARY`` lists the words that may follow a
+  captured name; it named the clinical titles (``医生``, ``医师``, ``大夫``,
+  ``护士``, ``护师``) but no rank, so the capture could not end and the whole
+  match collapsed: ``主治医师：李国强`` was detected while
+  ``主治医师：李国强教授`` produced no fact at all and the note reached ALLOW
+  with the physician's name intact. Sixteen of seventeen common ranks behaved
+  this way (``教授``, ``副教授``, ``讲师``, ``院士``, ``博士``, ``技师``,
+  ``药师``, ``院长``, ``主任``, ``副主任``, ``护士长``, …). The ranks are now
+  boundary words, so the capture ends at the name and the rank stays in the
+  released text as the context it is. A rank with no name in front of it still
+  yields no fact.
+
+- **Vendor SDK wrappers used ``assert`` for a guarantee that must survive
+  ``python -O``.** ``release_or_raise`` already raises when nothing verified
+  exists to send; the five ``assert`` statements after it only narrowed the
+  type, and are replaced by using the payload it returns.
+
+### Changed
+
+- **The version numbers were collapsed before anything was pushed.** The work
+  planned as separate v0.5 (DICOM) and v0.6 (FHIR) releases was written in the
+  same week as v0.4, so it is folded into a single v0.4 release and the
+  v0.5/v0.6 numbers are retired. Three version numbers in six days were not
+  earned by the release process, and a read-only scanner that cannot clear pixel
+  risk does not deserve its own minor version. The ROADMAP, both READMEs and the
+  FHIR/DICOM docstrings now say v0.4; the next version after 0.4.0 is v0.5 (ASK
+  grants + dataset risk).
+
+- ``formats/leaf.py`` declared ``birthdate`` twice: once in the general label
+  table and once in the FHIR element block, so the FHIR entry silently
+  overrode the general one. The duplicate is removed. A mis-sorted import
+  block in ``tests/test_dicom_inspect.py`` was fixed in the same pass. Both
+  were found by ``ruff`` during the review that closed this batch.
+
+- ``tools/audit_contracts.py`` no longer scans non-project directories, so a
+  checkout carrying a virtualenv or a build tree cannot fail the drift check
+  on a vendored dependency's own ``classify``.
+
+- ``tests/test_cli.py`` skips the hard-link alias of the path-collision test
+  where ``os.link`` does not exist (Android/Termux), instead of erroring with
+  ``AttributeError``. The same, relative and symlink aliases still run, and a
+  platform without ``os.link`` has no hard links to alias.
+
+- **Fifteen of the DICOM scanner's 38 known-PHI tags named the wrong
+  element.** The category is what an operator reads in the report, so these
+  were wrong reports rather than cosmetic typos: ``PatientAge`` was filed as
+  ``patient_occupation``, ``MilitaryRank`` as ``patient_address``,
+  ``CountryOfResidence`` as ``phone_number_home``,
+  ``PerformingPhysicianName`` as ``referring_physician_name`` (while the real
+  ``ReferringPhysicianName`` was filed as ``referring_physician_address``),
+  ``0x00080023`` as ``acquisition_time`` when it is ``ContentDate``, and
+  ``0x00101041`` was not a DICOM tag at all. Categories are now the
+  snake_case of the element's DICOM keyword, and
+  ``tests/test_dicom_inspect.py`` asserts every one against pydicom's own
+  dictionary so the table cannot drift again.
+- **SeriesDate was missing from the scanner entirely**, though ROADMAP names
+  it in the DICOM scanner's acceptance criteria: a file whose only date was
+  ``0008,0021`` reported no date finding. Added, with the other encounter
+  date/time elements (``SeriesTime``, ``ContentTime``, ``AcquisitionTime``,
+  ``InstanceCreation*``, ``PatientBirthTime``).
+
+### Documentation
+
+- **Large documentation revision.** The README, Chinese README, architecture,
+  scope, evaluation and skill docs still described the project as a text-only
+  v0.1/v0.2 library: the English and Chinese "not implemented" lists named
+  CSV, JSON, FHIR, DICOM, the MCP gateway and the SDK wrappers although all
+  ship, and the architecture document marked FHIR, DICOM and the adapters
+  pending. Every stale claim is corrected against the code, the narrative
+  coverage and its known residual are recorded in ``docs/scope.md`` and
+  ``docs/evaluation.md``, and the ROADMAP now folds the DICOM and FHIR work into
+  a single untagged v0.4. Prose was tightened to remove duplicated caveats and
+  repeated rhetorical constructions.
+
+- **README status tables were stale and contradicted the roadmap.** Both the
+  English and the Chinese README swapped v0.5 and v0.6, listing FHIR as v0.5
+  and DICOM as v0.6 while the code, the roadmap and the changelog have DICOM
+  as v0.5; both marked the delivered DICOM scanner "not started", and the
+  English README said the OpenAI-compatible and Anthropic wrappers were "not
+  started" though both ship. The Chinese status list also still showed v0.3
+  and v0.4 as not started.
+
+## [0.3.4] - 2026-09-25
+
+### Added
+
+- **MCP stdio gateway**: ``medical-privacy-guard mcp-gateway -- <server command>``
+  spawns an MCP server and mediates one stdio session with it, so an MCP client
+  can be pointed at the guard instead of at the server. Newline-delimited
+  JSON-RPC is forwarded byte for byte except for ``tools/call``: ALLOW forwards,
+  SANITIZE rewrites ``params.arguments`` and ``params.inputResponses``, and
+  ASK/BLOCK return a JSON-RPC error without reaching the server. Byte streams are
+  used throughout, because text mode would translate newlines and corrupt the
+  framing. The wrapped server's exit code is propagated, and Ctrl+C terminates
+  it rather than orphaning it.
+
+- ``adapters.ingress``: ``payload_for``, ``evaluate_call`` and ``sanitize_call``,
+  the entry half of the adapter contract, so an adapter classifies the call
+  rather than trusting the caller's guess. A JSON document arriving as a string
+  is declared a JSON payload. Scanned as prose it loses the key-derived field
+  labels, and ``{"name": "张三"}`` yields no fact at all — the key is not a
+  Chinese label and a bare name is deliberately not detected — so the call would
+  have been released with the name in it.
+- ``formats/admission.py``: the classification the CLI already had, extracted so
+  both entry points share one implementation instead of two that drift. The CLI
+  now calls it rather than owning it. ``tools/audit_contracts.py`` gains a fifth
+  section that fails when a second classifier appears or when a structured call
+  reaches ALLOW; it was confirmed to fail with the adapter degraded to treating
+  strings as prose.
+
+### Fixed
+
+- **An invisible character switched name detection off entirely.** The name
+  detectors end a captured value on punctuation, whitespace or a boundary word,
+  and Unicode's format characters are none of those. One U+200B after — or
+  inside — a name made ``PERSON_NAME``, ``DOCTOR_NAME``, ``NURSE_NAME`` and
+  ``RELATIVE_NAME`` miss, while verification re-ran the same detectors and
+  reported success: ``患者姓名：张伟<U+200B>，联系电话13800000000`` was released
+  with the name intact, and ``{"name": "张伟<U+200B>"}`` likewise.
+  ``core/textnorm.strip_invisible`` now removes format characters, variation
+  selectors and the tag block once, at the entry to the pipeline, so the string
+  that is detected, transformed, verified and released is one string throughout
+  and no span offset has to be remapped. The detectors' end conditions accept
+  the same characters as boundaries as a second layer, so a rule that reads text
+  without passing through the entry points cannot be blinded either. A sweep of
+  all 23 detectors against 29 invisible characters found only those four
+  affected; the contract check now pins every one of them.
+- **A JSON escape carried a control character past the admission check.**
+  ``"\u0000"`` and ``"\u200b"`` are legal JSON escapes, so a file whose bytes
+  contain no control character at all still reached the detectors with a NUL
+  inside a leaf — and the leaf-internal NUL broke the same end conditions.
+  Structured leaves are now admitted exactly as text is:
+  ``formats/json_payload.py`` and ``formats/csv_payload.py`` put every leaf
+  through ``strip_invisible`` and ``reject_if_binary``, so a NUL in a JSON
+  escape is a BLOCK instead of a silent release.
+- **The guard's string entry did not classify its input.** ``Guard.evaluate``
+  and ``Guard.sanitize`` declared every ``str`` plain text, so one document was
+  a structured payload to the CLI and to the adapters and prose to a library
+  caller — the divergence ``docs/scope.md`` states cannot happen.
+  ``{"患者姓名": "张伟"}`` reached ALLOW and was released untouched, and
+  ``{"phone": 13800000000}`` was rewritten into ``{"phone": [REDACTED]}``,
+  which is not JSON. The entry now classifies through ``formats.admission``,
+  and a decoded ``dict``/``list`` is accepted as a JSON payload, the way the
+  adapters accept it.
+- **``inspect`` and ``sanitize`` reached different conclusions about one file.**
+  ``inspect`` ran the content classifier over a CSV file, where it has no
+  meaning: a first cell that looked like a JSON container was refused with exit
+  code 2, while ``sanitize`` read the same file as CSV and released it. Both
+  commands now admit input through ``_payload_for_path``.
+- **A rebuild could release a value verification never saw.** Verification reads
+  the flattened text; the released string is the rebuilt document, and the two
+  are different strings. The rebuilt document is now re-decided before release,
+  so a rebuild that dropped, mis-keyed or reintroduced a value produces a
+  verdict that is not releasable and the payload is withheld instead of being
+  reported as a verified sanitization.
+- **A non-string object key was written back as a second key.** Leaf paths are
+  JSON Pointers built from ``str(key)``, so replacing a value held under an
+  ``int`` key added a key rather than overwriting one: ``{1: "姓名：张伟"}``
+  released a document carrying the original, unredacted value under a duplicate
+  ``"1"``. A non-string key is now an admission failure, as is a value JSON
+  cannot carry (``bytes``, ``set``, an arbitrary object), which used to surface
+  as a ``TypeError`` from inside the transformation rather than as a verdict.
+- ``Guard`` no longer registers a second ``DictionaryDetector`` when a caller's
+  own detector set already contains one.
+- **An English key disabled the English rules.** ``{"name": "John Smith"}`` was
+  probed as ``姓名：John Smith``: the Chinese rules need ideographs to capture,
+  the English rules look for ``name:``/``patient:``, and neither fired, so the
+  document reached ALLOW and was released with the name intact. A leaf now
+  carries every label spelling its key implies (``probes`` in
+  ``formats/leaf.py``), each spelling is probed, and the passes are merged into
+  one non-overlapping fact set, so the same value matched under both spellings
+  is still one fact. The probe separator is a half-width colon, which every
+  label-driven rule accepts and the English rules require.
+- The interpunct that joins the parts of a transliterated name was accepted in
+  one encoding only: ``阿依古丽·买买提`` (U+00B7) was detected, the same name
+  written with U+30FB — the mark a Chinese IME produces — or U+2027 was not.
+  ``detectors/surnames.NAME_MARKS`` holds the closed list of what may stand
+  inside a name, and all name captures use it.
+
+## [0.3.3] - 2026-09-24
+
+### Fixed
+
+- **A JSON number that is an identifier was released untouched.** Numbers were
+  not collected as leaves at all, so ``{"mrn": 1234567}`` produced no fact, the
+  verdict was ALLOW, and the record went out with the number intact. The same
+  value as a string was sanitized, and ``{"id_card": <number>}`` bypassed the
+  hard government-ID BLOCK rule. Numeric leaves are now collected as
+  **read-only**: detection sees them, the transformation layer never writes over
+  them, and a payload carrying one can no longer reach SANITIZE. The verdict is
+  ASK, or BLOCK where a hard rule applies. Booleans and null still produce no
+  leaf.
+
+### Added
+
+- ``read_only`` on ``DetectedFact``, ``PublicDetectedFact`` and ``Leaf``, plus
+  the ``UNTRANSFORMABLE_IDENTIFIER`` reason code, so a withheld payload states
+  why instead of only that it was withheld.
+- A fourth section in ``tools/audit_contracts.py``: read-only leaves against the
+  verdict. It was confirmed to fail with the policy guard disabled — the three
+  existing sections were all green while this defect was live, which is the
+  point of adding it.
+- ``tests/test_json_payload.py::TestReadOnlyLeaves``: numeric against string
+  verdicts, hard-rule precedence, nested and array forms, the approved-recipient
+  case, and an audit event carrying no raw value.
+- **v0.4 skeleton**: the ``adapters/`` package with ``release_or_raise``, the
+  single verdict-to-caller mapping every vendor transport will use, plus the
+  caller-facing exception family ``DisclosureBlocked``,
+  ``HumanApprovalRequired`` and ``VerificationFailed`` in ``core/errors.py``.
+  Vendor transports are not started, and ASK grants are not implemented:
+  ``HumanApprovalRequired`` says a scoped grant is required, not how one is
+  obtained. The package name follows ``docs/architecture.md``, which already
+  described ``adapters/``; ``ROADMAP.md`` said ``integrations/`` and now agrees.
+- Release-gate checks for version consistency: ``__version__`` against
+  ``pyproject.toml``, the current version against a CHANGELOG section, section
+  uniqueness and ordering, and a section running ahead of the version. The first
+  two were listed as release-gate conditions in ``ROADMAP.md`` and nothing
+  enforced them. Both were confirmed to fail when the version is bumped without
+  the matching changes.
+
+### Notes
+
+- ``EXTERNAL_APPROVED`` does not relax this. An approved recipient lowers risk
+  scores, not transformability. A government ID in a number is still BLOCK for
+  ``EXTERNAL_UNKNOWN``, because the hard rules run before the read-only path.
+- Known boundary, unchanged by this fix: a bare 8-digit date (``{"date":
+  20260921}``) is detected in neither form. The date detector requires a
+  separator or Chinese numerals, so ``日期：20260921`` is missed as text too.
+  Recorded here because a number is exactly where the separator-less spelling
+  appears in practice.
+- Five defects were found by adversarial review of the gateway **while every
+  test was green**, which is the point of doing it:
+  - a JSON-RPC **batch** carrying a ``tools/call`` was forwarded whole, so its
+    arguments crossed the boundary unchecked. MCP does not define batching, and
+    a batch cannot be rewritten in part, so one carrying a tool call is now
+    refused entirely;
+  - a **missing server command** raised an uncaught ``FileNotFoundError``: a
+    traceback and exit 1 instead of the documented configuration-error code 4.
+    It is now a ``GatewayError``;
+  - the **reader thread died with a traceback** when the client disconnected,
+    which reads like a crash rather than a disconnect;
+  - a ``tools/call`` sent as a **notification** (no ``id``) was answered with a
+    JSON-RPC error, which the specification forbids — a receiver must not reply
+    to a notification. The call is still not forwarded, but no reply is sent;
+  - **SIGTERM left the wrapped server running** as an orphan (PPID 1), because
+    only Ctrl+C was handled and SIGTERM's default action skips cleanup. This
+    leaks a server per stop under systemd or docker. SIGTERM now routes through
+    the same path, and shutdown has a bounded wait before escalating to kill.
+- The gateway's first draft treated SANITIZE as permission. A call whose
+  arguments carried a phone number was forwarded with the number intact — visible
+  only because the probe's upstream server echoed back what it had received.
+  SANITIZE means "may proceed only with the identifiers removed", so the decision
+  is three-way.
+- Refusals use JSON-RPC code ``4001``. The specification reserves
+  ``-32020..-32099`` for itself and marks ``-32000..-32019`` legacy, saying new
+  codes SHOULD be allocated outside the reserved range entirely; ``-32001`` would
+  have been wrong.
+- Not inspected, and recorded in ``docs/scope.md``: responses (this is an egress
+  guard), methods other than ``tools/call``, the server's ``stderr``, and the
+  MRTR ``requestState`` blob, which the specification forbids a client from
+  examining or modifying.
+- ``ROADMAP.md``'s v0.3 section still described the plan — XLSX,
+  ``sanitize_file()``, a file-scoped token map, a dataset-level uniqueness check
+  — while its status row said XLSX was deferred. The section now separates what
+  shipped from what did not and records why: CSV covers the XLSX need, the CLI
+  writes to a separate output file rather than overwriting its input, and
+  declaring the encoding was a deliberate choice rather than an omission.
+
+## [0.3.2] - 2026-09-23
+
+### Fixed
+
+- **`person.py` never adopted `field_syntax`.** It spelled out its own "colon
+  or whitespace", so ``姓名=张伟`` was missed while ``病历号=ZY1`` was caught.
+  It now uses ``FIELD_SEP_REQUIRED`` like every other labelled field.
+- **The department label rule had the same gap** (``科室=神经内科`` and the
+  bracketed form were missed). It now uses ``FIELD_SEP`` / ``VALUE_OPEN``.
+- **Signature and assistant lines were not covered**: ``医师签名：王强`` and
+  ``助手：邓超`` produced no fact. Both are standard in surgical and outpatient
+  notes.
+- **A department reached by a movement verb was missed**: in
+  ``由急诊科转入心血管内科`` neither the label rule nor the trailing-suffix rule
+  applied. ``_DEPARTMENT_AFTER_RE`` now includes the movement verbs.
+- **A nested kinship value was missed**: ``家属：其妻白洁陪同`` failed because the
+  value must start with a surname and 其 is not one. The kinship term may now
+  repeat after the label.
+- **The adjacent person form and the verifier kept separate boundary lists.**
+  Adding a word to one and not the other turns a detection into a verification
+  failure. `person.py` now uses the shared `NAME_FOLLOW_BOUNDARY`.
+
+### Added
+
+- ``tools/evaluate_simulation.py`` with a hand-written corpus under
+  ``tests/fixtures/simulation/``. It measures **generalisation** rather than
+  agreement with the template generator, and is deliberately not a build gate.
+  Baseline was 10.0% missed / 5.3% over-redacted; after these fixes it is
+  **2.7% / 0.0%**, and the two remaining misses are the documented
+  bare-name non-detection.
+- ``tools/audit_contracts.py``: checks separator spelling across fields, fact
+  types against the policy tables, and detection against transformation. It
+  catches the "declared but not wired" defect class, which has now occurred four
+  times (v0.2.1, v0.2.4, v0.3.x, and once more while fixing this release).
+
+### Notes
+
+- A judgement was reversed during this work. ``会诊科室：X`` was initially
+  treated as a referral target to leave alone, but the corpus marks 40 such
+  fields as detectable and ``docs/scope.md``'s deliberate non-detection covers
+  the *verb* form (``建议神经内科会诊``), not the labelled field. The exclusion
+  was reverted and the simulation corpus labels were corrected to match.
+- README's capability list had fallen behind: it still listed CSV and JSON
+  traversal as unimplemented and described CLI admission as rejecting JSON
+  containers. Corrected.
+
+## [0.3.1] - 2026-09-22
+
+### Added
+
+- **CSV support**, completing the v0.3 format set apart from XLSX. A table is
+  flattened into its cells, run through the text pipeline, and rebuilt with the
+  header, row and column structure intact. Recognised by suffix, since no byte
+  pattern marks a CSV file.
+- **Column detection is two-sided.** Column names supply the field label, which
+  is what makes a value detectable at all; cell scanning is the source of truth
+  for facts, because a header can be wrong, missing or duplicated. A table with
+  unconventional headers simply gets no labels and still has its cells scanned.
+- ``--encoding`` on ``inspect`` and ``sanitize``. The encoding is stated and
+  **never guessed**: a wrong codec is reported with the codec named, because
+  mojibake that reaches a model is worse than an error that reaches the
+  operator. ``gb18030`` covers legacy exports.
+
+### Notes
+
+- Token consistency is a file-level property. Because a whole table is flattened
+  and transformed in one pass, the same patient name in several rows maps to the
+  same token — row identity does not leak through token numbering.
+- Rebuilt CSV follows the csv module's minimal quoting: an input that quoted
+  every field comes back minimally quoted. The data is identical, the bytes are
+  not.
+- ``.tsv`` remains unsupported: it needs a delimiter choice, not just a codec.
+- A first row is treated as a header when any of its cells is a recognised field
+  name. That heuristic can misread a data row whose first cell is a field name.
+
+## [0.3.0] - 2026-09-22
+
+### Added
+
+- **JSON payload support.** An object or array is flattened into its string
+  leaves, run through the existing text pipeline, and written back into a copy
+  of the original structure. Keys, array lengths, ordering and non-string values
+  are preserved; only the values the plan targeted change.
+- **A JSON key acts as a field label.** ``{"name": "张三"}`` is detected because
+  the key says what the value is; without that mapping the value is bare prose,
+  which the detectors deliberately leave alone. Key lookup is case-insensitive
+  and ignores ``_``/``-``/spaces, so ``patient_name``, ``patientName`` and
+  ``Patient Name`` all resolve.
+- ``Payload(kind="json", ...)`` accepts either serialised text or an
+  already-decoded object, and the CLI routes ``.json`` files to the structured
+  path.
+
+### Design
+
+- **One decision per document, transformation per leaf.** A structured payload
+  is the unit of disclosure, not the field: one direct identifier withholds the
+  record, because a partially released record is exactly where cross-field
+  quasi-identifiers do their damage. Audit and verification contracts are
+  therefore unchanged.
+- **Leaves are joined with NUL** when flattened. NUL cannot appear in a JSON
+  string and no detector matches it, so two adjacent leaves can never form a
+  pattern that exists in neither — ``{"a": "患者张", "b": "三入院"}`` stays
+  clean.
+- **Nesting is walked iteratively.** Depth is caller-controlled, and a payload
+  of a few thousand brackets overflows Python's recursion limit before any size
+  limit applies.
+
+### Known boundary
+
+- Numeric, boolean and null leaves are **not** inspected: rewriting a number
+  would change its JSON type and silently break the consumer. A numeric value
+  that happens to be an identifier (``{"phone": 13800000000}``) is therefore not
+  detected. Recorded in ``docs/scope.md`` rather than left implicit.
+- JSON keys themselves are not treated as values, so a name used as a key is not
+  detected.
+- CSV is not implemented yet; ``.csv`` files remain blocked.
+
+### Changed
+
+- CLI admission: a well-formed JSON container now takes the structured path
+  instead of being blocked. Something that looks like a container but does not
+  parse (truncated, double-wrapped) is still an admission failure, while
+  ordinary text starting with a bracket (``[随访] 记录``) stays on the plain-text
+  path.
+
+## [0.2.6] - 2026-09-22
+
+### Added
+
+- **Chinese numeral dates** (``二〇二六年九月二十一日``). Formal documents and
+  signature lines write dates this way; they matched no pattern, so the note was
+  released with the date intact. Now detected, generalized to the month and
+  verified, and the digit and numeral forms reach the same output. Impossible
+  calendar dates (``二〇二三年二月三十日``) are still not facts.
+- **Title-suffix names whose given character is outside the inventory**
+  (``郑沫医生``, ``欧阳修远医生``). The title already supplies the end boundary,
+  so the inventory only caused misses here; the same names behind a labelled
+  field were captured whole.
+- Ten challenge probes that had been deleted are absorbed: eight reach their
+  declared verdict and now run in CI, two are bare-name forms that stay outside
+  the baseline and are recorded as exploratory. Six further coverage probes
+  cover the new forms and their over-redaction controls.
+
+### Changed
+
+- ``_DOCTOR_SUFFIX_RE`` and ``_NURSE_SUFFIX_RE`` capture a lazy 0–2 given-name
+  characters instead of drawing from the name inventory. The negative
+  lookbehinds that stop 主任医师 and 责任护士 from matching inside a title word
+  are unchanged, and a full title is still not absorbed (``患者李四住院医师``
+  yields no doctor).
+
+### Documentation
+
+- ``tests/fixtures/challenge/README.md`` dimensions: narrative 24 regression /
+  6 exploratory, coverage 16 regression.
+
+## [0.2.5] - 2026-09-22
+
+### Added
+
+- **Local institution vocabulary** (``.csv`` or ``.json``), loading institution,
+  department, ward and staff terms. Terms are detected alongside the built-in
+  rules — an institution's own records are stronger evidence than a shape match,
+  so the dictionary detector reports higher confidence and wins on overlap.
+- **The first genuinely independent verification signal.** A term the rules
+  never knew cannot be found by re-scanning with those same rules; the
+  vocabulary can. A surviving term fails verification with
+  ``DICTIONARY_RESIDUAL``.
+- ``Guard(dictionary_path=...)`` and ``--dictionary`` on ``inspect`` and
+  ``sanitize``. No dictionary means no behaviour change.
+- ``Guard(detectors=...)``, the reserved extension point for callers that want
+  to add their own detectors (including models). Supplied detectors may only
+  extend recall: policy still decides, verification still runs, audit is still
+  written by the guard.
+- Audit events carry ``dictionary_loaded`` and ``dictionary_entries`` — counts
+  only. The vocabulary names real institutions and real staff, so its contents
+  never enter an audit record, a log line or an error message.
+
+### Notes
+
+- A dictionary term in a referral context (``建议神经内科会诊``) stays
+  undetected, and verification agrees: the residual check reuses the detector
+  rather than re-implementing the match rules, so the two cannot disagree and
+  no note containing a referral is blocked. ``docs/scope.md`` owns that
+  judgement, not the vocabulary.
+- Loading fails closed: an unreadable file, a missing header, an unknown
+  category or an empty term raises rather than being skipped, because a
+  vocabulary the deployment believes is active but which loaded nothing is
+  worse than none.
+- ``.xlsx`` is deliberately not supported; ``.csv`` covers the same need
+  without adding a dependency.
+
+## [0.2.4] - 2026-09-22
+
+### Added
+
+- **Chinese numeral ages** (``五十六岁``, ``两岁``) are detected and
+  generalized. Digits and numerals now reach the same verdict: previously
+  ``患者，女，56岁。`` was sanitized while ``患者，女，五十六岁。`` produced no
+  fact at all and was released unchanged — including the sex beside it, because
+  the sex rule keyed off the digits.
+- **Comma-separated sex** (``患者，女，67岁``). The adjacent-only form missed it
+  while the digits-only variant still matched, so the gap was invisible.
+- **Bracketed name values** (``患者（张三）``, ``患者姓名（李四）``).
+- **Labelled bed numbers** (``床号 12``, ``床号：A03``). ``床位`` is
+  deliberately not a label: it is a capacity concept, not an identifier.
+- **Unlabelled addresses** introduced by a residence verb
+  (``患者住北京市朝阳区建国路1号。``). The value must end at an administrative or
+  street suffix, and ``住院`` / ``住所`` / ``住房`` are excluded explicitly, so
+  ordinary prose does not match.
+
+### Fixed
+
+- Age generalization and the age postcondition now understand Chinese numerals.
+  Detection alone was not enough: the fact was reported, policy planned
+  GENERALIZE, and the transformer raised ``cannot generalize age value`` —
+  turning a silent release into a failed request. Detection, transformation and
+  verification are pinned together by the new tests.
+
+### Documentation
+
+- ``tests/fixtures/challenge/`` gains a ``coverage`` dimension with ten probes,
+  four of them over-redaction controls.
+
+## [0.2.3] - 2026-09-22
+
+### Fixed
+
+- **The audit leak gate reported raw leaks on logs that leaked nothing.** The
+  gate scans the whole audit stream for corpus values with a naive substring
+  test, and the stream carries random hex: ``event_id`` (a UUID, 32 characters)
+  and, since v0.2.2, ``prev_hash`` / ``event_hash`` (64 characters each). A
+  six-digit postal code such as ``730908`` occurs inside a 64-character hash by
+  chance, and because the gate is absolute (must be 0) a single chance hit
+  failed the whole run. The three random fields are now stripped before
+  scanning; they carry no payload, so a genuine leak in a semantic field is
+  still caught. Eight regression tests pin both directions.
+
+### Notes
+
+- This is the intermittent benchmark failure recorded in
+  ``.internal/ci-flaky-investigation-2026-09-21.md``, previously attributed to
+  runner resource timing. That conclusion was wrong: the failing gate was
+  ``audit_raw_leak``, not one of the three counters the note suggested checking.
+  The defect predates v0.2.2 — the chain hashes raised the random hex from 32 to
+  160 characters per record, which made the existing flake reproducible rather
+  than causing it.
+
+## [0.2.2] - 2026-09-22
+
+### Added
+
+- **Chained audit integrity.** Every audit event now carries ``prev_hash`` and
+  ``event_hash``, so a deleted, reordered or edited record is detectable.
+  ``AuditWriter`` reads and writes the link under an exclusive ``flock``,
+  because a chain turns the append into a read-modify-write and two writers that
+  read the same predecessor would fork it. Without ``fcntl`` (Windows) the chain
+  is still written, but concurrency falls back to the filesystem's append
+  semantics as in v0.2.1.
+- ``audit-verify`` CLI command and ``verify_chain()`` API, reporting total,
+  chained and pre-chain counts plus per-record failures. Exit codes: ``0``
+  intact, ``2`` broken, ``4`` unreadable. A missing log is an error, not an
+  intact chain.
+- Optional HMAC key through ``Guard(audit_key=...)`` or the
+  ``MEDICAL_PRIVACY_GUARD_AUDIT_KEY`` environment variable. A key authenticates
+  records against wholesale rewriting; an unkeyed chain only detects accidental
+  damage and naive tampering. The key is read from the environment rather than
+  argv so it never appears in a process listing.
+- ``read_events()`` for read-only log access that never creates the directory or
+  the log.
+
+### Changed
+
+- Audit records written by v0.2.1 and earlier carry no hashes. They are read as
+  "pre-chain", counted separately, and do not fail verification, so an existing
+  log keeps verifying; the chain starts at the first hashed record.
+- The benchmark's audit schema gate expects the two new fields. Its exact
+  field-set check is unchanged and still rejects any unexpected field.
+
+### Notes
+
+- What the chain does **not** cover, stated rather than implied: tail truncation
+  (the surviving links stay self-consistent), whole-chain rewriting without a
+  key, and timestamp authenticity. Detecting the first needs an external anchor
+  holding the expected length, which this library deliberately does not provide.
+  See ``.internal/audit-hash-chain-plan-2026-09-22.md``.
+
+## [0.2.1] - 2026-09-22
+
+### Fixed
+
+- **Staff and relative names were released partially redacted.** The nurse,
+  physician and relative detectors bounded a labelled name with the given-name
+  character inventory, which cannot be complete. A name whose given character
+  was outside it was captured only up to the surname and the remainder was
+  released: ``责任护士：郑爽。`` sanitized to ``责任护士：[NURSE_NAME_001]爽。``
+  while verification reported success, because an orphaned given-name character
+  no longer matches a name pattern. A labelled value is now bounded by its
+  separator and a following-boundary word instead of the inventory, so the whole
+  name is captured whatever characters it uses.
+- ``医生：X``, ``主刀医生：X``, ``管床医生：X`` and ``值班医生：X`` produced no
+  ``DOCTOR_NAME`` fact at all — the title list omitted them. ``护士：X`` and
+  ``护师：X`` were missing from the nurse list in the same way.
+- Adjacent staff and relative names (``其妻郑爽陪同``) truncated at the same
+  character inventory. The inventory is extended with given-name characters that
+  are overwhelmingly names rather than ordinary words.
+- A bracketed value after a staff or relative label (``家属：王芳（女儿）``,
+  ``主治医师：王建国（主任）``) yielded no fact at all, and a compound surname in
+  the title-suffix form (``欧阳娜娜医生``) was missed because that branch carried
+  no compound-surname alternative.
+
+### Added
+
+- Verification rejects a name span that stops inside the name, or that is
+  followed by text no boundary word explains. The check reads the original text,
+  because re-detection cannot see a character the detector never captured. A
+  truncated name withholds release instead of being silently released.
+- ``NAME_FOLLOW_BOUNDARY`` (shared boundary words) and ``FIELD_SEP_REQUIRED`` (a
+  separator that must be present), so the labelled and adjacent name shapes are
+  handled by distinct rules instead of one permissive rule that has to guess.
+- ``tests/test_name_span_completeness.py`` (55 cases) and six challenge-corpus
+  regression probes covering labelled values outside the inventory, the added
+  staff labels, and two over-redaction controls.
+
+### Documentation
+
+- ``docs/scope.md`` records the name-span completeness requirement and the
+  fail-closed condition for a name followed by unexplained text.
+- ``docs/architecture.md`` no longer states that v0.2 is unreleased.
+
+### Notes
+
+- Remaining trade-off, unchanged in kind from v0.2.0: the adjacent form still
+  needs the character inventory, so a name whose given character is outside it is
+  missed there (``主治医师欧阳修远`` yields no fact). A labelled field
+  (``姓名：``, ``主治医师：``) does not have this limitation.
+
+## [0.2.0] - 2026-09-21
+
+### Added
+
+- Evaluation harness over a 175-document synthetic Chinese clinical corpus
+  (140 labelled documents, 1474 spans; 35 identifier-free documents), with
+  strict one-to-one span matching, per-document lifecycle gates and
+  audit-integrity gates. Expected paths: 135 SANITIZE, 5 ASK, 35 ALLOW.
+- CLI format admission: known unsupported extensions, NUL and other unsupported
+  control characters, and JSON-container content are blocked before detection.
+- Independent recall guard (`detectors/recall_guard.py`) covering the narrative
+  `姓名，性别` opener that label-anchored detectors structurally miss.
+- Shared field separator (`detectors/field_syntax.py`): colon, equals,
+  whitespace, no separator, and bracketed values.
+- Detectors for landlines, social-media handles, staff names, relatives named in
+  the history, postal codes (label-required), institution, department, ward and
+  bed designations, ages in months (1–36), and encounter/action terms as
+  medical-content signals.
+
+### Changed
+
+- Transformations and verification enforce type-specific postconditions (date
+  precision, age bands, location/institution type markers) rather than
+  accepting any value change.
+- Audit writes fail closed: short or zero writes, and persistence errors,
+  withhold the payload.
+
+### Fixed
+
+- Adjacent person-field over-capture. `患者张三入院` reported `PERSON_NAME`
+  `张三入院`, and `患者于协和医院住院治疗` reported `于协和医院住院` while never
+  emitting `HOSPITAL_NAME`; sanitizing the latter released
+  `患者[PERSON_NAME_001]治疗` with exit `0`. The adjacent form is now capped at
+  four characters, excludes institution words, and stops at clinical verbs and
+  connectives.
+- Institution names preceded by a function word (`患者在宣武医院住院`) were
+  discarded whole instead of truncated at the last rejected character.
+- Age in months (`患儿6个月`) produced no `AGE` fact.
+- Address labels `户籍地`, `户籍所在地`, `籍贯`, `工作单位`, `单位地址` were missing.
+- Narrative medical statements without a label word (`因脑梗死入院`) bypassed the
+  ASK path for unknown recipients.
+- The labelled rare-context phrase `罕见变异型病例` was detected only as
+  `罕见变异`, and a document-level `MEDICAL_CONTENT` match then displaced the
+  shorter rare-context fact, silently skipping the ASK path.
+- English MRN `medical record number` self-matched, making that field
+  impossible to verify.
+- Record/specimen numbers reported spans via `m.end() - len(value)`, absorbing a
+  trailing bracket and raising `TransformerError`.
+
+### Documentation
+
+- `docs/scope.md` is the authoritative capability boundary, with explicit
+  measured-vs-unmeasured, deliberate non-detection, and prohibited-claims
+  sections.
+- `docs/evaluation.md` records strict results, fault-injection evidence, and the
+  corpus's structural blind spots.
+- `docs/threat-model.md` and `docs/decision-protocol.md`.
+
+## [0.1.0] - 2026-08-29
+
+### Added
+
+- UTF-8 plain-text input through the Python API and the CLI.
+- Deterministic baseline detectors: CN mobile numbers, CN resident ID with GB
+  11643-1999 check digit, email, exact dates, labelled patient names and MRNs,
+  HTTP(S) URLs, IPv4 addresses, labelled precise addresses, and a baseline
+  medical-content signal.
+- Policy-driven decision protocol: ALLOW / SANITIZE / ASK / BLOCK, with a
+  fail-closed fallback for a detected fact type that has no matching rule.
+- Transformations: REMOVE, MASK, TOKENIZE, GENERALIZE, DATE_SHIFT.
+- Post-transformation verification and residual policy re-evaluation.
+- Metadata-only JSONL audit (owner-only permissions, fail-closed writes).
+
+[Unreleased]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.6.0-rc.1...HEAD
+[0.6.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0...v0.6.0-rc.1
+[0.5.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.3...v0.5.0
+[0.5.0-rc.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.2...v0.5.0-rc.3
+[0.5.0-rc.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.5.0-rc.1...v0.5.0-rc.2
+[0.5.0-rc.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.4.0...v0.5.0-rc.1
+[0.4.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.4...v0.4.0
+[0.3.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.3...v0.3.4
+[0.3.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.6...v0.3.0
+[0.2.6]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/mokuyoaxis/medical-privacy-guard/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/mokuyoaxis/medical-privacy-guard/releases/tag/v0.2.0
+[0.1.0]: https://github.com/mokuyoaxis/medical-privacy-guard/releases/tag/v0.1.0

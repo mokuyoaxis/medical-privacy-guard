@@ -1,0 +1,12 @@
+{
+  "doc_id": "coverage_002",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "五十岁"
+  ],
+  "probe_note": "over-redaction control: a population threshold is not a patient age"
+}

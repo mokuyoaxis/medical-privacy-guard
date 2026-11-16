@@ -1,0 +1,883 @@
+"""Command-line interface for medical-privacy-guard.
+
+Commands:
+    inspect   <file> [--json] [--profile P] [--recipient T] [--purpose U]
+    sanitize  <file> [-o OUT] [--profile P] [--recipient T] [--purpose U]
+              [--audit-dir DIR]
+    benchmark <corpus_dir> [--json] [--profile P] [--limit N]
+    audit-verify <audit_dir> [--json] [--key-env VAR]
+    serve [--upstream URL] [--host H] [--port N] [--profile P]
+    mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
+    dicom-inspect <file> [--json]
+    grant-issue <request_file> --approve --issuer ID --ttl-seconds N -o GRANT
+    grant-db-init / grant-status / grant-revoke [--grant-db DB]
+    dataset-risk <files...> --quasi-identifier COLUMN
+    dataset-sanitize <files...> --output-dir NEW_DIR
+
+Exit codes:
+    0  ALLOW, or verified SANITIZE/approved ASK; for audit-verify, an intact chain
+    2  BLOCK (or verification failure — no output is produced); for
+       audit-verify, a broken chain
+    3  ASK
+    4  internal / parser / configuration error
+    mcp-gateway is the exception: it runs until the wrapped server exits and
+    propagates that server's exit code, because the client is waiting on the
+    server's lifecycle rather than on a verdict.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Mapping, Sequence
+
+from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters.http_gateway import HttpGateway, HttpGatewaySettings
+from medical_privacy_guard.adapters.mcp_gateway import GatewaySettings, McpGateway
+from medical_privacy_guard.core.audit import read_events, verify_chain
+from medical_privacy_guard.core.benchmark import run_benchmark
+from medical_privacy_guard.core.dataset import analyze_dataset, read_dataset_file, sanitize_dataset
+from medical_privacy_guard.core.errors import AuditError, GrantError, GuardError, ParserError
+from medical_privacy_guard.core.grant import ApprovalRequest, Grant, GrantIssuer, env_grant_key
+from medical_privacy_guard.core.grant_files import read_approval_file, write_approval_file
+from medical_privacy_guard.core.grant_sqlite import (
+    DEFAULT_GRANT_DB_PATH,
+    SqliteGrantRegistry,
+    initialize_grant_registry,
+)
+from medical_privacy_guard.core.model import (
+    Decision,
+    DetectedFact,
+    Payload,
+    Purpose,
+    Recipient,
+    TrustLevel,
+    Verdict,
+)
+from medical_privacy_guard.formats.admission import (
+    UnsupportedInput,
+    payload_for_text,
+    read_text_file,
+)
+
+EXIT_OK = 0
+EXIT_BLOCK = 2
+EXIT_ASK = 3
+EXIT_ERROR = 4
+
+DEFAULT_PROFILE = "external-ai-strict"
+#: Environment variable holding the optional audit HMAC key. A key is read from
+#: the environment rather than argv so it never lands in a process listing.
+DEFAULT_AUDIT_KEY_ENV = "MEDICAL_PRIVACY_GUARD_AUDIT_KEY"
+# Kept in step with core.benchmark.DEFAULT_RECIPIENT: the corpus expects its
+# positive documents to be sanitized and released, which only an approved
+# endpoint allows.
+DEFAULT_BENCHMARK_RECIPIENT = "external_approved"
+
+_TRUST_LEVELS = {t.value.lower(): t for t in TrustLevel}
+_PURPOSES = {p.value.lower(): p for p in Purpose}
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="medical-privacy-guard",
+        description="Local-first privacy guardrails for medical data.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    format_boundary = (
+        "Plain text, JSON objects/arrays and CSV files are supported; state the "
+        "encoding with --encoding (it is never guessed). Known unsupported "
+        "suffixes and binary markers are blocked; arbitrary disguised formats "
+        "cannot be detected."
+    )
+    p_inspect = sub.add_parser(
+        "inspect", help="Detect and evaluate without modifying data.", epilog=format_boundary,
+    )
+    p_inspect.add_argument("file", help="UTF-8 text file to inspect")
+    p_inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    p_inspect.add_argument(
+        "--dictionary", default=None,
+        help="Optional .csv or .json institution vocabulary (local-only)",
+    )
+    p_inspect.add_argument(
+        "--encoding", default="utf-8-sig",
+        help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
+    )
+    _add_common(p_inspect)
+    p_inspect.add_argument("--approval-request-out", help="New private signed approval request file")
+
+    p_sanitize = sub.add_parser(
+        "sanitize", help="Sanitize a file and write the result.",
+        epilog=(format_boundary + " Use trusted directories: path preflight is not "
+                "protection against concurrent directory or audit-path replacement. "
+                "Failed output writes may leave an incomplete owner-only file."),
+    )
+    p_sanitize.add_argument("file", help="UTF-8 text file to sanitize")
+    p_sanitize.add_argument(
+        "-o", "--output", default=None,
+        help="New owner-only output file; existing paths are refused (default: stdout)",
+    )
+    p_sanitize.add_argument("--audit-dir", default=None, help="Append audit events to this directory")
+    p_sanitize.add_argument(
+        "--dictionary", default=None,
+        help="Optional .csv or .json institution vocabulary (local-only)",
+    )
+    p_sanitize.add_argument(
+        "--encoding", default="utf-8-sig",
+        help="Input encoding; never guessed (e.g. gb18030 for legacy exports)",
+    )
+    _add_common(p_sanitize)
+    p_sanitize.add_argument("--approval-request-out", help="New private signed approval request file on ASK")
+    p_sanitize.add_argument("--grant-file", help="Private deployment-issued grant file")
+    p_sanitize.add_argument("--grant-db", help="Absolute initialized SQLite registry path")
+    p_sanitize.add_argument("--grant-timeout", type=float, default=5.0, help="SQLite lock wait in seconds")
+
+    p_issue = sub.add_parser("grant-issue", help="Issue a grant after explicit local human review")
+    p_issue.add_argument("request_file", help="Private signed approval request from Guard")
+    p_issue.add_argument("--approve", action="store_true", help="Confirm that the disclosure was reviewed and approved")
+    p_issue.add_argument("--issuer", required=True, help="Deployment-controlled opaque reviewer ID")
+    p_issue.add_argument("--ttl-seconds", type=int, required=True, help="Required positive lifetime")
+    p_issue.add_argument("--uses-allowed", type=int, default=1)
+    p_issue.add_argument("--accepted-type", action="append", default=[], help="Explicit accepted read-only fact type; repeatable")
+    p_issue.add_argument("-o", "--output", required=True, help="New private grant file; existing paths refused")
+
+    for name, help_text in (
+        ("grant-db-init", "Explicitly create a new private SQLite registry"),
+        ("grant-status", "Read committed uses and revocation status"),
+        ("grant-revoke", "Persistently revoke a grant ID, including unused IDs"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("--grant-db", default=str(DEFAULT_GRANT_DB_PATH), help="Absolute private SQLite registry path")
+        command.add_argument("--grant-timeout", type=float, default=5.0)
+        if name != "grant-db-init":
+            command.add_argument("grant_id", help="Opaque grant ID")
+
+    p_benchmark = sub.add_parser(
+        "benchmark",
+        help="Evaluate the guard against an annotated synthetic corpus.",
+    )
+    p_benchmark.add_argument("corpus", help="Corpus directory containing *.txt and *.spans.json")
+    p_benchmark.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    p_benchmark.add_argument("--limit", type=int, default=None, help="Evaluate only the first N documents")
+    # The corpus declares its expected verdicts for an approved endpoint; under
+    # the conservative default no note would ever reach the sanitize path and
+    # the benchmark would report a pass over zero measurements.
+    _add_common(p_benchmark, recipient_default=DEFAULT_BENCHMARK_RECIPIENT)
+
+    p_serve = sub.add_parser(
+        "serve",
+        help="Run a local OpenAI/Anthropic-compatible HTTP gateway.",
+        description=(
+            "Expose /v1/chat/completions and /v1/messages on a local HTTP "
+            "listener. Existing SDKs only need their base_url pointed at this "
+            "gateway. The request body is evaluated and rewritten by the same "
+            "guard used by the in-process adapters; responses are passed "
+            "through unchanged."
+        ),
+        epilog=(
+            "The default bind is 127.0.0.1. Responses are not inspected. See "
+            "docs/scope.md for the gateway boundaries."
+        ),
+    )
+    _add_common(p_serve)
+    p_serve.add_argument(
+        "--upstream",
+        required=True,
+        help="Fixed upstream origin, e.g. https://api.openai.com",
+    )
+    p_serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Listen address; non-loopback requires --allow-remote",
+    )
+    p_serve.add_argument("--port", type=int, default=8787)
+    p_serve.add_argument("--timeout", type=float, default=60.0)
+    p_serve.add_argument("--max-body-bytes", type=int, default=10 * 1024 * 1024)
+    p_serve.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Allow binding to a non-loopback address",
+    )
+    p_serve.add_argument(
+        "--audit-dir",
+        default=None,
+        help="Write a metadata-only JSONL audit event per decision",
+    )
+    p_serve.add_argument(
+        "--dictionary-path",
+        default=None,
+        help="Optional local institution vocabulary (.csv or .json)",
+    )
+
+    p_gateway = sub.add_parser(
+        "mcp-gateway",
+        help="Run a stdio MCP server behind the privacy guard.",
+        description=(
+            "Spawn an MCP server and mediate one stdio session with it. "
+            "Newline-delimited JSON-RPC is forwarded untouched, except for "
+            "tools/call: those are forwarded, rewritten, or refused according "
+            "to the guard's verdict. The command to wrap follows --."
+        ),
+        epilog=(
+            "Responses are not inspected: this is an egress guard. The upstream "
+            "exit code is propagated. See docs/scope.md for the boundaries, "
+            "including the fields the specification forbids inspecting."
+        ),
+    )
+    _add_common(p_gateway)
+    p_gateway.add_argument(
+        "--audit-dir",
+        default=None,
+        help="Write a metadata-only JSONL audit event per decision",
+    )
+    p_gateway.add_argument(
+        "--dictionary-path",
+        default=None,
+        help="Optional local institution vocabulary (.csv or .json)",
+    )
+    p_gateway.add_argument("--grant-file", action="append", default=[], help="Private local grant file; repeat for different disclosure fields")
+    p_gateway.add_argument("--grant-db", help="Absolute initialized SQLite registry path")
+    p_gateway.add_argument("--grant-timeout", type=float, default=5.0)
+    p_gateway.add_argument("--approval-scope", help="Stable unique deployment ID for this upstream server")
+    p_gateway.add_argument("--approval-request-dir", help="Private directory for signed requests requiring review")
+    p_gateway.add_argument(
+        "server",
+        nargs="+",
+        help="Upstream MCP server command, after --",
+    )
+
+    p_audit = sub.add_parser(
+        "audit-verify",
+        help="Verify the integrity chain of an audit log.",
+        epilog=(
+            "Exit codes: 0 intact, 2 broken, 4 unreadable. Tail truncation and "
+            "whole-chain rewriting are not detectable without a key or an "
+            "external anchor."
+        ),
+    )
+    p_audit.add_argument("audit_dir", help="Directory holding events.jsonl")
+    p_audit.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    p_audit.add_argument(
+        "--key-env",
+        default=None,
+        help="Environment variable holding the HMAC key (kept out of argv)",
+    )
+    p_dicom = sub.add_parser(
+        "dicom-inspect",
+        help="Inspect DICOM metadata for identifiers and report.",
+        description=(
+            "Read a DICOM file and report the identifying metadata it carries: "
+            "one row per PHI-bearing element, private tags, and the pixel-risk "
+            "status. The scanner reads only -- it never writes a DICOM file -- "
+            "and pixel risk stays UNKNOWN, so safe_to_release is false. "
+            "Requires the optional pydicom extra."
+        ),
+    )
+    p_dicom.add_argument("file", help="DICOM file to inspect")
+    p_dicom.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+
+    for name, help_text in (
+        ("dataset-risk", "Report aggregate quasi-identifier combinations in CSV/JSON rows"),
+        ("dataset-sanitize", "Minimize CSV/JSON files with one batch-scoped token map"),
+    ):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("files", nargs="+", help="CSV with headers or JSON row objects")
+        command.add_argument("--encoding", default="utf-8-sig")
+        command.add_argument("--quasi-identifier", action="append", default=[],
+                             help="Selected scalar column; repeat for a combination")
+        command.add_argument("--min-group-size", type=int, default=2,
+                             help="Engineering highlight threshold; does not authorize release")
+        if name == "dataset-sanitize":
+            command.add_argument("--output-dir", required=True, help="New private directory; existing paths refused")
+            command.add_argument("--dictionary", default=None)
+            command.add_argument("--audit-dir", default=None)
+            _add_common(command)
+    return parser
+
+
+def _add_common(
+    parser: argparse.ArgumentParser, recipient_default: str = "external_unknown"
+) -> None:
+    parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Policy profile name")
+    parser.add_argument(
+        "--recipient",
+        default=recipient_default,
+        choices=sorted(_TRUST_LEVELS),
+        help="Recipient trust level",
+    )
+    parser.add_argument(
+        "--purpose",
+        default="external_ai_assistance",
+        choices=sorted(_PURPOSES),
+        help="Declared disclosure purpose",
+    )
+
+
+# -- context helpers ---------------------------------------------------------
+
+
+def _payload_for_path(text: str, path: str) -> Payload:
+    """Build the payload for one file's contents.
+
+    CSV is recognised by suffix rather than by content: no byte pattern marks a
+    CSV file, and any text can be read as one. Everything else is classified by
+    content, and that classification lives in ``formats.admission`` so this CLI
+    and the adapters cannot disagree about what a document is.
+    """
+    return payload_for_text(text, is_csv=Path(path).suffix.lower() == ".csv")
+
+
+def _check_paths(
+    input_file: str, output: str | None, audit_dir: str | None,
+    protected_files: Sequence[str] = (),
+) -> None:
+    """Preflight aliases in trusted directories; not a directory-race sandbox."""
+    paths = [Path(input_file)]
+    if output is not None:
+        paths.append(Path(output))
+    if audit_dir:
+        paths.append(Path(audit_dir) / "events.jsonl")
+    paths.extend(Path(path) for path in protected_files)
+    try:
+        resolved = [path.resolve() for path in paths]
+        identities = []
+        for path in paths:
+            try:
+                info = path.stat()
+            except FileNotFoundError:
+                identities.append(None)
+            else:
+                identities.append((info.st_dev, info.st_ino))
+        for index, path in enumerate(resolved):
+            for other in range(index):
+                if path == resolved[other] or (
+                    identities[index] is not None
+                    and identities[index] == identities[other]
+                ):
+                    raise GuardError("input, output and audit log must be distinct files")
+        if output is not None and os.path.lexists(output):
+            raise GuardError("refusing to overwrite an existing output path")
+    except (OSError, RuntimeError) as exc:
+        raise GuardError("cannot validate input, output and audit log paths") from exc
+
+
+def _exit_for_verdict(verdict: Verdict) -> int:
+    if verdict is Verdict.BLOCK:
+        return EXIT_BLOCK
+    if verdict is Verdict.ASK:
+        return EXIT_ASK
+    return EXIT_OK
+
+
+# -- output formatting -------------------------------------------------------
+
+
+def _human_decision(decision: Decision, counts: Mapping[str, int]) -> str:
+    lines = [f"Decision: {decision.verdict.value}", f"Risk: {decision.risk.level.value}"]
+    if decision.reason_codes:
+        lines.append("Reason codes:")
+        lines.extend(f"  - {rc.value}" for rc in decision.reason_codes)
+    if counts:
+        lines.append("Entity counts:")
+        lines.extend(f"  - {kind}: {count}" for kind, count in sorted(counts.items()))
+    if decision.plan and decision.plan.operations:
+        lines.append("Plan:")
+        lines.extend(f"  - {op.op} {op.entity_type or op.target}" for op in decision.plan.operations)
+    return "\n".join(lines)
+
+
+def _json_decision(
+    decision: Decision,
+    counts: Mapping[str, int],
+    public_facts: Sequence,
+    sanitized: str | None = None,
+    verification: str | None = None,
+) -> str:
+    payload: dict = {
+        "decision": decision.verdict.value,
+        "risk": {"level": decision.risk.level.value, "score": decision.risk.score},
+        "reason_codes": [rc.value for rc in decision.reason_codes],
+        "counts": dict(counts),
+        "facts": [
+            {"type": f.type, "start": f.start, "end": f.end, "confidence": f.confidence}
+            for f in public_facts
+        ],
+    }
+    if decision.plan is not None:
+        payload["plan"] = {
+            "operations": [
+                f"{op.op}_{op.entity_type or op.target}" for op in decision.plan.operations
+            ]
+        }
+    if sanitized is not None:
+        payload["sanitized"] = sanitized
+    if verification is not None:
+        payload["verification"] = verification
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _counts(facts: Sequence[DetectedFact]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for f in facts:
+        counts[f.type] = counts.get(f.type, 0) + 1
+    return counts
+
+
+# -- commands ----------------------------------------------------------------
+
+
+def _cmd_inspect(args: argparse.Namespace) -> int:
+    """Detect and decide without modifying data.
+
+    Admission is the same rule ``sanitize`` applies (``_payload_for_path``), so
+    the two commands cannot reach different conclusions about one file. A CSV
+    file whose first cell happens to look like a JSON container used to be
+    refused here -- a content classifier has no meaning for a table -- while
+    ``sanitize`` read it as CSV and released it.
+    """
+    if args.approval_request_out:
+        _check_paths(args.file, args.approval_request_out, None)
+    text = read_text_file(args.file, args.encoding)
+    recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
+    purpose = _PURPOSES[args.purpose]
+    payload = _payload_for_path(text, args.file)
+    if payload.kind == "unsupported":
+        # Admission failure, not a policy verdict: keep it off stdout so the
+        # two are distinguishable, exactly as sanitize does.
+        print("BLOCK: unsupported structured input", file=sys.stderr)
+        return EXIT_BLOCK
+    result = Guard(
+        profile=args.profile, dictionary_path=args.dictionary
+    ).evaluate(payload, recipient, purpose)
+    facts = result.facts
+    decision = result.decision
+    counts = _counts(facts)
+    if decision.verdict is Verdict.ASK and args.approval_request_out:
+        if result.approval_request is None:
+            raise GrantError("exporting an approval request requires the configured grant key")
+        write_approval_file(args.approval_request_out, result.approval_request)
+
+    if args.json:
+        print(_json_decision(decision, counts, result.public_facts))
+    else:
+        print(_human_decision(decision, counts))
+    return _exit_for_verdict(decision.verdict)
+
+
+def _cmd_sanitize(args: argparse.Namespace) -> int:
+    database = args.grant_db or (str(DEFAULT_GRANT_DB_PATH) if args.grant_file else None)
+    protected = tuple(path for path in (args.grant_file, database) if path)
+    _check_paths(args.file, args.output, args.audit_dir, protected)
+    if args.approval_request_out:
+        _check_paths(args.file, args.approval_request_out, args.audit_dir, protected)
+        if args.output:
+            _check_paths(args.approval_request_out, args.output, None)
+    registry = SqliteGrantRegistry(database, timeout_seconds=args.grant_timeout) if database else None
+    grant = Grant.from_json(read_approval_file(args.grant_file)) if args.grant_file else None
+    admission_error: str | None = None
+    try:
+        text = read_text_file(args.file, args.encoding)
+    except UnsupportedInput as exc:
+        # Keep the reason: "cannot decode as utf-8-sig" tells the operator what
+        # to do, where a generic block message does not.
+        admission_error = str(exc)
+        payload: str | Payload = Payload(kind="unsupported", content="")
+    else:
+        payload = _payload_for_path(text, args.file)
+    recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
+    purpose = _PURPOSES[args.purpose]
+    # Guard owns detect → decide → transform → verify → audit.  In particular,
+    # audit completes before this function writes/reveals the output.
+    result = Guard(profile=args.profile, dictionary_path=args.dictionary, registry=registry).sanitize(
+        payload,
+        recipient,
+        purpose,
+        audit_dir=args.audit_dir,
+        grant=grant,
+    )
+    decision = result.decision_before
+
+    if decision.verdict is Verdict.BLOCK:
+        print(f"BLOCK: {admission_error or decision.explanation}", file=sys.stderr)
+        return EXIT_BLOCK
+    if result.verification is not None and not result.verification.passed:
+        print(f"VERIFICATION FAILED: {result.verification.details}", file=sys.stderr)
+        return EXIT_BLOCK
+    if decision.verdict is Verdict.ASK and result.sanitized_payload is None:
+        if args.approval_request_out:
+            if result.approval_request is None:
+                raise GrantError("exporting an approval request requires the configured grant key")
+            write_approval_file(args.approval_request_out, result.approval_request)
+        print(f"ASK: {decision.explanation}", file=sys.stderr)
+        return EXIT_ASK
+    if decision.verdict is Verdict.ASK and (
+        result.verification is None or not result.verification.passed
+    ):
+        print("BLOCK: no verified approved payload is available for release", file=sys.stderr)
+        return EXIT_BLOCK
+    if result.sanitized_payload is None:
+        print("BLOCK: no verified payload is available for release", file=sys.stderr)
+        return EXIT_BLOCK
+
+    _write_output(args.output, args.file, result.sanitized_payload.content)
+    return EXIT_OK
+
+
+def _cmd_grant_issue(args: argparse.Namespace) -> int:
+    if not args.approve:
+        raise GrantError("grant issuance requires explicit local review and --approve")
+    _check_paths(args.request_file, args.output, None)
+    key = env_grant_key()
+    if key is None:
+        raise GrantError("grant issuance requires MEDICAL_PRIVACY_GUARD_GRANT_KEY in the environment")
+    request = ApprovalRequest.from_json(read_approval_file(args.request_file))
+    if not request.signature_is_valid(key):
+        raise GrantError("approval request signature does not verify; regenerate it with the active key")
+    print(f"Reviewed request: {request.request_id}; risk={request.risk_level} "
+          f"score={request.risk_score}; purpose={request.purpose}; types={dict(request.fact_counts)}",
+          file=sys.stderr)
+    grant = GrantIssuer(key, issuer=args.issuer).issue(
+        request, ttl_seconds=args.ttl_seconds, uses_allowed=args.uses_allowed,
+        accepted_types=args.accepted_type,
+    )
+    write_approval_file(args.output, grant)
+    print(json.dumps({"grant_id": grant.grant_id, "expires_at": grant.expires_at,
+                      "uses_allowed": grant.uses_allowed}))
+    return EXIT_OK
+
+
+def _cmd_grant_registry(args: argparse.Namespace) -> int:
+    if args.command == "grant-db-init":
+        initialize_grant_registry(args.grant_db)
+        print("Grant database initialized.")
+        return EXIT_OK
+    registry = SqliteGrantRegistry(args.grant_db, timeout_seconds=args.grant_timeout)
+    if args.command == "grant-revoke":
+        created = registry.revoke(args.grant_id)
+        print(json.dumps({"revoked": True, "new_revocation": created}))
+    else:
+        print(json.dumps({"uses_consumed": registry.remaining(args.grant_id),
+                          "revoked": registry.is_revoked(args.grant_id)}))
+    return EXIT_OK
+
+
+def _cmd_dataset(args: argparse.Namespace) -> int:
+    if args.command == "dataset-risk" and not args.quasi_identifier:
+        raise ParserError("dataset-risk requires at least one --quasi-identifier")
+    if args.command == "dataset-sanitize":
+        if os.path.lexists(args.output_dir):
+            raise GuardError("dataset output directory must be new; existing paths are refused")
+        for path in args.files:
+            _check_paths(path, None, args.audit_dir)
+        if args.audit_dir:
+            try:
+                output, audit = Path(args.output_dir).resolve(), Path(args.audit_dir).resolve()
+            except (OSError, RuntimeError) as exc:
+                raise GuardError("cannot validate dataset output and audit directories") from exc
+            if output == audit or output in audit.parents:
+                raise GuardError("audit directory must not be inside the new dataset output directory")
+    loaded = [read_dataset_file(path, args.encoding) for path in args.files]
+    risk = analyze_dataset(
+        (row for _, rows in loaded for row in rows), args.quasi_identifier,
+        min_group_size=args.min_group_size,
+    ) if args.quasi_identifier else None
+    if args.command == "dataset-risk":
+        print(json.dumps(risk.to_dict(), ensure_ascii=False))
+        return EXIT_OK
+
+    result = sanitize_dataset(
+        [payload for payload, _ in loaded], args.recipient, args.purpose,
+        profile=args.profile, dictionary_path=args.dictionary, audit_dir=args.audit_dir,
+    )
+    directory = Path(args.output_dir)
+    try:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    except OSError as exc:
+        raise GuardError("could not create the new private dataset output directory") from exc
+    summary = result.summary()
+    if risk is not None:
+        summary["input_combination_metrics"] = risk.to_dict()
+    for index, item in enumerate(result.results, 1):
+        if item.sanitized_payload is not None:
+            _write_output(str(directory / f"{index:03d}.{item.sanitized_payload.kind}"),
+                          args.files[index - 1], item.sanitized_payload.content)
+    text = json.dumps(summary, ensure_ascii=False, indent=2)
+    _write_output(str(directory / "manifest.json"), args.files[0], text)
+    print(text)
+    if any(item.decision_before.verdict is Verdict.BLOCK
+           or item.verification is not None and not item.verification.passed
+           for item in result.results):
+        return EXIT_BLOCK
+    if any(item.sanitized_payload is None for item in result.results):
+        return EXIT_ASK
+    return EXIT_OK
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    report = run_benchmark(
+        args.corpus,
+        profile=args.profile,
+        recipient=args.recipient,
+        purpose=args.purpose,
+        limit=args.limit,
+    )
+    if args.json:
+        print(report.to_json())
+    else:
+        print(_human_benchmark(report))
+    # A failed gate is a blocking result: exit 2 keeps the CLI contract
+    # ("2 = BLOCK") meaningful for CI usage. Every gate counts, including the
+    # precision gate (an over-redaction regression) and the non-vacuity clause
+    # (a run that never reached the sanitize path measured nothing).
+    return EXIT_OK if report.passed() else EXIT_BLOCK
+
+
+def _audit_key(key_env: str | None) -> bytes | None:
+    """Resolve the optional audit HMAC key from the environment.
+
+    An explicitly named variable that is unset is an error: silently verifying
+    an unkeyed chain would report success on a log the caller expects to be
+    authenticated.
+    """
+    name = key_env or DEFAULT_AUDIT_KEY_ENV
+    raw = os.environ.get(name)
+    if raw is None:
+        if key_env:
+            raise GuardError(f"environment variable {key_env} is not set")
+        return None
+    return raw.encode("utf-8")
+
+
+def _cmd_audit_verify(args: argparse.Namespace) -> int:
+    key = _audit_key(args.key_env)
+    log = Path(args.audit_dir) / "events.jsonl"
+    if not log.is_file():
+        # An absent log proves nothing about integrity; reporting an empty chain
+        # as INTACT would turn a mistyped path into a passing verification.
+        print(f"error: no audit log at {log}", file=sys.stderr)
+        return EXIT_ERROR
+    events = read_events(log)
+    report = verify_chain(events, key)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "log": str(log),
+                    "total": report.total,
+                    "chained": report.chained,
+                    "unchained": report.unchained,
+                    "verified": report.verified,
+                    "failures": list(report.failures),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"Audit log: {log}")
+        print(
+            f"Records: {report.total} "
+            f"(chained {report.chained}, pre-chain {report.unchained})"
+        )
+        if report.verified:
+            print("Result: INTACT")
+        else:
+            print("Result: BROKEN")
+            for failure in report.failures:
+                print(f"  - {failure}")
+    return EXIT_OK if report.verified else EXIT_BLOCK
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Run the zero-code HTTP gateway until interrupted."""
+    settings = HttpGatewaySettings(
+        upstream=args.upstream,
+        host=args.host,
+        port=args.port,
+        profile=args.profile,
+        recipient=args.recipient,
+        purpose=args.purpose,
+        audit_dir=args.audit_dir,
+        dictionary_path=args.dictionary_path,
+        timeout=args.timeout,
+        max_body_bytes=args.max_body_bytes,
+        allow_remote=args.allow_remote,
+    )
+    HttpGateway(settings).serve_forever()
+    return EXIT_OK
+
+
+def _cmd_mcp_gateway(args: argparse.Namespace) -> int:
+    """Run the guard in front of an MCP server.
+
+    Returns the wrapped server's exit code, not a verdict code: the caller is a
+    protocol client waiting on the server's lifecycle.
+    """
+    settings = GatewaySettings(
+        profile=args.profile,
+        recipient=args.recipient,
+        purpose=args.purpose,
+        dictionary_path=args.dictionary_path,
+        audit_dir=args.audit_dir,
+        grant_files=tuple(args.grant_file),
+        grant_database=args.grant_db,
+        grant_timeout=args.grant_timeout,
+        approval_scope=args.approval_scope,
+        approval_request_dir=args.approval_request_dir,
+    )
+    return McpGateway(args.server, settings).run()
+
+
+def _cmd_dicom_inspect(args: argparse.Namespace) -> int:
+    """Inspect a DICOM file and print the report; exit 2 when not releasable.
+
+    The scanner never writes. A file whose metadata carries identifiers, or
+    whose pixel risk is UNKNOWN, is not releasable and exits 2 -- the same
+    code as BLOCK, because that is what the report means: this file must not
+    leave the boundary.
+    """
+    try:
+        from medical_privacy_guard.formats.dicom_inspect import inspect_dicom_file, report_to_json
+
+        report = inspect_dicom_file(args.file)
+    except ParserError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.json:
+        print(report_to_json(report))
+    else:
+        d = report.to_dict()
+        print(f"File: {d['file']}")
+        print(f"Transfer syntax: {d['transfer_syntax']}")
+        print(f"Character set: {d['specific_character_set']}")
+        print(f"Metadata risk: {d['metadata_risk']}")
+        for f in d["findings"]:
+            detail = f" ({f['detail']})" if f["detail"] else ""
+            print(f"  - {f['tag']} {f['category']} [{f['risk']}]{detail}")
+        print(f"Private tags: {d['private_tag_count']} ({d['private_tags_risk']})")
+        print(f"Pixel annotation risk: {d['pixel_annotation_risk']}")
+        print(f"Recognizable features risk: {d['recognizable_visual_features_risk']}")
+        print(f"Safe to release: {d['safe_to_release']}")
+    return EXIT_OK if report.safe_to_release and report.metadata_risk == "LOW" else EXIT_BLOCK
+
+
+def _human_benchmark(report) -> str:
+    lines = [
+        f"Corpus: {report.documents} documents "
+        f"({report.span_documents} with labelled spans, "
+        f"{report.clean_documents} identifier-free)",
+        f"Policy: {report.profile}  recipient={report.recipient}  purpose={report.purpose}",
+        f"Span recall:    {report.span_recall:.4f}  ({report.true_positives}/{report.labelled_spans})",
+        f"Span precision: {report.span_precision:.4f}  ({report.false_positives} false positives)",
+        "Safety gates:",
+        f"  false allows:        {report.false_allow_count}",
+        f"  residual PHI:        {report.residual_phi_count}",
+        f"  audit raw leaks:     {report.audit_raw_leak_count}",
+        f"  verification fails:  {report.verification_failure_count}",
+        f"  lifecycle failures:  {report.lifecycle_failure_count}",
+        f"  audit failures:      {report.audit_failure_count}",
+        f"  errors:              {report.errors}",
+        "Verdict gate:",
+        f"  verdict mismatches:  {report.verdict_mismatch_count}",
+        "Detection gates (exact one-to-one spans):",
+        f"  false negatives:     {report.false_negatives}",
+        f"  false positives on identifier-free documents: "
+        f"{report.false_positives_on_clean_documents}",
+        "Coverage (a gate that was never exercised cannot pass):",
+        f"  documents released:  {report.released_documents}",
+        f"  unchanged ALLOW:     {report.allowed_original_documents}",
+        f"  verified SANITIZE:   {report.sanitized_verified_documents}",
+        f"  ASK / BLOCK:         {report.ask_documents} / {report.blocked_documents}",
+        f"  verifications run:   {report.verification_runs}",
+        f"Latency: p50 {report.p50_latency_ms:.2f} ms, p95 {report.p95_latency_ms:.2f} ms",
+    ]
+    failures = report.gate_failures()
+    lines.append(
+        "Result: PASS" if not failures else f"Result: FAIL ({', '.join(failures)})"
+    )
+    return "\n".join(lines)
+
+
+def _write_output(output: str | None, input_file: str, content: str) -> None:
+    if output is None:
+        sys.stdout.write(content)
+        if not content.endswith("\n"):
+            sys.stdout.write("\n")
+        return
+    _check_paths(input_file, output, None)
+    try:
+        fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            data = content.encode("utf-8")
+            remaining = memoryview(data)
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("output write made no progress")
+                remaining = remaining[written:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise GuardError("cannot write output file; an incomplete output may remain") from exc
+
+
+# -- entry point -------------------------------------------------------------
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        # argparse: usage errors exit 2, --help exits 0. Remap usage errors
+        # to EXIT_ERROR so exit code 2 stays unambiguous (= BLOCK).
+        if exc.code == 2:
+            return EXIT_ERROR
+        raise
+    try:
+        if args.command == "inspect":
+            return _cmd_inspect(args)
+        if args.command == "sanitize":
+            return _cmd_sanitize(args)
+        if args.command == "grant-issue":
+            return _cmd_grant_issue(args)
+        if args.command in {"grant-db-init", "grant-status", "grant-revoke"}:
+            return _cmd_grant_registry(args)
+        if args.command in {"dataset-risk", "dataset-sanitize"}:
+            return _cmd_dataset(args)
+        if args.command == "benchmark":
+            return _cmd_benchmark(args)
+        if args.command == "audit-verify":
+            return _cmd_audit_verify(args)
+        if args.command == "serve":
+            return _cmd_serve(args)
+        if args.command == "mcp-gateway":
+            return _cmd_mcp_gateway(args)
+        if args.command == "dicom-inspect":
+            return _cmd_dicom_inspect(args)
+        # Unreachable while the subparsers are ``required``, and deliberately
+        # not ``parser.error``: that exits 2, which this CLI reserves for BLOCK.
+        parser.print_usage(sys.stderr)
+        print(f"error: unknown command: {args.command}", file=sys.stderr)
+        return EXIT_ERROR
+    except SystemExit:
+        raise
+    except UnsupportedInput as exc:
+        print(f"BLOCK: {exc}", file=sys.stderr)
+        return EXIT_BLOCK
+    except AuditError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    except GuardError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+
+if __name__ == "__main__":
+    sys.exit(main())

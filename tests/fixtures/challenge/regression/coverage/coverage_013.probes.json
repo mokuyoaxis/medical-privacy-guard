@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_013",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "郑沫"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "title-suffix name whose given character is outside the inventory"
+}

@@ -10,8 +10,9 @@ Coverage:
 
 import pytest
 
-from core.errors import PolicyError
-from core.model import (
+from medical_privacy_guard import Guard
+from medical_privacy_guard.core.errors import PolicyError
+from medical_privacy_guard.core.model import (
     EnvironmentContext,
     Payload,
     Purpose,
@@ -20,7 +21,6 @@ from core.model import (
     TrustLevel,
     Verdict,
 )
-from medical_privacy_guard import Guard
 
 
 def make_guard(**kwargs):
@@ -42,7 +42,7 @@ class TestConstruction:
     def test_custom_profile_path(self, tmp_path):
         from shutil import copyfile
 
-        src = "policies/external-ai-strict.yaml"
+        src = "medical_privacy_guard/policies/external-ai-strict.yaml"
         custom = tmp_path / "custom.yaml"
         copyfile(src, custom)
         guard = Guard(profile_path=str(custom))
@@ -192,17 +192,29 @@ class TestSanitize:
 
 
 class TestFailClosed:
-    def test_non_text_payload_blocks(self):
+    def test_unsupported_kind_blocks(self):
+        """JSON is supported as of v0.3; kinds without a parser still block."""
         guard = Guard()
         result = guard.sanitize(
-            Payload(kind="json", content={"patient": "张三"}),
+            Payload(kind="fhir", content={"patient": "张三"}),
             "external-unknown",
             "EXTERNAL_AI_ASSISTANCE",
         )
         assert result.decision_before.verdict is Verdict.BLOCK
         assert result.sanitized_payload is None
 
-    @pytest.mark.parametrize("kind", ["json", "fhir", "dicom", "binary"])
+    def test_json_payload_is_supported(self):
+        guard = Guard()
+        result = guard.sanitize(
+            Payload(kind="json", content={"patient": "张三"}),
+            "external-approved",
+            "EXTERNAL_AI_ASSISTANCE",
+        )
+        assert result.decision_before.verdict is Verdict.SANITIZE
+        assert result.sanitized_payload is not None
+        assert "张三" not in result.sanitized_payload.content
+
+    @pytest.mark.parametrize("kind", ["fhir", "dicom", "binary"])
     def test_non_text_kind_with_string_content_still_blocks(self, kind):
         guard = Guard()
         evaluated = guard.evaluate(
@@ -223,3 +235,54 @@ class TestFailClosed:
         guard = Guard()
         with pytest.raises(TypeError):
             guard.detect(b"bytes not allowed")
+
+
+@pytest.mark.parametrize("profile", ["external-ai-strict", "research"])
+def test_noop_transform_never_releases(profile, monkeypatch, tmp_path):
+    from medical_privacy_guard.transformers.base import TransformOutcome
+
+    text = "性别：男。病史：脑梗死。就诊日期：2026-08-21"
+    monkeypatch.setattr(
+        "medical_privacy_guard.guard.apply_plan",
+        lambda text, facts, plan: TransformOutcome(text=text),
+    )
+    result = Guard(profile=profile, audit_dir=str(tmp_path)).sanitize(
+        text, "external_approved", "EXTERNAL_AI_ASSISTANCE"
+    )
+    assert result.verification is not None and not result.verification.passed
+    assert result.sanitized_payload is None
+    assert result.decision_after is None
+    log = (tmp_path / "events.jsonl").read_text()
+    assert '"FAIL"' in log
+    assert "2026-08-21" not in log
+
+
+@pytest.mark.parametrize("kind,content", [("fhir", {"patient": "张三"}), ("text", b"secret")])
+def test_unsupported_payload_block_is_audited(kind, content, tmp_path):
+    import json
+
+    result = Guard(audit_dir=str(tmp_path)).sanitize(
+        Payload(kind=kind, content=content), "external_unknown", "RESEARCH"
+    )
+    assert result.decision_before.verdict is Verdict.BLOCK
+    assert result.sanitized_payload is None
+    log = (tmp_path / "events.jsonl").read_text()
+    assert "张三" not in log and "secret" not in log
+    event = json.loads(log)
+    assert event["decision"] == "BLOCK"
+    assert event["entity_counts"] == {}
+    assert "UNSUPPORTED_FORMAT" in event["reason_codes"]
+
+
+def test_unsupported_payload_audit_failure_propagates(monkeypatch, tmp_path):
+    from medical_privacy_guard.core.errors import AuditError
+
+    def fail_record(self, event):
+        raise AuditError("synthetic audit failure")
+
+    monkeypatch.setattr("medical_privacy_guard.guard.AuditWriter.record", fail_record)
+    with pytest.raises(AuditError):
+        Guard(audit_dir=str(tmp_path)).sanitize(
+            Payload(kind="json", content={"patient": "张三"}),
+            "external_unknown", "RESEARCH",
+        )

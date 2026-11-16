@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_003",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "赵六"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "adjacent form + past-history marker"
+}

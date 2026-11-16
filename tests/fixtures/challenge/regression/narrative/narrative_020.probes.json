@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_020",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "孙七"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "name before an accompanying symptom"
+}
