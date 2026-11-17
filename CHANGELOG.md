@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Interactive `repl` command: an input box that evaluates one disclosure
+  per line and prints the verdict, plus the verified sanitized text for
+  SANITIZE. Box commands switch the context mid-session (`/recipient`,
+  `/purpose`), evaluate a file (`/file`) and list themselves (`/help`).
+  The repl writes nothing to disk and records no audit events.
+- Human-readable verdicts now end with a next step: the sanitize command
+  for SANITIZE, the scoped-grant flow for ASK, a note that a grant cannot
+  override BLOCK, and the standing caveat for ALLOW. Running the CLI with
+  no arguments prints a short start-here guide instead of a usage error.
+- Grouped top-level help (Start here / Approval / Gateways / Data checks /
+  Audit) and a copyable Examples section at the end of every subcommand's
+  help.
+- Interactive polish for human output: a pixel MPG banner on stderr (real
+  terminals only; suppressed by `--json` and `NO_COLOR`) and a colour
+  block risk bar beside the risk score. Machine-readable output and exit
+  codes are unchanged.
+
+### Changed
+
+- The public READMEs (English and Chinese) were rewritten in plainer
+  language and the roadmap was slimmed down; the per-item acceptance
+  criteria moved to `docs/roadmap-details.md`. A captured terminal session
+  now illustrates the command-line section of both READMEs.
+
+### Fixed
+
+- `SECURITY.md`: the supported-versions table still described the 0.1.x
+  line, one reference pointed at a renamed README section, and decisions
+  were called "immutable" instead of auditable. All three now match the
+  0.6.0 release candidate.
+- `docs/architecture.md`: cross-references updated for the acceptance
+  criteria that moved to `docs/roadmap-details.md`, and the directory
+  layout now lists the newer tools and fixture directories.
+
 ## [0.6.0-rc.1] - 2026-10-27
 
 ### Added
