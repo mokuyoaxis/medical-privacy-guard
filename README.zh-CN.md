@@ -1,31 +1,69 @@
 # medical-privacy-guard
 
-**[English](README.md) | 简体中文**
+[![CI](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/ci.yml)
+[![Security](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/security.yml/badge.svg)](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-> 医疗数据跨越信任边界之前的本地优先隐私护栏。
+[English](README.md) · **简体中文**
 
----
+> 在医疗数据离开本地流向外部大模型之前，于本机完成确定性的隐私检测、改写与二次核验。
 
-## 这是什么？
+## 核心定位：本地出站隐私防线
 
-`medical-privacy-guard` 是一层轻量、可嵌入、默认 fail-closed 的策略层，位于医疗数据管线和外部 AI 系统（LLM、MCP 工具、HTTP API）之间。它会在数据离开本地环境之前检测敏感标识符、评估披露风险、尽可能转换载荷、验证结果，并生成可审计的决策。
+设想一个典型的临床辅助场景：你希望借助外部大模型总结一份病历，但文本中包含患者的姓名、电话、入院日期与床位号。一旦将这些内容直接粘贴并发出，敏感信息便脱离了本地控制边界，无法撤回。
 
-本项目的部分理念脱胎于更早的 [`agent-guard`](https://github.com/mokuyoaxis/agent-guard) 项目。两者是同系列的独立项目，拥有不同的威胁模型和执行引擎，同时共享一套 Guard 哲学：减少不可逆后果、不确定性越高限制越强、决策明确、全程留有审计记录。
+`medical-privacy-guard` 专为拦截这一出站时刻而设计。它在数据发送前介入，自动识别文本中的敏感信息，对可安全脱敏的字段执行改写，并在改写后强制执行二次复查；只有验证通过的载荷才会被放行。遇到高风险或无法确信的场景时，系统会扣留数据并转交人工审批。全流程在本地闭环运行，不依赖外部模型，也不会向任何远端服务器上报数据。
 
-| | `agent-guard` | `medical-privacy-guard` |
-|---|---|---|
-| **核心关注点** | 破坏性操作 | 敏感信息披露 |
-| **目标** | 在损害发生前建立恢复能力 | 在数据外泄前减少、转换或阻止披露 |
-| **计划对象** | RecoveryPlan | DisclosurePlan / TransformationPlan |
+```mermaid
+flowchart LR
+    A["医疗数据<br/>文本 · JSON · CSV · FHIR"] --> B["检测<br/>识别敏感信息"]
+    B --> C{"裁决"}
+    C -->|ALLOW 放行| R["外发"]
+    C -->|SANITIZE 改写| T["变换"]
+    T --> V{"验证"}
+    V -->|通过| R
+    V -->|未通过| W["扣留"]
+    C -->|ASK 待批| G["等待人工<br/>签发凭证"]
+    G --> T
+    C -->|BLOCK 拦截| W
+    B -.-> AU[("审计日志<br/>哈希链")]
+    C -.-> AU
+    V -.-> AU
+```
 
----
+## 裁决行为与实测效果
 
-## 快速开始（文本 MVP）
+在严格策略（`external-ai-strict`）下，系统针对不同敏感密度与接收方信任等级的执行表现如下：
+
+| 载荷特征 | 接收方类型 | 裁决结果 | 处置行为 |
+|---|---|---|---|
+| 含姓名与电话的简短记录 | 未知外部方 | SANITIZE | 敏感项改写且复检通过后放行 |
+| 含姓名、年龄、日期、院科床号与电话的完整病历 | 未知外部方 | ASK | 全文扣留，等待人工签发凭证 |
+| 改写后仍残留可识别特征的记录 | 已批准接收方 | SANITIZE（未放行） | 二次验证未通过，输出扣留不予外发 |
+
+以简短记录为例，向未知外部方发送单条文本时的实际脱敏效果如下：
+
+```text
+输入：患者：测试患者甲，电话 13800000000
+输出：患者：[PERSON_NAME_001]，电话 [REDACTED]
+结果：裁决 SANITIZE，二次验证通过后放行
+```
+
+当病历包含完整的患者画像与就诊轨迹时，系统会直接给出 **ASK** 裁决，在获得人工授权前不放行任何字符；即便接收方属于已批准端点，只要变换后的输出未能通过二次验证，数据依然会被扣留。这种设计在极端情况下会产生误拦摩擦，但这是系统的显式取舍：**宁可承担多拦带来的审批成本，也绝不放行未经核验的数据。**
+
+## 快速接入与部署
+
+### 本地安装与验证
 
 ```bash
+git clone https://github.com/mokuyoaxis/medical-privacy-guard
+cd medical-privacy-guard
 python -m pip install -e ".[test]"
 python -m pytest -q
 ```
+
+### Python SDK
 
 ```python
 from medical_privacy_guard import Guard
@@ -41,21 +79,29 @@ if result.released:
     payload_to_release = result.text
 ```
 
-`Guard`、`Verdict`、结果类型和 Guard 异常类是稳定的公共导入；各子包仍属于实现细节。
+`Guard`、`Verdict`、结果类型及 Guard 异常类属于稳定的公共 API；其余各子包均为内部实现细节。
 
-CLI：
+### 命令行工具
 
 ```bash
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
 medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
+medical-privacy-guard audit-verify audit/
 ```
 
-退出码：`0` = ALLOW 或验证通过的 SANITIZE，`2` = BLOCK，`3` = ASK，`4` = 解析器、配置或内部错误。
+命令行通过标准退出码表达裁决状态，便于嵌入自动化管线：
+
+| 退出码 | 常规命令含义 | 审计校验含义 |
+|---|---|---|
+| 0 | ALLOW 或验证通过的 SANITIZE | 审计哈希链完整 |
+| 2 | BLOCK 拦截 | 审计哈希链断裂 |
+| 3 | ASK 待人工审批 | 不适用 |
+| 4 | 解析、配置或内部错误 | 解析、配置或内部错误 |
 
 ### 零代码 HTTP 网关
 
-把现有 SDK 的 `base_url` 指向本地网关即可，不需要改应用代码：
+若现有应用已接入 OpenAI 或 Anthropic SDK，无需修改业务逻辑，仅需将客户端 `base_url` 指向本地网关即可完成接入：
 
 ```bash
 medical-privacy-guard serve --upstream https://api.openai.com --port 8787
@@ -63,91 +109,65 @@ medical-privacy-guard serve --upstream https://api.openai.com --port 8787
 # Anthropic 客户端：  base_url="http://127.0.0.1:8787"
 ```
 
-网关支持 `/v1/chat/completions` 与 `/v1/messages`，复用与进程内包装器相同的评估和改写逻辑，然后转发到固定的上游；响应原样透传，不做检查。默认只监听 `127.0.0.1`，要求大小受限的 JSON 请求体，请求不能自选上游。ASK 和 BLOCK 返回 HTTP 403，只包含 reason code 与风险元数据，不包含载荷文本。只有部署方已批准的端点才应使用 `--recipient external_approved`；否则医疗内容会保持 ASK 并被网关扣留。
+* **单向出站管控**：网关拦截并改写 `/v1/chat/completions` 与 `/v1/messages` 请求，转发至唯一固定的上游端点；上游响应原样透传，不做检查。
+* **网络与权限收敛**：服务默认仅绑定本地回环地址，客户端请求无权动态指定上游；仅当目标端点确属部署方正式批准时，才应启用 `--recipient external_approved`。
+* **安全报错降级**：触发 **ASK** 或 **BLOCK** 时返回 HTTP 403，响应体仅包含原因码与风险元数据，绝不回显原始文本。
+* **多形态扩展**：除独立网关外，项目还提供进程内 OpenAI 兼容与 Anthropic 客户端包装器，以及对 `tools/call` 执行同等裁决机制的 MCP stdio 网关。
 
-报告的风险是输入在转换前的工程风险。即使输入风险为 high 或 critical，只要每个直接标识符都有确定的转换操作，仍可能得到 SANITIZE；只有验证通过的输出可以被外发。
+## 架构机制：四步管线与防篡改审计
 
-### 已实现能力
+系统核心架构由四阶段确定性管线与一条独立审计链构成：
 
-- UTF-8 纯文本；
-- 确定性检测：中国大陆手机号与固定电话、邮箱、社交账号、居民身份证候选值、精确日期、带标签患者姓名、医护姓名（职称或后缀形式）、病史中提到的家属姓名、病历号/标本号/检查号、HTTP(S) URL、IPv4 地址、带标签精确地址（含户籍地/工作单位）、带标签邮编、医院名称（含虚词前导）、科室名称、病区、床号、年龄（周岁与月龄）、临床语境下的性别，以及基础医疗内容信号（含就诊行为词）；
-- 无字段标签的叙述式姓名覆盖三种形态：性别开头（`张伟，男，67岁`）、主诉动词（`陈曦诉头晕`、`潘婷主诉腹痛`，锚点 `诉/主诉/自诉/自述`）、分句边界上的连接词（`陈曦因胸痛入院`、`汪洋由急诊科转入`，锚点 `因/由/以`）。普通行文中的裸人名仍不检测；分句开头、形如「姓氏+名字用字」的常用词（`文明因交流`）会被当作人名，边界见 [scope](docs/scope.md)；
-- 手机号支持 3-4-4 分组与 ASCII/全角数字；日期支持 1900–2099 年真实日历日期及月日不补零的 YMD/MDY 形式，并保留原始字符跨度；具体边界见 [scope](docs/scope.md)；
-- REMOVE、MASK、TOKENIZE、GENERALIZE（日期到月、年龄到年龄段、位置/机构/科室/病区到类型标记）和 DATE_SHIFT；
-- 配置后仅记录元数据的 JSONL 审计；
-- 评估工具 `benchmark`，基于 175 份合成中文病历——140 份带标识符标注（1474 个 span、24 种类型），35 份不含标识符。预期路径为 **135 SANITIZE、5 ASK、35 ALLOW**，不是 140 份有标注文档全部脱敏放行；有标注和无标注文档都会计入误报。强化后的评测契约包括逐文档生命周期核对、验证失败及审计缺失/损坏门禁，以及严格一对一精确跨度检测指标。历史 overlap 得分不能证明这些更强检查已经通过；基线与验证状态见 [docs/evaluation.md](docs/evaluation.md)。
+1. **检测**：采用纯规则引擎，不调用模型、不发起网络请求。支持识别中文临床文本中的手机号、符合 GB 11643-1999 校验位规则的居民身份证候选值、带标签与无标签姓名、病历号、地址、医院、科室、病区、床号、年龄及精确日期等敏感实体。
+2. **裁决**：每份载荷仅生成唯一裁决（**ALLOW**、**SANITIZE**、**ASK** 或 **BLOCK**）。若检出的敏感类型未被当前策略规则显式覆盖，系统一律执行默认拒绝（Fail-closed）并收敛至 **BLOCK**，绝不滑向放行。
+3. **变换**：按策略对敏感跨度执行删除、掩码、令牌化、日期平移或泛化（如日期精确至月、年龄归入年龄段、地点与机构替换为类别标记）。
+4. **验证**：对变换后的文本执行二次扫描，未通过核验的载荷一律扣留。系统报告的风险分始终反映**变换前输入**的原始风险——高风险输入可以获得 **SANITIZE** 裁决，但只有验证通过的输出才被允许离开本地。
 
-支持纯文本、JSON 对象/数组、CSV 以及最小 FHIR 资源集；其他显式声明为非文本类型的 API 载荷返回 BLOCK。准入检查拒绝已知不支持的扩展名、NUL 等不支持的控制字符及无法解析的容器，但不能可靠识别任意伪装格式。CLI、适配器与 Guard 的字符串入口共用同一条准入规则（`medical_privacy_guard/formats/admission.py`），同一份内容不会在一个入口是纯文本、在另一个入口是结构化文档。`str` 会被分类而不是被信任：`{"name": "张三"}` 无论以文本还是已解码映射传入都是 JSON 文档，按散文扫描会直接放行姓名。医疗内容分类只是规则基线，不是完整的医疗 NER，也不能证明数据已经匿名化。
+**防篡改审计账本**
+启用审计后，每次裁决都会写入仅包含元数据（绝不记录原文）的审计日志。日志条目通过哈希链首尾相接，任何删除、篡改或顺序调换均可被检出，并支持通过环境变量 `MEDICAL_PRIVACY_GUARD_AUDIT_KEY` 启用 HMAC 签名。需要坦诚说明的密码学边界是：若未配置签名密钥，攻击者截断日志尾部或重写整条哈希链将无法被检出。
 
-不含直接标识符的医疗内容仍属于敏感数据。在严格 profile 下，它可以留在本地或可信内部环境，但发送给 `EXTERNAL_UNKNOWN` 接收方会返回 `ASK`。调用方不得把声明的用途视为同意；只有经部署机构批准的端点才能使用 `EXTERNAL_APPROVED`。
+**人工审批与受限凭证**
+**ASK** 并非死胡同。部署方可以针对待批请求签发限定作用范围、有效期与使用次数的审批凭证（Grant），并使用载荷本身无法触达的密钥进行签名。获批放行依然遵循最小化原则——凭证仅代表部署方愿意承担某项无法改写值的残余风险，而非关闭脱敏变换。凭证消费记录默认在进程内追踪，也可通过本地私有 SQLite 登记表实现持久化与吊销，详见 [docs/approval-workflow.md](docs/approval-workflow.md) 与 [docs/grant-registry.md](docs/grant-registry.md)。
 
-配置授权密钥后，ASK 可生成不含原始值的审批请求，并通过 `Guard.sanitize(..., grant=...)`
-校验部署方签发的限范围、限时效凭证。获批后仍转换并验证可处理的标识符。同一进程内的默认
-Guard 实例共享带锁的消费记录，防止跨实例重放及并发超额使用。跨进程、重启后的次数限制和
-按 ID 持久化吊销可使用 `SqliteGrantRegistry`：显式初始化私有本地数据库，再通过
-`Guard(registry=...)` 注入。路径、并发设置和切换边界见[部署说明](docs/grant-registry.md)。
-`v0.5.0` 已加入[本地 CLI/MCP 审批流程](docs/approval-workflow.md)：签名审批请求、
-人工明确签发、私有凭证文件和持久化消费；客户端的批准字段不构成授权。
-同时加入 [CSV/JSON 批次](docs/datasets.md)的按值 token 一致性与准标识符组合工程指标，
-风险报告不自动授权放行，也不构成匿名化保证。
+**结构化数据与医学影像支持**
+* **结构化文本**：JSON、CSV 与最小 FHIR 资源集会被展开为字符串叶子节点，以键名或列名作为字段标签完成检测与变换，再按原结构重建。JSON 数值类型仅做检查而不做改写——若数字命中标识符模式，系统直接扣留整条记录，绝不静默篡改字段类型。
+* **DICOM 扫描**：只读工具 `dicom-inspect` 仅报告可识别的元数据标签，从不修改原文件；由于像素层面的烧录文字风险未知，该工具绝不会宣称任何影像文件“安全”。
 
-### 尚未实现
+**评测基准与认识论边界**
+评测基于一套包含 175 篇合成中文病历的基准语料：其中 140 篇包含跨 24 个类别的 1474 个标注跨度，其余样本不含任何标识符。在严格策略下逐篇核对完整生命周期与审计门，标准预期结果为 135 篇 **SANITIZE**、5 篇 **ASK**，无标识符样本全部 **ALLOW**。此外，项目维护了一套独立手写语料专门测试泛化能力，且刻意避免针对该语料回调检测器参数。需要强调的是：**在合成数据上跑出满分，仅证明系统与自身的生成模板自洽**；关于各项指标的实际证明力边界，请参阅 [docs/evaluation.md](docs/evaluation.md)。
 
-- XLSX、TSV（CSV 已覆盖同类需求）
-- PDF / DOCX
-- DICOM 回写与像素风险检查（现有扫描器只读）
-- 通用 HTTP 出站代理（网关只代理 OpenAI 兼容 chat completions 与 Anthropic Messages 路径）
-- 更完整的数据集重识别风险、泛化/抑制与匿名化模型（组合工程指标已实现）
-- 多模态内容（图像、音频、视频）
-- MCP 网关中的 `resources/read` 与 `prompts/get` 检查
+## 能力边界与安全声明
 
-### 永不承诺
+### 当前尚未覆盖
 
-本项目不认证 HIPAA、GDPR、个保法（PIPL）或任何机构合规性；它降低意外披露风险，但不能证明完全匿名化。
+* **办公与排版文档**：XLSX、TSV（同类表格需求已由 CSV 覆盖）、PDF 与 DOCX。
+* **影像深度脱敏**：DICOM 文件回写及像素级敏感信息擦除。
+* **通用网络与多模态**：非 OpenAI/Anthropic 路径的通用 HTTP 出站代理，以及图像、音频、视频等多模态内容。
+* **高阶分析与扩展协议**：完整的数据集级重识别分析（初步聚合度量见 [docs/datasets.md](docs/datasets.md)），以及 MCP 网关中的 `resources/read` 与 `prompts/get` 拦截。
 
-### 仅使用合成数据
+### 核心安全声明：四个“永不承诺”
 
-仓库示例和测试使用人工构造的占位符、保留示例域名/私有 IP 地址空间、`SYNTH-*` 标识符和有明确说明的公共校验示例。请勿在 issue、pull request、fixture 或 CI artifact 中提交真实患者记录、生产审计日志、截图、凭据或 token 到原文的映射。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+在将本工具引入工作流之前，请务必审阅以下不可妥协的能力边界：
 
----
+1. **不提供合规认证**：本工具不构成 HIPAA、GDPR、《个人信息保护法》（PIPL）或机构内部合规政策的认证。它能降低意外外发敏感数据的工程风险，但无法替代法律审查与正式合规审计。
+2. **去标识化不等于匿名化**：脱敏旨在降低风险，而非彻底消除风险。残留的罕见诊断、特殊就诊日期或小规模病区等准标识符组合在一起，在特定背景下仍可能指向具体个人。
+3. **不防御拥有原始权限的内部主体**：任何具备原始数据读取权限的进程或人员均可直接绕过本组件。本工具防范的是工程意外（如 Agent 上下文拼接越界、自动化管线误传文件），而非恶意内部窃密。
+4. **安全拦截仅针对“可见的失败”**：二次验证无法拦截检测器本身未能识别的漏检项（False Negatives）。“未检出敏感词”与“绝对安全”是两个概念；用同一组规则扫描两次，原有的检测盲区依然存在。
 
-## 诚实的能力边界
+关于系统能力的完整权威定义请参阅 [docs/scope.md](docs/scope.md)，安全威胁模型请参阅 [docs/threat-model.md](docs/threat-model.md)。
 
-本项目是隐私工程基础设施，不是法律或合规认证工具。
+## 数据规范与演进路线
 
-1. **不是法律意见，也不是 HIPAA/GDPR 认证。** 本工具用于降低意外披露风险，不能替代法律审查、机构政策或正式合规审计。
-2. **不保证完全匿名化。** 去标识化只能降低风险，不能消除风险；残留的准标识符在特定条件下仍可能导致重识别。
-3. **无法阻止同权限恶意绕过。** 已经能够直接访问原始 PHI 的进程可以跳过 Guard。本工具防范 Agent 和数据管线的意外或非故意披露，不用于防御有意的内部攻击者。
-4. **对已识别的失败采取 fail-closed。** 不支持的声明类型、验证失败或已配置的审计失败会阻止放行；部分 CLI 错误以非零错误退出而非策略判定结束。未被检测到的标识符仍可能通过；没有检测事实不等于证明安全，验证复用同一组检测器也不能消除共同盲区。
+**仅使用合成数据**
+本仓库的所有示例与测试均采用人工构造的占位符、保留示例域名、私有 IP 地址段、`SYNTH-*` 标识符及公开说明的校验示例。严禁在 Issue、Pull Request、测试固件或 CI 产物中提交真实患者记录、生产环境审计日志、截图、密钥凭据或 Token 映射表。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
----
+**版本状态与设计渊源**
+* **当前候选版**：v0.6.0-rc.1，提供稳定公共 API、统一的 `medical_privacy_guard` 命名空间与零代码网关。
+* **最新稳定版**：v0.5.0，实现 ASK 审批凭证、SQLite 凭证登记与本地审批工作流。
+* **演进路线**：早期里程碑（文本核心、中文检测与评测线、CSV/JSON、结构化格式与出站适配器）及未来演进目标（**v1.0：医疗 AI 出站隐私网关**）详见 [ROADMAP.md](ROADMAP.md)，完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 当前状态
-
-采用单一版本编号路线；详细目标与验收标准见 [ROADMAP.md](ROADMAP.md)。
-
-- **v0.1 — 文本核心 MVP**：已发布 `v0.1.0`（基线检测器、决策协议、转换、验证、仅元数据审计）。
-- **v0.2 — 中文医疗文本检测与评估体系**：已发布 `v0.2.0`。严格评测结果与故障注入证据见 [docs/evaluation.md](docs/evaluation.md)；语料由模板生成，严格 1.0 只证明内部一致性，不代表真实泛化。
-- **v0.3 — CSV / XLSX / JSON**：**JSON 已完成**（`v0.3.0`）、**CSV 已完成**（`v0.3.1`）；XLSX 推迟（CSV 已覆盖该需求）。`v0.3.2` 修复六个泛化缺口，`v0.3.4` 修复准入、不可见字符与重建文档闸门。
-- **v0.4 — 结构化格式 + 出站适配器**：已发布 `v0.4.0`。包含 OpenAI 兼容与
-  Anthropic 客户端封装、MCP stdio 网关、最小 FHIR 资源集，以及只读的 DICOM 扫描器
-  `dicom-inspect`。原计划的 v0.5（DICOM）与 v0.6（FHIR）合并到此版本——一周内推进三个
-  版本号，本不该经过发布流程。DICOM 为实验性：只报告可识别元数据，像素风险保持
-  UNKNOWN（因此每个文件的 `safe_to_release` 均为 false），且从不写入文件。响应不做检查；
-  边界见 [scope](docs/scope.md)。
-- **v0.5 — ASK 审批与安全加固**：已发布 `v0.5.0`。ASK
-  是唯一没有闭环的裁决——guard 扣留载荷却说不出凭证是什么。现在凭证有范围、会过期、
-  一次性，且批准后的释放仍是最小化后的释放（见 [scope](docs/scope.md)）。
-  默认消费状态在进程内共享；可选 SQLite 后端提供私有本地磁盘上的持久化消费与吊销，
-  本版本包含本地 CLI/MCP 审批、批次 token 一致性与组合工程指标；更完整匿名化仍为后续计划。
-- **v0.6 — 命名空间收敛与零代码网关**：已进入 `v0.6.0-rc.1` 候选版。安装后只存在
-  `medical_privacy_guard` 命名空间（不再与顶层 `transformers` 冲突），导出稳定公共 API，
-  并新增面向 OpenAI 兼容与 Anthropic 客户端的本地 `serve` HTTP 网关。导入路径是有意的
-  breaking change，详见 [CHANGELOG](CHANGELOG.md) 的 `[0.6.0-rc.1]`。
-- **v1.0 — 医疗 AI 出站隐私网关**：目标。
-
----
+本项目的部分工程哲学源于更早的 [agent-guard](https://github.com/mokuyoaxis/agent-guard) 项目。两者相互独立，威胁模型与具体实现各不相同，但底层的安全观一脉相承：**能规避的错误尽量规避，拿不准的边界果断收紧，所有裁决留痕可查。**
 
 ## 许可证
 
-MIT License — 详见 [LICENSE](LICENSE)。
+本项目基于 MIT License 开源，详见 [LICENSE](LICENSE)。
