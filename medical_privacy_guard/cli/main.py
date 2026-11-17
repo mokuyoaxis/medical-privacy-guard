@@ -32,6 +32,7 @@ import json
 import os
 import shutil
 import sys
+import textwrap
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -100,12 +101,54 @@ Start here:
 Run medical-privacy-guard --help for all commands."""
 
 
+class _ParagraphFormatter(argparse.HelpFormatter):
+    """Wrap prose as usual, but keep line breaks between epilog lines.
+
+    The default formatter collapses every newline, which turns the
+    command groups and copyable examples into one wrapped blob. Here,
+    blank-line-separated chunks keep their lines; each line is still
+    wrapped to the terminal width.
+    """
+
+    def _fill_text(self, text: str, text_width: int, indent: str) -> str:
+        paragraphs = []
+        for chunk in text.split("\n\n"):
+            lines = [
+                textwrap.fill(
+                    line, text_width, initial_indent=indent, subsequent_indent=indent
+                )
+                if line.strip()
+                else ""
+                for line in chunk.split("\n")
+            ]
+            paragraphs.append("\n".join(lines))
+        return "\n\n".join(paragraphs)
+
+
+class _GuidedParser(argparse.ArgumentParser):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        kwargs.setdefault("formatter_class", _ParagraphFormatter)
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _GuidedParser(
         prog="medical-privacy-guard",
         description="Local-first privacy guardrails for medical data.",
+        epilog=(
+            "Command groups:\n\n"
+            "  Start here    repl, inspect, sanitize\n\n"
+            "  Approval      grant-issue, grant-db-init, grant-status, grant-revoke\n\n"
+            "  Gateways      serve, mcp-gateway\n\n"
+            "  Data checks   benchmark, dataset-risk, dataset-sanitize, dicom-inspect\n\n"
+            "  Audit         audit-verify\n\n"
+            "Examples:\n\n"
+            "  medical-privacy-guard inspect note.txt --recipient external_unknown\n\n"
+            "  medical-privacy-guard sanitize note.txt -o clean.txt\n\n"
+            "  medical-privacy-guard repl"
+        ),
     )
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", parser_class=_GuidedParser)
 
     format_boundary = (
         "Plain text, JSON objects/arrays and CSV files are supported; state the "
@@ -114,7 +157,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "cannot be detected."
     )
     p_inspect = sub.add_parser(
-        "inspect", help="Detect and evaluate without modifying data.", epilog=format_boundary,
+        "inspect", help="Detect and evaluate without modifying data.",
+        epilog=(format_boundary + "\n\nExamples:\n\n"
+                "  medical-privacy-guard inspect note.txt --recipient external_unknown\n\n"
+                "  medical-privacy-guard inspect export.csv --encoding gb18030 --json"),
     )
     p_inspect.add_argument("file", help="UTF-8 text file to inspect")
     p_inspect.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
@@ -131,6 +177,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_repl = sub.add_parser(
         "repl", help="Interactive input box: evaluate lines of text as you type.",
+        epilog=("Examples:\n\n"
+                "  medical-privacy-guard repl\n\n"
+                "  medical-privacy-guard repl --purpose internal_quality_review\n\n"
+                "Inside the box, /help lists the box commands."),
     )
     _add_common(p_repl)
 
@@ -138,7 +188,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "sanitize", help="Sanitize a file and write the result.",
         epilog=(format_boundary + " Use trusted directories: path preflight is not "
                 "protection against concurrent directory or audit-path replacement. "
-                "Failed output writes may leave an incomplete owner-only file."),
+                "Failed output writes may leave an incomplete owner-only file."
+                "\n\nExamples:\n\n"
+                "  medical-privacy-guard sanitize note.txt -o clean.txt\n\n"
+                "  medical-privacy-guard sanitize note.txt -o clean.txt --audit-dir audit/"),
     )
     p_sanitize.add_argument("file", help="UTF-8 text file to sanitize")
     p_sanitize.add_argument(
@@ -160,7 +213,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sanitize.add_argument("--grant-db", help="Absolute initialized SQLite registry path")
     p_sanitize.add_argument("--grant-timeout", type=float, default=5.0, help="SQLite lock wait in seconds")
 
-    p_issue = sub.add_parser("grant-issue", help="Issue a grant after explicit local human review")
+    p_issue = sub.add_parser(
+        "grant-issue", help="Issue a grant after explicit local human review",
+        epilog=("Example:\n\n"
+                "  medical-privacy-guard grant-issue request.json --approve "
+                "--issuer dr.wang --ttl-seconds 3600 -o grant.json"),
+    )
     p_issue.add_argument("request_file", help="Private signed approval request from Guard")
     p_issue.add_argument("--approve", action="store_true", help="Confirm that the disclosure was reviewed and approved")
     p_issue.add_argument("--issuer", required=True, help="Deployment-controlled opaque reviewer ID")
@@ -169,12 +227,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_issue.add_argument("--accepted-type", action="append", default=[], help="Explicit accepted read-only fact type; repeatable")
     p_issue.add_argument("-o", "--output", required=True, help="New private grant file; existing paths refused")
 
-    for name, help_text in (
-        ("grant-db-init", "Explicitly create a new private SQLite registry"),
-        ("grant-status", "Read committed uses and revocation status"),
-        ("grant-revoke", "Persistently revoke a grant ID, including unused IDs"),
+    for name, help_text, example in (
+        ("grant-db-init", "Explicitly create a new private SQLite registry",
+         "medical-privacy-guard grant-db-init --grant-db /secure/grants.sqlite3"),
+        ("grant-status", "Read committed uses and revocation status",
+         "medical-privacy-guard grant-status <grant-id> --grant-db /secure/grants.sqlite3"),
+        ("grant-revoke", "Persistently revoke a grant ID, including unused IDs",
+         "medical-privacy-guard grant-revoke <grant-id> --grant-db /secure/grants.sqlite3"),
     ):
-        command = sub.add_parser(name, help=help_text)
+        command = sub.add_parser(name, help=help_text, epilog=f"Example:\n\n  {example}")
         command.add_argument("--grant-db", default=str(DEFAULT_GRANT_DB_PATH), help="Absolute private SQLite registry path")
         command.add_argument("--grant-timeout", type=float, default=5.0)
         if name != "grant-db-init":
@@ -183,6 +244,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_benchmark = sub.add_parser(
         "benchmark",
         help="Evaluate the guard against an annotated synthetic corpus.",
+        epilog="Example:\n\n  medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes",
     )
     p_benchmark.add_argument("corpus", help="Corpus directory containing *.txt and *.spans.json")
     p_benchmark.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
@@ -204,7 +266,9 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "The default bind is 127.0.0.1. Responses are not inspected. See "
-            "docs/scope.md for the gateway boundaries."
+            "docs/scope.md for the gateway boundaries.\n\n"
+            "Example:\n\n"
+            "  medical-privacy-guard serve --port 8765"
         ),
     )
     _add_common(p_serve)
@@ -249,7 +313,9 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Responses are not inspected: this is an egress guard. The upstream "
             "exit code is propagated. See docs/scope.md for the boundaries, "
-            "including the fields the specification forbids inspecting."
+            "including the fields the specification forbids inspecting.\n\n"
+            "Example:\n\n"
+            "  medical-privacy-guard mcp-gateway --upstream http://127.0.0.1:9000/mcp"
         ),
     )
     _add_common(p_gateway)
@@ -280,7 +346,9 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Exit codes: 0 intact, 2 broken, 4 unreadable. Tail truncation and "
             "whole-chain rewriting are not detectable without a key or an "
-            "external anchor."
+            "external anchor.\n\n"
+            "Example:\n\n"
+            "  medical-privacy-guard audit-verify ./audit"
         ),
     )
     p_audit.add_argument("audit_dir", help="Directory holding events.jsonl")
@@ -300,15 +368,18 @@ def _build_parser() -> argparse.ArgumentParser:
             "and pixel risk stays UNKNOWN, so safe_to_release is false. "
             "Requires the optional pydicom extra."
         ),
+        epilog="Example:\n\n  medical-privacy-guard dicom-inspect scan.dcm --json",
     )
     p_dicom.add_argument("file", help="DICOM file to inspect")
     p_dicom.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
-    for name, help_text in (
-        ("dataset-risk", "Report aggregate quasi-identifier combinations in CSV/JSON rows"),
-        ("dataset-sanitize", "Minimize CSV/JSON files with one batch-scoped token map"),
+    for name, help_text, example in (
+        ("dataset-risk", "Report aggregate quasi-identifier combinations in CSV/JSON rows",
+         "medical-privacy-guard dataset-risk cohort.csv --quasi-identifier age"),
+        ("dataset-sanitize", "Minimize CSV/JSON files with one batch-scoped token map",
+         "medical-privacy-guard dataset-sanitize cohort.csv --quasi-identifier age --output-dir out/"),
     ):
-        command = sub.add_parser(name, help=help_text)
+        command = sub.add_parser(name, help=help_text, epilog=f"Example:\n\n  {example}")
         command.add_argument("files", nargs="+", help="CSV with headers or JSON row objects")
         command.add_argument("--encoding", default="utf-8-sig")
         command.add_argument("--quasi-identifier", action="append", default=[],
@@ -412,7 +483,8 @@ _NEXT_STEPS = {
     Verdict.ASK: (
         "Next: a scoped grant is required before release:\n"
         "  medical-privacy-guard sanitize <file> --approval-request-out request.json\n"
-        "  medical-privacy-guard grant-issue request.json --approve --output grant.json\n"
+        "  medical-privacy-guard grant-issue request.json --approve "
+        "--issuer <reviewer-id> --ttl-seconds <seconds> --output grant.json\n"
         "  then re-run sanitize with --grant-file grant.json"
     ),
     Verdict.BLOCK: (
@@ -536,7 +608,38 @@ def _cmd_repl(args: argparse.Namespace) -> int:
     width = min(shutil.get_terminal_size((80, 20)).columns, 76)
     top = "╭" + "─" * (width - 2) + "╮"
     bottom = "╰" + "─" * (width - 2) + "╯"
-    print("One disclosure per line; /quit or Ctrl-D exits.", file=sys.stderr)
+
+    def evaluate(text: str) -> None:
+        result = guard.evaluate(text, recipient, purpose)
+        print(
+            _human_decision(
+                result.decision,
+                _counts(result.facts),
+                guidance=result.decision.verdict is not Verdict.SANITIZE,
+            )
+        )
+        if result.decision.verdict is Verdict.SANITIZE:
+            sanitized = guard.sanitize(text, recipient, purpose)
+            if sanitized.released:
+                print("Sanitized:")
+                print(f"  {sanitized.text}")
+
+    def box_help() -> None:
+        print("Box commands:")
+        print("  /help               show this list")
+        print(f"  /recipient <name>   recipient, now {recipient.trust_level.value};")
+        print(f"                      one of: {', '.join(sorted(_TRUST_LEVELS))}")
+        print(f"  /purpose <name>     purpose, now {purpose.value};")
+        print(f"                      one of: {', '.join(sorted(_PURPOSES))}")
+        print("  /file <path>        evaluate the contents of a text file")
+        print("  /quit               leave (Ctrl-D works too)")
+        print("Anything else is evaluated as a disclosure in this context.")
+
+    print(
+        "Type a disclosure and press Enter for a verdict. "
+        "/file <path> checks a file; /help lists the box commands.",
+        file=sys.stderr,
+    )
     while True:
         print(top)
         try:
@@ -553,19 +656,49 @@ def _cmd_repl(args: argparse.Namespace) -> int:
             continue
         if text in {"/quit", "/exit"}:
             return EXIT_OK
-        result = guard.evaluate(text, recipient, purpose)
-        print(
-            _human_decision(
-                result.decision,
-                _counts(result.facts),
-                guidance=result.decision.verdict is not Verdict.SANITIZE,
-            )
-        )
-        if result.decision.verdict is Verdict.SANITIZE:
-            sanitized = guard.sanitize(text, recipient, purpose)
-            if sanitized.released:
-                print("Sanitized:")
-                print(f"  {sanitized.text}")
+        if text.startswith("/"):
+            command, _, argument = text.partition(" ")
+            argument = argument.strip()
+            if command == "/help":
+                box_help()
+            elif command == "/recipient":
+                if argument.lower() in _TRUST_LEVELS:
+                    recipient = Recipient(
+                        kind="cli", trust_level=_TRUST_LEVELS[argument.lower()]
+                    )
+                    print(f"Recipient set to: {recipient.trust_level.value}")
+                else:
+                    print(
+                        f"Unknown recipient {argument!r}; "
+                        f"one of: {', '.join(sorted(_TRUST_LEVELS))}"
+                    )
+            elif command == "/purpose":
+                if argument.lower() in _PURPOSES:
+                    purpose = _PURPOSES[argument.lower()]
+                    print(f"Purpose set to: {purpose.value}")
+                else:
+                    print(
+                        f"Unknown purpose {argument!r}; "
+                        f"one of: {', '.join(sorted(_PURPOSES))}"
+                    )
+            elif command == "/file":
+                if not argument:
+                    print("Usage: /file <path>")
+                else:
+                    try:
+                        content = Path(argument).read_text(encoding="utf-8")
+                    except (OSError, UnicodeDecodeError) as exc:
+                        print(f"Cannot read {argument}: {exc}")
+                    else:
+                        if content.strip():
+                            evaluate(content)
+                        else:
+                            print(f"{argument} is empty; nothing to evaluate.")
+            else:
+                print(f"Unknown command: {command} — type /help for the box commands.")
+            print()
+            continue
+        evaluate(text)
         print()
 
 

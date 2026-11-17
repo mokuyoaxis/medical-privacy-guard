@@ -5,7 +5,33 @@ from __future__ import annotations
 import builtins
 import json
 
+import pytest
+
 from medical_privacy_guard.cli.main import EXIT_ASK, EXIT_BLOCK, EXIT_OK, main
+
+
+def test_top_level_help_groups_commands_and_shows_examples(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "Command groups:" in out
+    assert "Start here" in out
+    assert "Examples:" in out
+
+
+def test_inspect_help_carries_examples(capsys):
+    with pytest.raises(SystemExit):
+        main(["inspect", "--help"])
+    assert "Examples:" in capsys.readouterr().out
+
+
+def test_ask_guidance_names_required_grant_flags(tmp_path, capsys):
+    rc = main(["inspect", "--purpose", "unknown", _write(tmp_path, "phone.txt", PHONE)])
+    out = capsys.readouterr().out
+    assert rc == EXIT_ASK
+    assert "--issuer <reviewer-id>" in out
+    assert "--ttl-seconds <seconds>" in out
 
 PHONE = "联系电话 13800000000\n"
 ID_TEXT = "证件号码 11010519491231002X\n"
