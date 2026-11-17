@@ -83,6 +83,8 @@ if result.released:
 
 ### 命令行工具
 
+![命令行在终端里的样子：像素旗、带「下一步」提示的 inspect 裁决，以及 repl 输入框](assets/cli-terminal.png)
+
 ```bash
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/

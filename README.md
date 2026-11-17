@@ -99,6 +99,8 @@ the stable public API. The subpackages are implementation details.
 
 ### Command line
 
+![The CLI in a terminal: the pixel banner, an inspect verdict with its next step, and the repl input box](assets/cli-terminal.png)
+
 ```bash
 medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
