@@ -4,8 +4,9 @@
 
 | Version | Status |
 |---|---|
-| < 0.1.0 | Pre-alpha; not recommended for production use |
-| 0.1.x   | Early development; security feedback welcome |
+| 0.6.0-rc.1 | Current release candidate; security feedback welcome |
+| 0.5.x | Latest stable line |
+| < 0.5.0 | Early development; no longer maintained |
 
 ## Reporting a Vulnerability
 
@@ -26,11 +27,11 @@ production audit logs, credentials, or token-to-original mappings.
 
 ## Scope and Limitations
 
-This project is pre-alpha engineering infrastructure. It is **not** a certified compliance tool, and it does not guarantee prevention of all data leakage paths. See [README.md](./README.md) for Honest Guarantees.
+This project is pre-alpha engineering infrastructure. It is **not** a certified compliance tool, and it does not guarantee prevention of all data leakage paths. See [README.md](./README.md), "Four things it will never promise".
 
 ## Design Principles
 
 - Fail-closed: uncertain inputs default to `BLOCK` or `ASK`
 - Audit without raw PHI: logs contain metadata, not sensitive values
 - Verify after transform: no sanitized payload is released without re-validation
-- Immutable decisions: every decision carries a policy version for audit
+- Auditable decisions: every decision carries a policy version for audit

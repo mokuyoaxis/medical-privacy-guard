@@ -30,11 +30,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from medical_privacy_guard import Guard
+from medical_privacy_guard.cli.pixel import (
+    color_enabled,
+    level_code,
+    paint,
+    print_banner,
+    risk_bar,
+    verdict_code,
+)
 from medical_privacy_guard.adapters.http_gateway import HttpGateway, HttpGatewaySettings
 from medical_privacy_guard.adapters.mcp_gateway import GatewaySettings, McpGateway
 from medical_privacy_guard.core.audit import read_events, verify_chain
@@ -80,13 +89,23 @@ DEFAULT_BENCHMARK_RECIPIENT = "external_approved"
 _TRUST_LEVELS = {t.value.lower(): t for t in TrustLevel}
 _PURPOSES = {p.value.lower(): p for p in Purpose}
 
+_WELCOME = """\
+medical-privacy-guard: local-first privacy guardrails for medical data.
+
+Start here:
+  medical-privacy-guard repl                         type text, get a verdict
+  medical-privacy-guard inspect <file>               check a file without changing it
+  medical-privacy-guard sanitize <file> -o <output>  write a verified sanitized copy
+
+Run medical-privacy-guard --help for all commands."""
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="medical-privacy-guard",
         description="Local-first privacy guardrails for medical data.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
     format_boundary = (
         "Plain text, JSON objects/arrays and CSV files are supported; state the "
@@ -109,6 +128,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_common(p_inspect)
     p_inspect.add_argument("--approval-request-out", help="New private signed approval request file")
+
+    p_repl = sub.add_parser(
+        "repl", help="Interactive input box: evaluate lines of text as you type.",
+    )
+    _add_common(p_repl)
 
     p_sanitize = sub.add_parser(
         "sanitize", help="Sanitize a file and write the result.",
@@ -376,8 +400,36 @@ def _exit_for_verdict(verdict: Verdict) -> int:
 # -- output formatting -------------------------------------------------------
 
 
-def _human_decision(decision: Decision, counts: Mapping[str, int]) -> str:
-    lines = [f"Decision: {decision.verdict.value}", f"Risk: {decision.risk.level.value}"]
+_NEXT_STEPS = {
+    Verdict.ALLOW: (
+        "Next: nothing to do for this context. "
+        "No detection is not proof of safety."
+    ),
+    Verdict.SANITIZE: (
+        "Next: medical-privacy-guard sanitize <file> -o <output> "
+        "writes the verified sanitized copy."
+    ),
+    Verdict.ASK: (
+        "Next: a scoped grant is required before release:\n"
+        "  medical-privacy-guard sanitize <file> --approval-request-out request.json\n"
+        "  medical-privacy-guard grant-issue request.json --approve --output grant.json\n"
+        "  then re-run sanitize with --grant-file grant.json"
+    ),
+    Verdict.BLOCK: (
+        "Next: the payload stays withheld. A grant cannot override a "
+        "BLOCK; check the reason codes above."
+    ),
+}
+
+
+def _human_decision(
+    decision: Decision, counts: Mapping[str, int], guidance: bool = True
+) -> str:
+    enabled = color_enabled(sys.stdout)
+    verdict = paint(decision.verdict.value, verdict_code(decision.verdict), enabled)
+    level = paint(decision.risk.level.value, level_code(decision.risk.level), enabled)
+    bar = risk_bar(decision.risk.level, enabled)
+    lines = [f"Decision: {verdict}", f"Risk: {level}  {bar} {decision.risk.score}"]
     if decision.reason_codes:
         lines.append("Reason codes:")
         lines.extend(f"  - {rc.value}" for rc in decision.reason_codes)
@@ -387,6 +439,8 @@ def _human_decision(decision: Decision, counts: Mapping[str, int]) -> str:
     if decision.plan and decision.plan.operations:
         lines.append("Plan:")
         lines.extend(f"  - {op.op} {op.entity_type or op.target}" for op in decision.plan.operations)
+    if guidance:
+        lines.append(_NEXT_STEPS[decision.verdict])
     return "\n".join(lines)
 
 
@@ -466,6 +520,53 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     else:
         print(_human_decision(decision, counts))
     return _exit_for_verdict(decision.verdict)
+
+
+def _cmd_repl(args: argparse.Namespace) -> int:
+    """Interactive input box: evaluate one typed disclosure per line.
+
+    Each line is evaluated as text under the configured recipient and
+    purpose; a SANITIZE verdict also prints the verified releasable text.
+    ``/quit`` or end-of-input leaves the loop. Nothing is written to disk
+    and no audit events are recorded in this mode.
+    """
+    guard = Guard(profile=args.profile)
+    recipient = Recipient(kind="cli", trust_level=_TRUST_LEVELS[args.recipient])
+    purpose = _PURPOSES[args.purpose]
+    width = min(shutil.get_terminal_size((80, 20)).columns, 76)
+    top = "╭" + "─" * (width - 2) + "╮"
+    bottom = "╰" + "─" * (width - 2) + "╯"
+    print("One disclosure per line; /quit or Ctrl-D exits.", file=sys.stderr)
+    while True:
+        print(top)
+        try:
+            line = input("│ ")
+        except EOFError:
+            print(bottom)
+            return EXIT_OK
+        except KeyboardInterrupt:
+            print()
+            return EXIT_OK
+        print(bottom)
+        text = line.strip()
+        if not text:
+            continue
+        if text in {"/quit", "/exit"}:
+            return EXIT_OK
+        result = guard.evaluate(text, recipient, purpose)
+        print(
+            _human_decision(
+                result.decision,
+                _counts(result.facts),
+                guidance=result.decision.verdict is not Verdict.SANITIZE,
+            )
+        )
+        if result.decision.verdict is Verdict.SANITIZE:
+            sanitized = guard.sanitize(text, recipient, purpose)
+            if sanitized.released:
+                print("Sanitized:")
+                print(f"  {sanitized.text}")
+        print()
 
 
 def _cmd_sanitize(args: argparse.Namespace) -> int:
@@ -840,9 +941,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if exc.code == 2:
             return EXIT_ERROR
         raise
+    print_banner(suppressed=bool(getattr(args, "json", False)))
+    if args.command is None:
+        print(_WELCOME)
+        return EXIT_OK
     try:
         if args.command == "inspect":
             return _cmd_inspect(args)
+        if args.command == "repl":
+            return _cmd_repl(args)
         if args.command == "sanitize":
             return _cmd_sanitize(args)
         if args.command == "grant-issue":

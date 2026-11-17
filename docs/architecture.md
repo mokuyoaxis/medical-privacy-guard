@@ -226,6 +226,7 @@ medical-privacy-guard/
 │   ├── grant-registry.md
 │   ├── approval-workflow.md
 │   ├── datasets.md
+│   ├── roadmap-details.md
 │   └── evaluation.md
 ├── medical_privacy_guard/
 │   ├── __init__.py
@@ -238,12 +239,19 @@ medical-privacy-guard/
 │   ├── formats/                # admission + json / csv / fhir; dicom_inspect (read-only)
 │   └── adapters/               # mcp_gateway + http_gateway + openai_compat + anthropic_compat
 ├── tools/
-│   └── generate_synthetic_cn_notes.py
+│   ├── audit_contracts.py
+│   ├── evaluate_simulation.py
+│   ├── generate_synthetic_cn_notes.py
+│   └── smoke_local_workflows.py
 ├── skills/
 │   └── medical-privacy-guard/
 │       └── SKILL.md
 └── tests/
     ├── fixtures/
+    │   ├── challenge/
+    │   ├── dicom/
+    │   ├── fhir/
+    │   ├── simulation/
     │   ├── synthetic/
     │   └── synthetic_cn_notes/
     └── test_*.py
@@ -272,5 +280,6 @@ boundary or an anonymity guarantee.
 ## Authoritative scope
 
 The supported/unsupported capability list is owned by [scope.md](scope.md);
-version planning and acceptance criteria live in [ROADMAP.md](../ROADMAP.md).
+version planning lives in [ROADMAP.md](../ROADMAP.md), and the full
+per-version acceptance record in [roadmap-details.md](roadmap-details.md).
 Where prose in this document disagrees with those files, those files win.
