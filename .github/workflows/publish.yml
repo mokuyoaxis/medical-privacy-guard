@@ -1,0 +1,46 @@
+name: Publish to PyPI
+
+# Manual only: pick the target index when dispatching. Publishing uses
+# PyPI Trusted Publishing (OIDC); there is no API token stored anywhere.
+# The environment name must match the publisher registered on each index
+# (testpypi on TestPyPI, pypi on PyPI).
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Index to publish to"
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Publish to TestPyPI
+        if: inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish to PyPI
+        if: inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
