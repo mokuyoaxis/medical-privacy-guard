@@ -1,5 +1,6 @@
 # medical-privacy-guard
 
+[![PyPI](https://img.shields.io/pypi/v/medical-privacy-guard.svg)](https://pypi.org/project/medical-privacy-guard/)
 [![CI](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/ci.yml)
 [![Security](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/security.yml/badge.svg)](https://github.com/mokuyoaxis/medical-privacy-guard/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
