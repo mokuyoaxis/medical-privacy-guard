@@ -37,6 +37,8 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from medical_privacy_guard import Guard
+from medical_privacy_guard.adapters.http_gateway import HttpGateway, HttpGatewaySettings
+from medical_privacy_guard.adapters.mcp_gateway import GatewaySettings, McpGateway
 from medical_privacy_guard.cli.pixel import (
     color_enabled,
     level_code,
@@ -45,8 +47,6 @@ from medical_privacy_guard.cli.pixel import (
     risk_bar,
     verdict_code,
 )
-from medical_privacy_guard.adapters.http_gateway import HttpGateway, HttpGatewaySettings
-from medical_privacy_guard.adapters.mcp_gateway import GatewaySettings, McpGateway
 from medical_privacy_guard.core.audit import read_events, verify_chain
 from medical_privacy_guard.core.benchmark import run_benchmark
 from medical_privacy_guard.core.dataset import analyze_dataset, read_dataset_file, sanitize_dataset
