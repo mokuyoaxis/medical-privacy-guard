@@ -4,8 +4,8 @@
 
 | Version | Status |
 |---|---|
-| 0.6.0-rc.1 | Current release candidate; security feedback welcome |
-| 0.5.x | Latest stable line |
+| 0.6.0 | Current stable release; security feedback welcome |
+| 0.5.x | Previous stable line |
 | < 0.5.0 | Early development; no longer maintained |
 
 ## Reporting a Vulnerability

@@ -7,8 +7,8 @@ capability boundary is [docs/scope.md](docs/scope.md).
 
 ## Where we are
 
-Current candidate: **v0.6.0-rc.1** (package version `0.6.0rc1`).
-Latest stable: **v0.5.0**. Next stop: **v1.0**.
+Current stable: **v0.6.0** (package version `0.6.0`).
+Previous stable: **v0.5.0**. Next stop: **v1.0**.
 
 | Version | Theme | Status |
 |---|---|---|
@@ -19,7 +19,7 @@ Latest stable: **v0.5.0**. Next stop: **v1.0**.
 | v0.3.2 / v0.3.4 | Generalisation fixes; admission and audit fixes | Released |
 | v0.4 | Structured formats + egress adapters: FHIR set, read-only DICOM scanner, SDK wrappers, MCP gateway | Released (`v0.4.0`) |
 | v0.5 | ASK approval grants + hardening: signed grants, SQLite registry, local approvals, dataset measurements | Released (`v0.5.0`) |
-| v0.6 | One namespace (`medical_privacy_guard`), stable public API, zero-code HTTP gateway | Release candidate (`v0.6.0-rc.1`) |
+| v0.6 | One namespace (`medical_privacy_guard`), stable public API, zero-code HTTP gateway | Released (`v0.6.0`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 A note on numbering, because it confuses people: the work once planned as
@@ -49,8 +49,7 @@ Must have:
 - security boundary docs (done) and a release gate (below);
 - and no compliance claims the code cannot back up.
 
-Still genuinely open on the way to v1.0: promoting v0.6 from release
-candidate to stable, publishing to PyPI so people can simply
+Still genuinely open on the way to v1.0: publishing to PyPI so people can simply
 `pip install medical-privacy-guard`, and growing the hand-written
 generalisation corpus so the evaluation says more about real text and less
 about templates.

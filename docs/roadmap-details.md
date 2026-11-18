@@ -35,10 +35,10 @@ current capabilities are defined by scope.md and the latest delivered stage.
 | v0.3.4 | Audit fixes: admission, invisible characters, rebuilt-document gate | Released (`v0.3.4`) |
 | v0.4 | Structured formats + egress adapters | Released (`v0.4.0`); DICOM is read-only and experimental |
 | v0.5 | ASK approval grants + security hardening | Released (`v0.5.0`), including SQLite consumption/revocation, local approvals and initial dataset measurements |
-| v0.6 | Namespace convergence + zero-code gateway | Release candidate (`v0.6.0-rc.1`) |
+| v0.6 | Namespace convergence + zero-code gateway | Released (`v0.6.0`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
-The current package version is `0.6.0rc1`, with candidate tag `v0.6.0-rc.1`.
+The current package version is `0.6.0`, with stable tag `v0.6.0`.
 The stable `v0.5.0` tag contains the `v0.5.0-rc.3` code plus documentation
 corrections. The work that was planned as separate v0.5 (DICOM)
 and v0.6 (FHIR) releases was written in the same week and is folded into v0.4.

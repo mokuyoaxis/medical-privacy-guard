@@ -252,9 +252,9 @@ artefacts. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Status and origins.**
 
-- **Current candidate**: v0.6.0-rc.1 — stable public API, a single
+- **Current stable**: v0.6.0 — stable public API, a single
   `medical_privacy_guard` namespace, and the zero-code gateway.
-- **Latest stable**: v0.5.0 — ASK approval grants, the SQLite grant
+- **Previous stable**: v0.5.0 — ASK approval grants, the SQLite grant
   registry, and the local approval workflow.
 - **Roadmap**: earlier milestones (the text core, the Chinese detection and
   evaluation line, CSV/JSON, structured formats and egress adapters) and
