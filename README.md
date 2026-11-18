@@ -115,6 +115,7 @@ medical-privacy-guard inspect note.txt --json
 medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
 medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 medical-privacy-guard audit-verify audit/
+medical-privacy-guard report --audit-dir audit/ -o report.html
 ```
 
 Exit codes carry the verdict, which makes the CLI easy to wire into a

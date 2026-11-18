@@ -179,6 +179,37 @@ class SqliteGrantRegistry(GrantRegistry):
                 "SELECT 1 FROM grant_revocations WHERE grant_key=?", (key,)
             ).fetchone() is not None
 
+    def snapshot(
+        self,
+    ) -> tuple[tuple[tuple[str, int, int, str, bool], ...], tuple[str, ...]]:
+        """Read every recorded use row plus the revocation-only keys.
+
+        Returns ``(rows, revoked_only_keys)``; each row is ``(grant_key,
+        uses_allowed, uses_consumed, expires_at, revoked)``. Keys are the
+        stored SHA-256 of a grant ID — the raw ID is never stored, so it
+        cannot be read back here either. Read-only: unlike consumption this
+        never writes, so status tooling can use it freely.
+        """
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT u.grant_key, u.uses_allowed, u.uses_consumed, "
+                "u.expires_at, EXISTS(SELECT 1 FROM grant_revocations r "
+                "WHERE r.grant_key = u.grant_key) FROM grant_uses u "
+                "ORDER BY u.expires_at, u.grant_key"
+            ).fetchall()
+            revoked_only = connection.execute(
+                "SELECT r.grant_key FROM grant_revocations r WHERE NOT EXISTS "
+                "(SELECT 1 FROM grant_uses u WHERE u.grant_key = r.grant_key) "
+                "ORDER BY r.grant_key"
+            ).fetchall()
+        return (
+            tuple(
+                (key, allowed, consumed, expires_at, bool(revoked))
+                for key, allowed, consumed, expires_at, revoked in rows
+            ),
+            tuple(key for (key,) in revoked_only),
+        )
+
     def consume(self, grant: Grant, store: dict[str, int] | None = None) -> bool:
         """Commit one use, or return False for expiry, revocation or exhaustion.
 

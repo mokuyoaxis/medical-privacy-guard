@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- New `report` command: renders a one-shot, self-contained HTML page from
+  the audit log and the grant registry — decision and risk aggregates,
+  entity and reason-code totals, grant budget status, and the audit chain
+  verification result. Aggregates only: audit events are metadata by
+  design and the registry stores hashed grant keys, so the page contains
+  no clinical text and no raw grant IDs. The file is created owner-only,
+  existing paths are refused, and the exit code follows `audit-verify`
+  (2 when the chain is broken). Page prose is available in English and
+  Simplified Chinese (`--lang zh`); data labels stay canonical.
+
 ## [0.6.0] - 2026-11-18
 
 ### Added

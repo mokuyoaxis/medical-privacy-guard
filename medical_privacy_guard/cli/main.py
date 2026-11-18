@@ -6,6 +6,7 @@ Commands:
               [--audit-dir DIR]
     benchmark <corpus_dir> [--json] [--profile P] [--limit N]
     audit-verify <audit_dir> [--json] [--key-env VAR]
+    report [--audit-dir DIR] [--grant-db DB] [--key-env VAR] -o report.html
     serve [--upstream URL] [--host H] [--port N] [--profile P]
     mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
     dicom-inspect <file> [--json]
@@ -66,6 +67,11 @@ from medical_privacy_guard.core.model import (
     Recipient,
     TrustLevel,
     Verdict,
+)
+from medical_privacy_guard.core.report import (
+    render_html,
+    summarize_events,
+    summarize_grants,
 )
 from medical_privacy_guard.formats.admission import (
     UnsupportedInput,
@@ -141,7 +147,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  Approval      grant-issue, grant-db-init, grant-status, grant-revoke\n\n"
             "  Gateways      serve, mcp-gateway\n\n"
             "  Data checks   benchmark, dataset-risk, dataset-sanitize, dicom-inspect\n\n"
-            "  Audit         audit-verify\n\n"
+            "  Audit         audit-verify, report\n\n"
             "Examples:\n\n"
             "  medical-privacy-guard inspect note.txt --recipient external_unknown\n\n"
             "  medical-privacy-guard sanitize note.txt -o clean.txt\n\n"
@@ -357,6 +363,39 @@ def _build_parser() -> argparse.ArgumentParser:
         "--key-env",
         default=None,
         help="Environment variable holding the HMAC key (kept out of argv)",
+    )
+    p_report = sub.add_parser(
+        "report",
+        help="Render a one-shot static HTML report from audit and grant metadata.",
+        epilog=(
+            "The page is self-contained (no scripts, no external requests) and "
+            "holds aggregates only: audit events are metadata by design, and "
+            "the registry stores hashed grant keys. The output is created "
+            "owner-only and existing paths are refused. Exit code is 2 when "
+            "the audit chain verifies as broken, as with audit-verify.\n\n"
+            "Examples:\n\n"
+            "  medical-privacy-guard report --audit-dir ./audit -o report.html\n\n"
+            "  medical-privacy-guard report --audit-dir ./audit --lang zh -o report.html"
+        ),
+    )
+    p_report.add_argument(
+        "--lang", choices=("en", "zh"), default="en",
+        help="Page language: en or zh (data labels stay canonical)",
+    )
+    p_report.add_argument("--audit-dir", default=None, help="Directory holding events.jsonl")
+    p_report.add_argument(
+        "--grant-db", default=None,
+        help="Absolute SQLite grant registry path (default: the standard registry, when it exists)",
+    )
+    p_report.add_argument("--grant-timeout", type=float, default=5.0)
+    p_report.add_argument(
+        "--key-env",
+        default=None,
+        help="Environment variable holding the audit HMAC key (kept out of argv)",
+    )
+    p_report.add_argument(
+        "-o", "--output", required=True,
+        help="New HTML file to create; existing paths are refused",
     )
     p_dicom = sub.add_parser(
         "dicom-inspect",
@@ -927,6 +966,68 @@ def _cmd_audit_verify(args: argparse.Namespace) -> int:
     return EXIT_OK if report.verified else EXIT_BLOCK
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    audit_summary = None
+    chain = None
+    grant_summary = None
+    sources: list[tuple[str, str]] = []
+    guard_path: str | None = None
+    if args.audit_dir:
+        log = Path(args.audit_dir) / "events.jsonl"
+        if not log.is_file():
+            # Same stance as audit-verify: an absent log proves nothing, and
+            # rendering it as an empty report would dress a typo up as data.
+            print(f"error: no audit log at {log}", file=sys.stderr)
+            return EXIT_ERROR
+        events = read_events(log)
+        chain = verify_chain(events, _audit_key(args.key_env))
+        audit_summary = summarize_events(events)
+        sources.append(("审计日志" if args.lang == "zh" else "Audit log", str(log)))
+        guard_path = str(log)
+    db_path = args.grant_db
+    if db_path is None and DEFAULT_GRANT_DB_PATH.is_file():
+        db_path = str(DEFAULT_GRANT_DB_PATH)
+    if db_path is not None:
+        if not Path(db_path).is_file():
+            if args.grant_db is not None:
+                print(f"error: no grant registry at {db_path}", file=sys.stderr)
+                return EXIT_ERROR
+        else:
+            registry = SqliteGrantRegistry(
+                db_path, timeout_seconds=args.grant_timeout
+            )
+            rows, revoked_only = registry.snapshot()
+            grant_summary = summarize_grants(rows, revoked_only)
+            sources.append(
+                ("授权登记册" if args.lang == "zh" else "Grant registry", db_path)
+            )
+            if guard_path is None:
+                guard_path = db_path
+    if audit_summary is None and grant_summary is None:
+        print(
+            "error: nothing to report: pass --audit-dir and/or --grant-db",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    page = render_html(
+        sources=sources, audit=audit_summary, chain=chain, grants=grant_summary,
+        lang=args.lang,
+    )
+    if guard_path is None:  # unreachable: a loaded source always sets it
+        return EXIT_ERROR
+    _write_output(args.output, guard_path, page)
+    print(f"Report written to {args.output}")
+    if chain is not None:
+        state = "INTACT" if chain.verified else "BROKEN"
+        print(f"Audit chain: {state} ({chain.total} records)")
+    if grant_summary is not None:
+        print(
+            f"Grants recorded: {grant_summary.recorded} "
+            f"(revoked {grant_summary.revoked})"
+        )
+    return EXIT_BLOCK if chain is not None and not chain.verified else EXIT_OK
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     """Run the zero-code HTTP gateway until interrupted."""
     settings = HttpGatewaySettings(
@@ -1095,6 +1196,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_benchmark(args)
         if args.command == "audit-verify":
             return _cmd_audit_verify(args)
+        if args.command == "report":
+            return _cmd_report(args)
         if args.command == "serve":
             return _cmd_serve(args)
         if args.command == "mcp-gateway":
