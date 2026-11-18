@@ -4,6 +4,11 @@ name: Publish to PyPI
 # PyPI Trusted Publishing (OIDC); there is no API token stored anywhere.
 # The environment name must match the publisher registered on each index
 # (testpypi on TestPyPI, pypi on PyPI).
+#
+# Guard: the version in pyproject.toml must have a matching git tag
+# (v<version>) and that tag must point at the dispatched commit, or the
+# run refuses to publish. Tag the release commit first, then dispatch
+# from that commit.
 
 on:
   workflow_dispatch:
@@ -28,9 +33,30 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Verify the release tag matches this commit
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          TAG="v$VERSION"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            ALT="v$(printf '%s' "$VERSION" | sed -E 's/([0-9])(rc|a|b|c|dev)/\1-\2/')"
+            if [ "$ALT" != "$TAG" ] && git rev-parse -q --verify "refs/tags/$ALT" > /dev/null; then
+              TAG="$ALT"
+            else
+              echo "::error::No tag $TAG exists for version $VERSION. Tag the release commit before publishing."
+              exit 1
+            fi
+          fi
+          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+          if [ "$TAG_COMMIT" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG points at $TAG_COMMIT, not at the dispatched commit $GITHUB_SHA. Refusing to publish."
+            exit 1
+          fi
+          echo "Release guard passed: $TAG is this commit, publishing $VERSION."
       - name: Build distributions
         run: |
           python -m pip install --upgrade pip build twine
