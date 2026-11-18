@@ -262,10 +262,12 @@ artefacts. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Status and origins.**
 
-- **Current stable**: v0.6.0 — stable public API, a single
+- **Current stable**: v0.6.1 — the static HTML audit and grant report
+  (`report`, in English and Simplified Chinese), on top of the stable
+  public API, a single `medical_privacy_guard` namespace, and the
+  zero-code gateway.
+- **Previous stable**: v0.6.0 — stable public API, a single
   `medical_privacy_guard` namespace, and the zero-code gateway.
-- **Previous stable**: v0.5.0 — ASK approval grants, the SQLite grant
-  registry, and the local approval workflow.
 - **Roadmap**: earlier milestones (the text core, the Chinese detection and
   evaluation line, CSV/JSON, structured formats and egress adapters) and
   the road to **v1.0, a medical AI egress privacy gateway**, are in

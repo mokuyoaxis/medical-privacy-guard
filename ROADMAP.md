@@ -7,8 +7,8 @@ capability boundary is [docs/scope.md](docs/scope.md).
 
 ## Where we are
 
-Current stable: **v0.6.0** (package version `0.6.0`).
-Previous stable: **v0.5.0**. Next stop: **v1.0**.
+Current stable: **v0.6.1** (package version `0.6.1`).
+Previous stable: **v0.6.0**. Next stop: **v1.0**.
 
 | Version | Theme | Status |
 |---|---|---|
@@ -20,6 +20,7 @@ Previous stable: **v0.5.0**. Next stop: **v1.0**.
 | v0.4 | Structured formats + egress adapters: FHIR set, read-only DICOM scanner, SDK wrappers, MCP gateway | Released (`v0.4.0`) |
 | v0.5 | ASK approval grants + hardening: signed grants, SQLite registry, local approvals, dataset measurements | Released (`v0.5.0`) |
 | v0.6 | One namespace (`medical_privacy_guard`), stable public API, zero-code HTTP gateway | Released (`v0.6.0`) |
+| v0.6.1 | Static HTML audit and grant report (`report`, English and Simplified Chinese) | Released (`v0.6.1`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 A note on numbering, because it confuses people: the work once planned as
