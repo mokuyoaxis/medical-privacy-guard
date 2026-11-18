@@ -56,6 +56,14 @@ flowchart LR
 
 ### 本地安装与验证
 
+已上架 PyPI，直接安装：
+
+```bash
+python -m pip install medical-privacy-guard
+```
+
+从源码安装（开发用）：
+
 ```bash
 git clone https://github.com/mokuyoaxis/medical-privacy-guard
 cd medical-privacy-guard

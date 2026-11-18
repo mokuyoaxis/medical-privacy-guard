@@ -49,10 +49,10 @@ Must have:
 - security boundary docs (done) and a release gate (below);
 - and no compliance claims the code cannot back up.
 
-Still genuinely open on the way to v1.0: publishing to PyPI so people can simply
-`pip install medical-privacy-guard`, and growing the hand-written
-generalisation corpus so the evaluation says more about real text and less
-about templates.
+Publishing to PyPI landed with v0.6.0 (2026-11-18), so
+`pip install medical-privacy-guard` simply works. Still genuinely open on the
+way to v1.0: growing the hand-written generalisation corpus so the evaluation
+says more about real text and less about templates.
 
 ## Non-goals
 

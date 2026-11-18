@@ -71,6 +71,14 @@ verified.**
 
 ### Install and check
 
+From PyPI:
+
+```bash
+python -m pip install medical-privacy-guard
+```
+
+From source, for development:
+
 ```bash
 git clone https://github.com/mokuyoaxis/medical-privacy-guard
 cd medical-privacy-guard
