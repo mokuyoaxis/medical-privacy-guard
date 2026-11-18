@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The `dicom` extra now requires `pydicom>=3.0.2`: pydicom 3.0.0 and
+  3.0.1 are affected by CVE-2026-32711, a path-traversal flaw in DICOMDIR
+  file-set handling, fixed in 3.0.2.
+- CI now also tests on Python 3.13 and 3.14, and the package classifiers
+  list them: the full test suite passes on 3.13.18 and 3.14.10 (verified
+  locally before the matrix change landed).
+
 ## [0.6.1] - 2026-11-18
 
 ### Added
