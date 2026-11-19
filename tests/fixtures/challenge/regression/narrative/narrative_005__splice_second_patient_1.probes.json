@@ -1,0 +1,25 @@
+{
+  "doc_id": "narrative_005__splice_second_patient_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "欧阳娜娜"
+    },
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800005678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_005 via splice_second_patient (noise): A second patient's labelled clause spliced into the same note. Seed note: compound surname in adjacent form",
+  "mutated_from": "narrative_005",
+  "operator": "splice_second_patient"
+}

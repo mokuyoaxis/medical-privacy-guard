@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_025__anchor_verb_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "陈曦"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_025 via anchor_verb_swap (narrative): Anchor verb '诉' written as '主诉'. Seed note: bare name + complaint verb, no field label and no gender marker",
+  "mutated_from": "narrative_025",
+  "operator": "anchor_verb_swap"
+}

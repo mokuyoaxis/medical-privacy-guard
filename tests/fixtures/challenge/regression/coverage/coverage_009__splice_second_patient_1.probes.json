@@ -1,0 +1,25 @@
+{
+  "doc_id": "coverage_009__splice_second_patient_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PRECISE_LOCATION",
+      "text": "广州市天河区"
+    },
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800005678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_009 via splice_second_patient (noise): A second patient's labelled clause spliced into the same note. Seed note: unlabelled address with a multi-word residence verb",
+  "mutated_from": "coverage_009",
+  "operator": "splice_second_patient"
+}

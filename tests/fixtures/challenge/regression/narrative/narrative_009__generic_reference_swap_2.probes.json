@@ -1,0 +1,15 @@
+{
+  "doc_id": "narrative_009__generic_reference_swap_2",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "该病区",
+    "周转正常"
+  ],
+  "probe_note": "Mutation of narrative_009 via generic_reference_swap (context): Generic reference '本病区' written as '该病区'. Seed note: over-redaction: 周转 must not be read as a surname plus given name",
+  "mutated_from": "narrative_009",
+  "operator": "generic_reference_swap"
+}

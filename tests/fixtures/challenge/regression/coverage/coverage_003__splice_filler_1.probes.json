@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_003__splice_filler_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "女性"
+  ],
+  "probe_note": "Mutation of coverage_003 via splice_filler (noise): Identifier-free examination filler appended. Seed note: over-redaction control: 女性家属 names a relative, not the patient",
+  "mutated_from": "coverage_003",
+  "operator": "splice_filler"
+}

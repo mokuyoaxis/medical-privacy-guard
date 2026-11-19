@@ -1,0 +1,21 @@
+{
+  "doc_id": "coverage_001__splice_filler_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "五十六岁"
+    },
+    {
+      "type": "SEX",
+      "text": "女"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_001 via splice_filler (noise): Identifier-free examination filler prepended. Seed note: Chinese numeral age: digits and numerals must reach the same verdict",
+  "mutated_from": "coverage_001",
+  "operator": "splice_filler"
+}

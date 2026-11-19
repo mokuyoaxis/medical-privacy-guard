@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_025__time_opener_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "陈曦"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_025 via time_opener_swap (narrative): Time opener '今日查房' written as '今晨查房'. Seed note: bare name + complaint verb, no field label and no gender marker",
+  "mutated_from": "narrative_025",
+  "operator": "time_opener_swap"
+}

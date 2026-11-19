@@ -1,0 +1,21 @@
+{
+  "doc_id": "coverage_001__age_numeral_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "56岁"
+    },
+    {
+      "type": "SEX",
+      "text": "女"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_001 via age_numeral_swap (narrative): Age numeral style swapped: '五十六岁' to '56岁'. Seed note: Chinese numeral age: digits and numerals must reach the same verdict",
+  "mutated_from": "coverage_001",
+  "operator": "age_numeral_swap"
+}

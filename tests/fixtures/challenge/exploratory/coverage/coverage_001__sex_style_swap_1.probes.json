@@ -1,0 +1,21 @@
+{
+  "doc_id": "coverage_001__sex_style_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "五十六岁"
+    },
+    {
+      "type": "SEX",
+      "text": "女性"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_001 via sex_style_swap (narrative): Sex written in the long form '女性'. Seed note: Chinese numeral age: digits and numerals must reach the same verdict Filed under exploratory by E2 validation (2026-11-19): missed SEX '女性'.",
+  "mutated_from": "coverage_001",
+  "operator": "sex_style_swap"
+}

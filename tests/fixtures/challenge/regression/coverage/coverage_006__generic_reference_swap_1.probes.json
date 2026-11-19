@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_006__generic_reference_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "床位"
+  ],
+  "probe_note": "Mutation of coverage_006 via generic_reference_swap (context): Generic reference '床位紧张' written as '床位不足'. Seed note: over-redaction control: capacity is a concept, not an identifier",
+  "mutated_from": "coverage_006",
+  "operator": "generic_reference_swap"
+}

@@ -59,15 +59,16 @@ dimension that fails entirely behind one that passes.
 
 | Dimension | Probes | Status |
 |---|---|---|
-| narrative | 49 regression / 25 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls |
-| coverage | 108 regression / 27 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms |
+| narrative | 74 regression / 26 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
+| coverage | 128 regression / 28 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
 
 ## Mutated probes
 
 Probes whose sidecar carries `mutated_from` and `operator` fields were derived
 from a handwritten seed by a deterministic operator in
 `tools/mutate_probes.py` (digit width, phone grouping, date restyle, ID
-spacing, label aliases, separator swaps, label drops, value splits). The
+spacing, label aliases, separator swaps, label drops, value splits, anchor
+verbs, numeral styles, context-control rewrites, spliced filler). The
 operator rewrites the annotation in the same step as the text, so a mutated
 probe's labels are bookkeeping, not guesses. Mutations that pass the challenge
 checks are filed under `regression/`; those that fail are filed under

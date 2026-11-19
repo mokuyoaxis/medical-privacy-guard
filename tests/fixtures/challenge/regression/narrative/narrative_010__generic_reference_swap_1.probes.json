@@ -1,0 +1,14 @@
+{
+  "doc_id": "narrative_010__generic_reference_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "该院为三甲医院"
+  ],
+  "probe_note": "Mutation of narrative_010 via generic_reference_swap (context): Generic reference '三级甲等医院' written as '三甲医院'. Seed note: over-redaction: generic institution",
+  "mutated_from": "narrative_010",
+  "operator": "generic_reference_swap"
+}

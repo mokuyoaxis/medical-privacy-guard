@@ -347,6 +347,225 @@ def _value_split_ws(text: str, meta: dict) -> list[Variant]:
     return variants
 
 
+# ---------------------------------------------------------------------------
+# Narrative operators (rewrite the anchoring syntax around a name)
+
+_ANCHOR_VERBS = [
+    ("主诉", "诉"),
+    ("自诉", "主诉"),
+    ("诉", "主诉"),
+    ("伴", "伴有"),
+    ("收入", "收住"),
+]
+
+
+def _anchor_verb_swap(text: str, meta: dict) -> list[Variant]:
+    if not _values_of_type(meta, "PERSON_NAME", "DOCTOR_NAME", "NURSE_NAME", "RELATIVE_NAME"):
+        return []
+    detected = {entry["text"] for entry in meta["must_detect"]}
+    for source, target in _ANCHOR_VERBS:
+        if source in text and source not in detected:
+            new_text = text.replace(source, target, 1)
+            return [Variant(new_text, [dict(e) for e in meta["must_detect"]],
+                            list(meta["must_not_detect"]),
+                            f"Anchor verb {source!r} written as {target!r}.")]
+    return []
+
+
+def _sex_style_swap(text: str, meta: dict) -> list[Variant]:
+    for entry in meta["must_detect"]:
+        if entry["type"] != "SEX" or entry["text"] not in ("男", "女"):
+            continue
+        value = entry["text"]
+        styled = value + "性"
+        for pattern in (f"，{value}，", f"{value}，", f"，{value}"):
+            if pattern in text:
+                new_text = text.replace(pattern, pattern.replace(value, styled), 1)
+                must = [{**e, "text": styled} if e is entry else dict(e) for e in meta["must_detect"]]
+                return [Variant(new_text, must, list(meta["must_not_detect"]),
+                                f"Sex written in the long form {styled!r}.")]
+    return []
+
+
+_CN_AGE_DIGITS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+                  "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_AGE_CHARS = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五",
+                 6: "六", 7: "七", 8: "八", 9: "九"}
+
+
+def _int_to_cn_age(number: int) -> str:
+    if number < 10:
+        return _CN_AGE_CHARS[number]
+    tens, ones = divmod(number, 10)
+    head = "" if tens == 1 else _CN_AGE_CHARS[tens]
+    return head + "十" + (_CN_AGE_CHARS[ones] if ones else "")
+
+
+def _cn_age_to_int(chars: str) -> int:
+    if chars == "十":
+        return 10
+    if "十" in chars:
+        tens, _, ones = chars.partition("十")
+        return (int(_CN_AGE_DIGITS[tens]) if tens else 1) * 10 + (int(_CN_AGE_DIGITS[ones]) if ones else 0)
+    return int(_CN_AGE_DIGITS[chars])
+
+
+def _age_numeral_swap(text: str, meta: dict) -> list[Variant]:
+    for entry in meta["must_detect"]:
+        if entry["type"] != "AGE":
+            continue
+        value = entry["text"]
+        digits = re.fullmatch(r"(\d+)岁", value)
+        chinese = re.fullmatch(r"([一二三四五六七八九十两]+)岁", value)
+        if digits and int(digits.group(1)) < 100:
+            new_value = _int_to_cn_age(int(digits.group(1))) + "岁"
+        elif chinese:
+            new_value = f"{_cn_age_to_int(chinese.group(1))}岁"
+        else:
+            continue
+        new_text, must = _replace_value(text, meta, value, new_value)
+        return [Variant(new_text, must, list(meta["must_not_detect"]),
+                        f"Age numeral style swapped: {value!r} to {new_value!r}.")]
+    return []
+
+
+_TIME_OPENERS = [
+    ("今日查房", "今晨查房"),
+    ("今日", "今晨"),
+    ("上午9时", "上午九时"),
+    ("上午九时", "上午9时"),
+]
+
+
+def _time_opener_swap(text: str, meta: dict) -> list[Variant]:
+    for source, target in _TIME_OPENERS:
+        if text.startswith(source) or f"，{source}" in text or f"{source}，" in text:
+            new_text = text.replace(source, target, 1)
+            return [Variant(new_text, [dict(e) for e in meta["must_detect"]],
+                            list(meta["must_not_detect"]),
+                            f"Time opener {source!r} written as {target!r}.")]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Context operators (rewrite over-redaction controls; the verdict must stay)
+
+_AGE_IN_NOT = re.compile(r"([一二三四五六七八九十]+|\d+)岁")
+
+
+def _swap_in_text_and_not(text: str, meta: dict, source: str, target: str) -> tuple[str, list[str]]:
+    new_text = text.replace(source, target, 1)
+    new_not = [item.replace(source, target, 1) if source in item else item
+               for item in meta["must_not_detect"]]
+    return new_text, new_not
+
+
+def _population_age_swap(text: str, meta: dict) -> list[Variant]:
+    if meta["expected_verdict"] != "ALLOW":
+        return []
+    variants: list[Variant] = []
+    for item in meta["must_not_detect"]:
+        match = _AGE_IN_NOT.search(item)
+        if not match:
+            continue
+        token = match.group(0)
+        number = match.group(1)
+        if number.isdigit():
+            restyled = _int_to_cn_age(int(number)) + "岁" if int(number) < 100 else None
+            shifted = f"{int(number) + 10}岁"
+        else:
+            restyled = f"{_cn_age_to_int(number)}岁"
+            shifted = _int_to_cn_age(_cn_age_to_int(number) + 10) + "岁"
+        for new_token, label in ((restyled, "numeral style"), (shifted, "threshold value")):
+            if new_token and new_token != token:
+                new_text, new_not = _swap_in_text_and_not(text, meta, token, new_token)
+                variants.append(Variant(new_text, [], new_not,
+                                        f"Population age {label} swapped: {token!r} to {new_token!r}."))
+        break
+    for source, target in (("多见于", "好发于"), ("多见于", "常见于")):
+        if source in text:
+            new_text, new_not = _swap_in_text_and_not(text, meta, source, target)
+            variants.append(Variant(new_text, [], new_not,
+                                    f"Population phrasing {source!r} written as {target!r}."))
+            break
+    return variants
+
+
+def _referral_style_swap(text: str, meta: dict) -> list[Variant]:
+    if meta["expected_verdict"] != "ALLOW" or "会诊" not in text or "建议" not in text:
+        return []
+    variants: list[Variant] = []
+    for target in ("拟请", "请"):
+        new_text, new_not = _swap_in_text_and_not(text, meta, "建议", target)
+        variants.append(Variant(new_text, [], new_not,
+                                f"Referral phrasing written with {target!r} instead of '建议'."))
+    return variants
+
+
+_GENERIC_REFERENCES = [
+    ("本病区", "各病区"),
+    ("本病区", "该病区"),
+    ("三级甲等医院", "三甲医院"),
+    ("床位紧张", "床位不足"),
+]
+
+
+def _generic_reference_swap(text: str, meta: dict) -> list[Variant]:
+    if meta["expected_verdict"] != "ALLOW":
+        return []
+    variants: list[Variant] = []
+    for source, target in _GENERIC_REFERENCES:
+        if source in text:
+            new_text, new_not = _swap_in_text_and_not(text, meta, source, target)
+            variants.append(Variant(new_text, [], new_not,
+                                    f"Generic reference {source!r} written as {target!r}."))
+    return variants
+
+
+# ---------------------------------------------------------------------------
+# Noise operators (splice in identifier-free or separately-labelled material)
+
+_FILLERS = [
+    "查体：神志清，精神可。",
+    "双肺呼吸音清，未闻及干湿性啰音。",
+    "饮食、睡眠可，二便正常。",
+    "余无特殊不适。",
+    "嘱注意休息，清淡饮食。",
+]
+
+
+def _splice_filler(text: str, meta: dict) -> list[Variant]:
+    fresh = [filler for filler in _FILLERS if filler not in text]
+    if not fresh:
+        return []
+    variants = [Variant(text + fresh[0], [dict(e) for e in meta["must_detect"]],
+                        list(meta["must_not_detect"]),
+                        "Identifier-free examination filler appended.")]
+    if len(fresh) > 1:
+        variants.append(Variant(fresh[1] + text, [dict(e) for e in meta["must_detect"]],
+                                list(meta["must_not_detect"]),
+                                "Identifier-free examination filler prepended."))
+    return variants
+
+
+_SECOND_PATIENT = "另：患者王五，电话13800005678。"
+_SECOND_PATIENT_FACTS = [
+    {"type": "PERSON_NAME", "text": "王五"},
+    {"type": "PHONE", "text": "13800005678"},
+]
+
+
+def _splice_second_patient(text: str, meta: dict) -> list[Variant]:
+    if meta["expected_verdict"] != "SANITIZE":
+        return []
+    if any(fact["text"] in text for fact in _SECOND_PATIENT_FACTS):
+        return []
+    must = [dict(e) for e in meta["must_detect"]] + [dict(f) for f in _SECOND_PATIENT_FACTS]
+    return [Variant(text + _SECOND_PATIENT, must, list(meta["must_not_detect"]),
+                    "A second patient's labelled clause spliced into the same note.")]
+
+
+
 OPERATORS: list[Operator] = [
     Operator("digits_fullwidth", "format", _fullwidth),
     Operator("phone_regroup", "format", _phone_regroup),
@@ -356,6 +575,15 @@ OPERATORS: list[Operator] = [
     Operator("separator_swap", "label", _separator_swap),
     Operator("label_drop", "label", _label_drop),
     Operator("value_split_ws", "label", _value_split_ws),
+    Operator("anchor_verb_swap", "narrative", _anchor_verb_swap),
+    Operator("sex_style_swap", "narrative", _sex_style_swap),
+    Operator("age_numeral_swap", "narrative", _age_numeral_swap),
+    Operator("time_opener_swap", "narrative", _time_opener_swap),
+    Operator("population_age_swap", "context", _population_age_swap),
+    Operator("referral_style_swap", "context", _referral_style_swap),
+    Operator("generic_reference_swap", "context", _generic_reference_swap),
+    Operator("splice_filler", "noise", _splice_filler),
+    Operator("splice_second_patient", "noise", _splice_second_patient),
 ]
 
 OPERATOR_CLASSES = {op.name: op.operator_class for op in OPERATORS}
@@ -379,6 +607,9 @@ def main() -> int:
                         help="staging directory for generated variants")
     parser.add_argument("--operator", action="append", default=[],
                         help="restrict to named operators (repeatable)")
+    parser.add_argument("--exclude-mutated", action="store_true",
+                        help="skip seeds that are themselves mutations "
+                             "(sidecars carrying a mutated_from field)")
     args = parser.parse_args()
 
     operators = [op for op in OPERATORS if not args.operator or op.name in args.operator]
@@ -387,6 +618,8 @@ def main() -> int:
     refused: list[str] = []
     for sidecar in sorted(args.seeds.rglob("*.probes.json")):
         text, meta = _load_probe(sidecar)
+        if args.exclude_mutated and "mutated_from" in meta:
+            continue
         try:
             variants = generate_variants(text, meta, operators)
         except MutationRefused as exc:

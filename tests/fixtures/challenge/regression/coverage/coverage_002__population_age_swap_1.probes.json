@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_002__population_age_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "50岁"
+  ],
+  "probe_note": "Mutation of coverage_002 via population_age_swap (context): Population age numeral style swapped: '五十岁' to '50岁'. Seed note: over-redaction control: a population threshold is not a patient age",
+  "mutated_from": "coverage_002",
+  "operator": "population_age_swap"
+}

@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_002__splice_filler_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "五十岁"
+  ],
+  "probe_note": "Mutation of coverage_002 via splice_filler (noise): Identifier-free examination filler appended. Seed note: over-redaction control: a population threshold is not a patient age",
+  "mutated_from": "coverage_002",
+  "operator": "splice_filler"
+}

@@ -1,0 +1,14 @@
+{
+  "doc_id": "narrative_023__generic_reference_swap_2",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "该病区"
+  ],
+  "probe_note": "Mutation of narrative_023 via generic_reference_swap (context): Generic reference '本病区' written as '该病区'. Seed note: generic ward must not be reported",
+  "mutated_from": "narrative_023",
+  "operator": "generic_reference_swap"
+}

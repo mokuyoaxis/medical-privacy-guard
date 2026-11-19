@@ -1,0 +1,25 @@
+{
+  "doc_id": "coverage_004__splice_second_patient_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张三"
+    },
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800005678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_004 via splice_second_patient (noise): A second patient's labelled clause spliced into the same note. Seed note: bracketed field value",
+  "mutated_from": "coverage_004",
+  "operator": "splice_second_patient"
+}

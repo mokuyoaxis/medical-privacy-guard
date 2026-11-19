@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_002__anchor_verb_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_002 via anchor_verb_swap (narrative): Anchor verb '主诉' written as '诉'. Seed note: adjacent form + chief-complaint verb",
+  "mutated_from": "narrative_002",
+  "operator": "anchor_verb_swap"
+}

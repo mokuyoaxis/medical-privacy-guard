@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_010__age_numeral_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "2岁"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_010 via age_numeral_swap (narrative): Age numeral style swapped: '两岁' to '2岁'. Seed note: numeral age in the paediatric form",
+  "mutated_from": "coverage_010",
+  "operator": "age_numeral_swap"
+}

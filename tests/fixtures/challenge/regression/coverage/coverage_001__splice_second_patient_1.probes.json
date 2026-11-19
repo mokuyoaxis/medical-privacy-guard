@@ -1,0 +1,29 @@
+{
+  "doc_id": "coverage_001__splice_second_patient_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "AGE",
+      "text": "五十六岁"
+    },
+    {
+      "type": "SEX",
+      "text": "女"
+    },
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800005678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_001 via splice_second_patient (noise): A second patient's labelled clause spliced into the same note. Seed note: Chinese numeral age: digits and numerals must reach the same verdict",
+  "mutated_from": "coverage_001",
+  "operator": "splice_second_patient"
+}

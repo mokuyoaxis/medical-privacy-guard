@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_023__referral_style_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "神经内科"
+  ],
+  "probe_note": "Mutation of coverage_023 via referral_style_swap (context): Referral phrasing written with '拟请' instead of '建议'. Seed note: over-redaction control: the verb form is deliberate non-detection",
+  "mutated_from": "coverage_023",
+  "operator": "referral_style_swap"
+}

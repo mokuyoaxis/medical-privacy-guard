@@ -1,0 +1,25 @@
+{
+  "doc_id": "narrative_001__splice_second_patient_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "李四"
+    },
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800005678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_001 via splice_second_patient (noise): A second patient's labelled clause spliced into the same note. Seed note: adjacent form: label + surname + causative verb",
+  "mutated_from": "narrative_001",
+  "operator": "splice_second_patient"
+}
