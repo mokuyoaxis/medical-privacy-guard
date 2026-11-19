@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of narrative_003 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: adjacent form + past-history marker Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '赵六'.",
+  "probe_note": "Mutation of narrative_003 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: adjacent form + past-history marker Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "narrative_003",
   "operator": "separator_swap"
 }

@@ -92,7 +92,7 @@ NUMERAL_GIVEN_CLASS: str = "[一二三四五六七八九十]"
 #: A name with no delimiter has nothing to anchor its end, so the adjacent form
 #: still uses the inventory.
 NAME_FOLLOW_BOUNDARY: str = (
-    r"(?:入院|出院|就诊|住院|治疗|复查|随访|主诉|既往|收入|转入|转科|"
+    r"(?:入院|出院|就诊|住院|治疗|复查|随访|主诉|既往|收入|收住|收治|转入|转科|"
     r"查房|病情|陪同|签字|执行|查看|测量|交接|表示|同意|拒绝|要求|建议|"
     r"否认|"
     r"自述|护理|看护|照料|负责|操作|实施|完成|给予|服用|注射|检查|化验|"

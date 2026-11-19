@@ -20,10 +20,10 @@ from .field_syntax import FIELD_SEP, label_with_value
 # verification with the unmatched suffix still present.
 _CN_MRN_RE = re.compile(
     label_with_value(
-        r"病历号|住院号|入院号|登记号|就诊号|门诊号|病案号|档案号|患者编号|病人编号",
-        r"[A-Za-z0-9][A-Za-z0-9_\-]{2,63}",
+        r"病历号码|住院号码|病历号|住院号|入院号|登记号|就诊号|门诊号|病案号|档案号|患者编号|病人编号",
+        r"[A-Za-z0-9０-９][A-Za-z0-9０-９_\-]{2,63}",
     )
-    + r"(?![A-Za-z0-9_\-])"
+    + r"(?![A-Za-z0-9０-９_\-])"
 )
 # English labels follow the same whole-token rule. The long and short
 # "medical record [number]" forms are separate alternatives guarded by a

@@ -16,7 +16,7 @@ from medical_privacy_guard.core.model import DetectedFact
 from .base import Detector
 from .demographics import parse_cn_numeral
 
-_FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
+_FULLWIDTH_DIGITS = str.maketrans("０１２３４５６７８９－／．", "0123456789-/.")
 _YEAR = r"(?P<y>19[0-9]{2}|20[0-9]{2})"
 _MONTH = r"(?P<m>0?[1-9]|1[0-2])"
 _DAY = r"(?P<d>0?[1-9]|[12][0-9]|3[01])"

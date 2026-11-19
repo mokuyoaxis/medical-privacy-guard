@@ -48,7 +48,8 @@ _CN_SEPARATED_RE = re.compile(
     r"[（(]?"
     r"(?P<name>[" + NAME_MARKS + r"]{2,20}?)"
     r"(?=\s*[）)]|(?:电话|手机|邮箱|身份证号?|证件号?|病历号|住院号|就诊号|"
-    r"地址|住址|诊断|症状|用药|治疗)\s*[:：]?|[,，。；;\s" + INVISIBLE_CLASS + r"\u2e2f]|$)"
+    r"地址|住址|诊断|症状|用药|治疗)\s*[:：]?|[,，。；;\s" + INVISIBLE_CLASS + r"\u2e2f]|"
+    + NAME_FOLLOW_BOUNDARY + r"|$)"
 )
 
 # Adjacent form: a field label directly followed by a known surname and no

@@ -59,8 +59,8 @@ dimension that fails entirely behind one that passes.
 
 | Dimension | Probes | Status |
 |---|---|---|
-| narrative | 74 regression / 26 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
-| coverage | 128 regression / 28 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
+| narrative | 83 regression / 17 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
+| coverage | 136 regression / 20 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
 
 ## Mutated probes
 

@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of narrative_019 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: name before a self-reported verb Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed PERSON_NAME '赵六'.",
+  "probe_note": "Mutation of narrative_019 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: name before a self-reported verb Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "narrative_019",
   "operator": "separator_swap"
 }

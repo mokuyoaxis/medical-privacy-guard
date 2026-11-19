@@ -24,7 +24,7 @@ from .base import TokenRegistry, Transformer
 def _parse_full_date(value: str) -> date:
     from datetime import datetime
 
-    value = value.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+    value = value.translate(str.maketrans("０１２３４５６７８９－／．", "0123456789-/."))
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%m/%d/%Y"):
         try:
             return datetime.strptime(value, fmt).date()

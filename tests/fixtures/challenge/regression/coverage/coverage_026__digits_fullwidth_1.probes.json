@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_026 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled inpatient number, digits only (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed MEDICAL_RECORD_NUMBER '２０２６０３１５０１'.",
+  "probe_note": "Mutation of coverage_026 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled inpatient number, digits only (E1 handwritten seed, 2026-11-19) Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_026",
   "operator": "digits_fullwidth"
 }

@@ -19,7 +19,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_021 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: movement verb: both departments are the patient's Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '汪洋'; missed DEPARTMENT '急诊科'; missed DEPARTMENT '心血管内科'.",
+  "probe_note": "Mutation of coverage_021 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: movement verb: both departments are the patient's Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_021",
   "operator": "separator_swap"
 }

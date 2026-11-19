@@ -162,7 +162,9 @@ _ACCESSION_RE = re.compile(
 # -- contact and geography --------------------------------------------------
 
 # Landline: area code starting with 0 (010, 021, 0755, …) plus 7-8 digits.
-_LANDLINE_RE = re.compile(r"(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)")
+# Full-width digits and dashes are the same written form after a copy-paste
+# through CJK input methods, so the digit and separator classes accept both.
+_LANDLINE_RE = re.compile(r"(?<!\d)[0０][0-9０-９]{2,3}[-－\s]?[0-9０-９]{7,8}(?!\d)")
 
 # Postal code: only after an explicit label. A bare 6-digit run is far too
 # common in clinical text to be treated as a postal code.

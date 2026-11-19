@@ -89,7 +89,7 @@ _SEX_FIELD_RE = re.compile(r"性别" + FIELD_SEP + r"(?P<sex>男|女)")
 # sentence with digits after the sex still matched, so the gap was invisible.
 # The lookahead keeps "患者，女性家属" out: 性 is not a following boundary.
 _SEX_PATIENT_RE = re.compile(
-    r"(?:患者|病人|患儿|伤者)[\s，,、]*(?P<sex>男|女)(?=[，,、。；;\s)]|\d|$)"
+    r"(?:患者|病人|患儿|伤者)[\s，,、]*(?P<sex>男性|女性|男|女)(?=[，,、。；;\s)]|\d|$)"
 )
 # Structured enumeration: 男，67岁 / 女,45岁
 _SEX_ENUM_RE = re.compile(

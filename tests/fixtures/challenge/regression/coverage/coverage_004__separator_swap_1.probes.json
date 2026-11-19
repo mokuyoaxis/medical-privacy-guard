@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_004 via separator_swap (label): Bracketed value rewritten with separator '：'. Seed note: bracketed field value Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '张三'.",
+  "probe_note": "Mutation of coverage_004 via separator_swap (label): Bracketed value rewritten with separator '：'. Seed note: bracketed field value Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_004",
   "operator": "separator_swap"
 }

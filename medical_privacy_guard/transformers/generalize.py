@@ -89,9 +89,10 @@ class GeneralizeTransformer(Transformer):
     @staticmethod
     def _generalize_date(value: str) -> str:
         parsed = _parse_full_date(value)
-        if "年" in value:
+        normalized = value.translate(str.maketrans("０１２３４５６７８９－／．", "0123456789-/."))
+        if "年" in normalized:
             return f"{parsed.year:04d}年{parsed.month}月"
-        ymd = re.fullmatch(r"\d{4}([-/.])\d{1,2}\1\d{1,2}", value)
+        ymd = re.fullmatch(r"\d{4}([-/.])\d{1,2}\1\d{1,2}", normalized)
         sep = ymd.group(1) if ymd else "-"
         return f"{parsed.year:04d}{sep}{parsed.month:02d}"
 

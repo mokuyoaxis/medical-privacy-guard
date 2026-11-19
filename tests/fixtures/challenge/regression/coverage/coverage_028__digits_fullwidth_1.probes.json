@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_028 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled ISO date (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed EXACT_DATE '２０２６－０９－２１'.",
+  "probe_note": "Mutation of coverage_028 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled ISO date (E1 handwritten seed, 2026-11-19) Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_028",
   "operator": "digits_fullwidth"
 }
