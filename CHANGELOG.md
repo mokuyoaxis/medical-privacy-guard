@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The `report` command now takes `--dataset FILE` (repeatable) with
+  `--quasi-identifier COLUMN` (repeatable) and renders a third section:
+  re-identification risk as an engineering measurement — combination
+  counts, singleton and small-group row shares, and a group-size
+  histogram over the selected columns, computed by the same
+  `analyze_dataset` engine as `dataset-risk`. Aggregates only, as with
+  every section: combination values are counted in memory and never
+  rendered, rows are counted rather than distinct people, and the
+  section does not authorize disclosure. `--min-group-size` (default 2)
+  matches `dataset-risk`.
+- Benchmark output now states the over-redaction rate explicitly — the
+  share of detections that matched no labelled span (the complement of
+  span precision) — in both the human summary and the JSON report.
+
 ### Changed
 
 - The `dicom` extra now requires `pydicom>=3.0.2`: pydicom 3.0.0 and

@@ -1,10 +1,11 @@
-"""One-shot static HTML report over audit and grant metadata.
+"""One-shot static HTML report over audit, grant and dataset metadata.
 
 The report is a local, self-contained page: inline styles, no scripts, no
 external requests. It renders aggregates only. Audit events are metadata by
-design (see :mod:`medical_privacy_guard.core.audit`) and the grant registry
-stores hashed grant keys, so nothing in this module can surface clinical
-text, detector values or a raw grant ID — those never reach its inputs.
+design (see :mod:`medical_privacy_guard.core.audit`), the grant registry
+stores hashed grant keys, and the dataset section counts quasi-identifier
+combinations without ever holding a value — so nothing in this module can
+surface clinical text, detector values, a raw grant ID or a dataset cell.
 
 Sections whose source was not supplied are omitted entirely; the header
 states exactly which sources the page was built from.
@@ -19,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
 from .audit import AuditEvent, ChainVerification
+from .dataset import DatasetRiskReport
 from .grant import _now, _parse_iso
 
 #: Verdicts and risk levels render in this fixed order; anything unexpected
@@ -175,7 +177,9 @@ _TEXT: dict[str, dict[str, str]] = {
         "note": (
             "Aggregates only: audit events carry metadata by design, and "
             "the registry stores hashed grant keys — no clinical text, "
-            "detector values or raw grant IDs appear in this page."
+            "detector values or raw grant IDs appear in this page. The "
+            "dataset section counts combinations of the selected columns; "
+            "no dataset value appears either."
         ),
         "sources": "Sources",
         "audit_log": "Audit log",
@@ -219,48 +223,68 @@ _TEXT: dict[str, dict[str, str]] = {
         "status_exhausted": "exhausted",
         "status_revoked": "revoked",
         "showing_first": "Showing the first {shown} of {total} recorded grants.",
+        "dataset_risk": "Re-identification risk (engineering measurement)",
+        "dataset_note": (
+            "Rows are counted, not distinct people. This section does not "
+            "authorize disclosure."
+        ),
+        "dataset_columns": "Quasi-identifiers: {columns}",
+        "dataset_threshold": (
+            "Small-group threshold: {threshold} rows — groups smaller "
+            "than this are counted separately below."
+        ),
+        "card_rows": "Rows",
+        "card_groups": "Combinations",
+        "card_smallest": "Smallest group",
+        "card_largest": "Largest group",
+        "singleton_rows": "Singleton rows (unique combinations)",
+        "small_group_rows": "Rows in groups below the threshold",
+        "histogram": "Group size histogram",
+        "histogram_note": "Each bar counts how many groups hold that many rows.",
+        "no_dataset_rows": "The dataset held no rows.",
     },
     "zh": {
         "html_lang": "zh-CN",
         "title": "medical-privacy-guard 报告",
-        "generated": "生成于 {stamp}（UTC），本地生成。",
+        "generated": "本报告于 {stamp}（UTC）在本地生成。",
         "note": (
-            "本页只含聚合数据：审计事件在设计上只承载元数据，登记册中存的"
-            "是授权编号的哈希——本页不出现任何病历原文、检测器原文或完整"
-            "授权编号。"
+            "本页仅含汇总数据：审计事件只记录元数据，授权登记册保存的是"
+            "授权编号的哈希值，页面中不包含病历原文、检测器检出的原文与"
+            "完整的授权编号。数据集一节仅统计所选列的组合数量，不包含"
+            "任何数据原值。"
         ),
         "sources": "数据来源",
         "audit_log": "审计日志",
-        "chain_intact": "哈希链完整性：完整",
-        "chain_broken": "哈希链完整性：已断裂",
-        "verified": "共核查 {total} 条记录（已上链 {chained} 条，链前 {unchained} 条）。",
-        "failures": "{count} 处失败：",
+        "chain_intact": "哈希链完整性校验：通过",
+        "chain_broken": "哈希链完整性校验：未通过",
+        "verified": "共校验 {total} 条记录，其中链上记录 {chained} 条、哈希链启用前的历史记录 {unchained} 条。",
+        "failures": "{count} 处校验失败：",
         "events_range": "事件时间范围：{first} 至 {last}（UTC）。",
         "decisions": "裁决分布",
         "risk_levels": "风险等级",
-        "entity_types": "检出实体类型（总提及次数）",
+        "entity_types": "检出实体类型（累计次数）",
         "reason_codes": "原因代码",
         "transformations": "已执行的变换",
         "recipients_purposes": "接收方与用途",
         "verification_outcomes": "二次验证结果",
         "grant_releases": (
-            "凭授权放行：{events} 条事件，涉及 {grants} 个授权；"
-            "机构词典在 {dictionary} 条事件中启用。"
+            "经授权放行的事件共 {events} 条，涉及授权 {grants} 个；"
+            "其中启用机构词典的事件 {dictionary} 条。"
         ),
         "grant_issuers": "授权签发方",
         "no_records": "无记录。",
-        "folded": "……另有 {count} 项，未列入前排。",
+        "folded": "另有 {count} 项未在上方列出。",
         "grant_registry": "授权登记册",
         "card_recorded": "已登记授权",
         "card_active": "有效",
         "card_expired": "已过期",
         "card_exhausted": "已用尽",
         "card_revoked": "已撤销",
-        "card_uses": "已用次数",
-        "revoked_only": "{count} 个已撤销授权从未使用过，下表无其预算行。",
-        "no_grants": "尚无任何授权被使用过。",
+        "card_uses": "已使用次数",
+        "revoked_only": "{count} 个已撤销授权从未产生使用记录，表中无对应预算行。",
+        "no_grants": "尚无授权产生使用记录。",
         "th_grant": "授权（密钥哈希，截断显示）",
-        "th_uses": "次数",
+        "th_uses": "使用次数",
         "th_expires": "到期时间（UTC）",
         "th_status": "状态",
         "status_active": "有效",
@@ -268,6 +292,19 @@ _TEXT: dict[str, dict[str, str]] = {
         "status_exhausted": "已用尽",
         "status_revoked": "已撤销",
         "showing_first": "仅显示前 {shown} 个，共 {total} 个已登记授权。",
+        "dataset_risk": "再识别风险（工程度量）",
+        "dataset_note": "本节统计对象为数据行，而非独立个体；所示数据仅作工程度量，不构成披露授权。",
+        "dataset_columns": "准标识符列：{columns}",
+        "dataset_threshold": "小组阈值：{threshold} 行，小于该阈值的组合单独统计如下。",
+        "card_rows": "行数",
+        "card_groups": "组合数",
+        "card_smallest": "最小组",
+        "card_largest": "最大组",
+        "singleton_rows": "单例行（唯一组合）",
+        "small_group_rows": "小组所含行数（低于阈值）",
+        "histogram": "组大小直方图",
+        "histogram_note": "每条对应一个组大小（行数），数字为具有该大小的组数。",
+        "no_dataset_rows": "数据集为空，无数据行。",
     },
 }
 
@@ -470,6 +507,57 @@ def _grant_section(
     return "\n".join(parts)
 
 
+def _dataset_section(
+    text: Mapping[str, str], dataset: DatasetRiskReport
+) -> str:
+    parts = [f"<h2>{_esc(text['dataset_risk'])}</h2>"]
+    parts.append(f'<p class="meta">{_esc(text["dataset_note"])}</p>')
+    parts.append(
+        "<p>"
+        + _esc(
+            text["dataset_columns"].format(
+                columns=", ".join(dataset.quasi_identifiers)
+            )
+        )
+        + "</p>"
+    )
+    cards = [
+        (text["card_rows"], dataset.row_count),
+        (text["card_groups"], dataset.group_count),
+        (text["card_smallest"], dataset.smallest_group),
+        (text["card_largest"], dataset.largest_group),
+    ]
+    parts.append(
+        '<div class="cards">'
+        + "".join(
+            f'<div class="card"><span class="n">{_esc(value)}</span>'
+            f"{_esc(label)}</div>"
+            for label, value in cards
+        )
+        + "</div>"
+    )
+    if not dataset.row_count:
+        parts.append(f'<p class="meta">{_esc(text["no_dataset_rows"])}</p>')
+        return "\n".join(parts)
+    parts.append(
+        "<p>"
+        + _esc(text["dataset_threshold"].format(threshold=dataset.threshold))
+        + "</p>"
+    )
+    for label, count in (
+        (text["singleton_rows"], dataset.singleton_rows),
+        (text["small_group_rows"], dataset.small_group_rows),
+    ):
+        percent = 100 * count / dataset.row_count
+        parts.append(f"<p>{_esc(label)}: {count} ({percent:.1f}%)</p>")
+    parts.append(f"<h3>{_esc(text['histogram'])}</h3>")
+    parts.append(f'<p class="meta">{_esc(text["histogram_note"])}</p>')
+    counter = {str(size): groups for size, groups in dataset.size_histogram}
+    order = tuple(str(size) for size, _ in dataset.size_histogram)
+    parts.append(_bar_rows(text, counter, order=order))
+    return "\n".join(parts)
+
+
 def render_html(
     *,
     generated_at: str | None = None,
@@ -477,18 +565,20 @@ def render_html(
     audit: AuditSummary | None = None,
     chain: ChainVerification | None = None,
     grants: GrantSummary | None = None,
+    dataset: DatasetRiskReport | None = None,
     now: datetime | None = None,
     lang: str = "en",
 ) -> str:
     """Render the full report page from prepared summaries.
 
-    ``audit`` and ``chain`` arrive together or not at all; ``grants`` is
-    independent. At least one section must be present. ``lang`` selects the
-    page prose (``en`` or ``zh``); data labels stay canonical.
+    ``audit`` and ``chain`` arrive together or not at all; ``grants`` and
+    ``dataset`` are independent. At least one section must be present.
+    ``lang`` selects the page prose (``en`` or ``zh``); data labels stay
+    canonical.
     """
     if lang not in _TEXT:
         raise ValueError(f"unsupported report language: {lang!r}")
-    if audit is None and grants is None:
+    if audit is None and grants is None and dataset is None:
         raise ValueError("a report needs at least one data source")
     text = _TEXT[lang]
     moment = now if now is not None else datetime.now(timezone.utc)
@@ -517,5 +607,7 @@ def render_html(
         parts.append(_audit_section(text, audit, chain))
     if grants is not None:
         parts.append(_grant_section(text, grants, moment))
+    if dataset is not None:
+        parts.append(_dataset_section(text, dataset))
     parts.append("</body></html>")
     return "\n".join(parts) + "\n"

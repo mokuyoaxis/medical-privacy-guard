@@ -198,6 +198,19 @@ class TestBenchmarkGates:
             "false_positive",
         }
 
+    def test_over_redaction_rate_is_the_precision_complement(self, report):
+        tweaked = dataclasses.replace(
+            report, true_positives=90, false_positives=10
+        )
+        assert tweaked.over_redaction_rate == pytest.approx(0.1)
+        assert tweaked.to_dict()["over_redaction_rate"] == 0.1
+
+    def test_over_redaction_rate_with_no_detections_is_zero(self, report):
+        tweaked = dataclasses.replace(
+            report, true_positives=0, false_positives=0
+        )
+        assert tweaked.over_redaction_rate == 0.0
+
 
 class TestResidualTokenMatching:
     """A value only counts as residual if it survives as a whole token."""

@@ -6,6 +6,7 @@ text. These tests pin the aggregation, the escaping of every interpolated
 string, and the CLI exit-code contract shared with audit-verify.
 """
 
+import json
 import os
 import sqlite3
 import stat
@@ -19,6 +20,7 @@ from medical_privacy_guard.core.audit import (
     AuditWriter,
     ChainVerification,
 )
+from medical_privacy_guard.core.dataset import analyze_dataset
 from medical_privacy_guard.core.grant_sqlite import (
     SqliteGrantRegistry,
     initialize_grant_registry,
@@ -172,7 +174,7 @@ class TestRenderHtml:
         )
         assert '<html lang="zh-CN">' in page
         assert "审计日志" in page
-        assert "哈希链完整性：完整" in page
+        assert "哈希链完整性校验：通过" in page
         assert "裁决分布" in page
         assert "授权登记册" in page
         assert "有效" in page  # localized grant status
@@ -274,3 +276,139 @@ class TestReportCommand:
         code = main(["report", "--audit-dir", audit_dir, "-o", str(out)])
         assert code == EXIT_ERROR
         assert out.read_text(encoding="utf-8") == "old"
+
+
+def _golden_rows() -> list[dict]:
+    """The design document's hand-computed example: 6 rows, (age, sex).
+
+    Combinations: (40,F)x2, (40,M)x1, (41,F)x1, (41,M)x2 — 4 groups,
+    sizes {2,1,1,2}, 2 singleton rows (33.3%), histogram ((1,2),(2,2)).
+    """
+    return [
+        {"age": "40", "sex": "F"}, {"age": "40", "sex": "F"},
+        {"age": "40", "sex": "M"}, {"age": "41", "sex": "F"},
+        {"age": "41", "sex": "M"}, {"age": "41", "sex": "M"},
+    ]
+
+
+class TestRenderDataset:
+    def test_dataset_only_report(self):
+        page = render_html(
+            dataset=analyze_dataset(_golden_rows(), ["age", "sex"]), now=NOW
+        )
+        assert "Re-identification risk (engineering measurement)" in page
+        assert "does not authorize disclosure" in page
+        assert "Quasi-identifiers: age, sex" in page
+        assert "Singleton rows (unique combinations): 2 (33.3%)" in page
+        assert "Rows in groups below the threshold: 2 (33.3%)" in page
+
+    def test_dataset_section_comes_after_grants(self):
+        summary = summarize_grants((("a" * 64, 1, 1, FUTURE, False),), now=NOW)
+        page = render_html(
+            grants=summary,
+            dataset=analyze_dataset(_golden_rows(), ["age", "sex"]),
+            now=NOW,
+        )
+        assert page.index("Grant registry") < page.index(
+            "Re-identification risk"
+        )
+
+    def test_dataset_values_never_render(self):
+        rows = [
+            {"ward": "WARD-ALPHA-7", "age": "40"},
+            {"ward": "WARD-ALPHA-7", "age": "40"},
+            {"ward": "WARD-BETA-9", "age": "41"},
+        ]
+        page = render_html(
+            dataset=analyze_dataset(rows, ["ward", "age"]), now=NOW
+        )
+        assert "WARD-ALPHA-7" not in page
+        assert "WARD-BETA-9" not in page
+        assert "ward, age" in page  # selected column names are user metadata
+
+    def test_empty_dataset_does_not_divide_by_zero(self):
+        page = render_html(dataset=analyze_dataset([], ["age"]), now=NOW)
+        assert "The dataset held no rows." in page
+
+    def test_dataset_chinese_rendering(self):
+        page = render_html(
+            dataset=analyze_dataset(_golden_rows(), ["age", "sex"]),
+            now=NOW,
+            lang="zh",
+        )
+        assert "再识别风险（工程度量）" in page
+        assert "不构成披露授权" in page
+        assert "单例行（唯一组合）: 2 (33.3%)" in page
+
+
+class TestReportDatasetCommand:
+    def _isolated(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "medical_privacy_guard.cli.main.DEFAULT_GRANT_DB_PATH",
+            tmp_path / "absent.sqlite3",
+        )
+
+    def _csv(self, tmp_path) -> str:
+        path = tmp_path / "cohort.csv"
+        lines = ["age,sex"] + [
+            f"{row['age']},{row['sex']}" for row in _golden_rows()
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return str(path)
+
+    def test_dataset_only_via_cli(self, tmp_path, monkeypatch):
+        self._isolated(tmp_path, monkeypatch)
+        out = tmp_path / "report.html"
+        code = main([
+            "report", "--dataset", self._csv(tmp_path),
+            "--quasi-identifier", "age", "--quasi-identifier", "sex",
+            "-o", str(out),
+        ])
+        assert code == EXIT_OK
+        page = out.read_text(encoding="utf-8")
+        assert "Re-identification risk" in page
+        assert "33.3%" in page
+        assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
+
+    def test_dataset_without_quasi_identifier_is_an_error(
+        self, tmp_path, monkeypatch
+    ):
+        self._isolated(tmp_path, monkeypatch)
+        out = tmp_path / "report.html"
+        code = main([
+            "report", "--dataset", self._csv(tmp_path), "-o", str(out),
+        ])
+        assert code == EXIT_ERROR
+        assert not out.exists()
+
+    def test_quasi_identifier_without_dataset_is_an_error(
+        self, tmp_path, monkeypatch
+    ):
+        self._isolated(tmp_path, monkeypatch)
+        out = tmp_path / "report.html"
+        code = main([
+            "report", "--quasi-identifier", "age", "-o", str(out),
+        ])
+        assert code == EXIT_ERROR
+        assert not out.exists()
+
+    def test_csv_and_json_inputs_agree(self, tmp_path, monkeypatch):
+        self._isolated(tmp_path, monkeypatch)
+        json_path = tmp_path / "cohort.json"
+        rows = [
+            {"age": int(row["age"]), "sex": row["sex"]}
+            for row in _golden_rows()
+        ]
+        json_path.write_text(json.dumps(rows), encoding="utf-8")
+        pages = []
+        for name, source in (("csv", self._csv(tmp_path)), ("json", str(json_path))):
+            out = tmp_path / f"report-{name}.html"
+            code = main([
+                "report", "--dataset", source,
+                "--quasi-identifier", "age", "--quasi-identifier", "sex",
+                "-o", str(out),
+            ])
+            assert code == EXIT_OK
+            pages.append(out.read_text(encoding="utf-8"))
+        for page in pages:
+            assert "Singleton rows (unique combinations): 2 (33.3%)" in page

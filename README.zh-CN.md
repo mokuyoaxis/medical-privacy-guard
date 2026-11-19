@@ -100,6 +100,7 @@ medical-privacy-guard sanitize note.txt -o note.sanitized.txt --audit-dir audit/
 medical-privacy-guard benchmark tests/fixtures/synthetic_cn_notes
 medical-privacy-guard audit-verify audit/
 medical-privacy-guard report --audit-dir audit/ -o report.html
+medical-privacy-guard report --dataset cohort.csv --quasi-identifier age --quasi-identifier sex -o report.html
 ```
 
 命令行通过标准退出码表达裁决状态，便于嵌入自动化管线：

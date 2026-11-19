@@ -6,7 +6,8 @@ Commands:
               [--audit-dir DIR]
     benchmark <corpus_dir> [--json] [--profile P] [--limit N]
     audit-verify <audit_dir> [--json] [--key-env VAR]
-    report [--audit-dir DIR] [--grant-db DB] [--key-env VAR] -o report.html
+    report [--audit-dir DIR] [--grant-db DB] [--key-env VAR]
+           [--dataset FILE --quasi-identifier COLUMN] -o report.html
     serve [--upstream URL] [--host H] [--port N] [--profile P]
     mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
     dicom-inspect <file> [--json]
@@ -366,7 +367,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_report = sub.add_parser(
         "report",
-        help="Render a one-shot static HTML report from audit and grant metadata.",
+        help="Render a one-shot static HTML report from audit, grant and dataset metadata.",
         epilog=(
             "The page is self-contained (no scripts, no external requests) and "
             "holds aggregates only: audit events are metadata by design, and "
@@ -375,7 +376,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "the audit chain verifies as broken, as with audit-verify.\n\n"
             "Examples:\n\n"
             "  medical-privacy-guard report --audit-dir ./audit -o report.html\n\n"
-            "  medical-privacy-guard report --audit-dir ./audit --lang zh -o report.html"
+            "  medical-privacy-guard report --audit-dir ./audit --lang zh -o report.html\n\n"
+            "  medical-privacy-guard report --dataset cohort.csv "
+            "--quasi-identifier age --quasi-identifier sex -o report.html"
         ),
     )
     p_report.add_argument(
@@ -392,6 +395,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--key-env",
         default=None,
         help="Environment variable holding the audit HMAC key (kept out of argv)",
+    )
+    p_report.add_argument(
+        "--dataset", action="append", default=[], metavar="FILE",
+        help="CSV/JSON dataset to measure for re-identification risk; repeat for multiple files (rows are merged)",
+    )
+    p_report.add_argument(
+        "--quasi-identifier", action="append", default=[], metavar="COLUMN",
+        help="Quasi-identifier column for --dataset; repeat for a combination",
+    )
+    p_report.add_argument(
+        "--min-group-size", type=int, default=2,
+        help="Small-group threshold for the dataset section; does not authorize release (default 2)",
+    )
+    p_report.add_argument(
+        "--encoding", default="utf-8-sig",
+        help="Dataset file encoding (default utf-8-sig)",
     )
     p_report.add_argument(
         "-o", "--output", required=True,
@@ -970,6 +989,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
     audit_summary = None
     chain = None
     grant_summary = None
+    dataset_report = None
     sources: list[tuple[str, str]] = []
     guard_path: str | None = None
     if args.audit_dir:
@@ -1003,15 +1023,35 @@ def _cmd_report(args: argparse.Namespace) -> int:
             )
             if guard_path is None:
                 guard_path = db_path
-    if audit_summary is None and grant_summary is None:
+    if bool(args.dataset) != bool(args.quasi_identifier):
         print(
-            "error: nothing to report: pass --audit-dir and/or --grant-db",
+            "error: --dataset and --quasi-identifier must be given together",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+    if args.dataset:
+        rows: list[dict] = []
+        for path in args.dataset:
+            _, file_rows = read_dataset_file(path, args.encoding)
+            rows.extend(file_rows)
+        dataset_report = analyze_dataset(
+            rows, args.quasi_identifier, min_group_size=args.min_group_size
+        )
+        for path in args.dataset:
+            sources.append(
+                ("数据集" if args.lang == "zh" else "Dataset", path)
+            )
+        if guard_path is None:
+            guard_path = args.dataset[0]
+    if audit_summary is None and grant_summary is None and dataset_report is None:
+        print(
+            "error: nothing to report: pass --audit-dir, --grant-db and/or --dataset",
             file=sys.stderr,
         )
         return EXIT_ERROR
     page = render_html(
         sources=sources, audit=audit_summary, chain=chain, grants=grant_summary,
-        lang=args.lang,
+        dataset=dataset_report, lang=args.lang,
     )
     if guard_path is None:  # unreachable: a loaded source always sets it
         return EXIT_ERROR
@@ -1024,6 +1064,12 @@ def _cmd_report(args: argparse.Namespace) -> int:
         print(
             f"Grants recorded: {grant_summary.recorded} "
             f"(revoked {grant_summary.revoked})"
+        )
+    if dataset_report is not None:
+        print(
+            f"Dataset: {dataset_report.row_count} rows, "
+            f"{dataset_report.group_count} combinations "
+            f"({dataset_report.singleton_rows} singleton rows)"
         )
     return EXIT_BLOCK if chain is not None and not chain.verified else EXIT_OK
 
@@ -1109,6 +1155,9 @@ def _human_benchmark(report) -> str:
         f"Policy: {report.profile}  recipient={report.recipient}  purpose={report.purpose}",
         f"Span recall:    {report.span_recall:.4f}  ({report.true_positives}/{report.labelled_spans})",
         f"Span precision: {report.span_precision:.4f}  ({report.false_positives} false positives)",
+        f"Over-redaction: {report.over_redaction_rate:.4f}  "
+        f"({report.false_positives} of "
+        f"{report.true_positives + report.false_positives} detections matched no labelled span)",
         "Safety gates:",
         f"  false allows:        {report.false_allow_count}",
         f"  residual PHI:        {report.residual_phi_count}",

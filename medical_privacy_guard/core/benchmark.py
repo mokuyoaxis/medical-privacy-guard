@@ -153,6 +153,7 @@ class BenchmarkReport:
             "false_positives_on_clean_documents": self.false_positives_on_clean_documents,
             "span_recall": round(self.span_recall, 4),
             "span_precision": round(self.span_precision, 4),
+            "over_redaction_rate": round(self.over_redaction_rate, 4),
             "false_allow_count": self.false_allow_count,
             "residual_phi_count": self.residual_phi_count,
             "verification_failure_count": self.verification_failure_count,
@@ -181,6 +182,17 @@ class BenchmarkReport:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+
+    @property
+    def over_redaction_rate(self) -> float:
+        """Share of detections that matched no labelled span.
+
+        The complement of span precision, stated positively: how much of
+        what the detectors flagged did not need flagging. Zero detections
+        means nothing was over-redacted, so the rate is 0.
+        """
+        detections = self.true_positives + self.false_positives
+        return self.false_positives / detections if detections else 0.0
 
     def gates_passed(self) -> bool:
         """True when safety, per-document lifecycle and audit checks succeed."""
