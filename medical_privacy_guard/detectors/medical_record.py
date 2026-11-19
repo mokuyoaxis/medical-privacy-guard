@@ -21,7 +21,7 @@ from .field_syntax import FIELD_SEP, label_with_value
 _CN_MRN_RE = re.compile(
     label_with_value(
         r"病历号码|住院号码|病历号|住院号|入院号|登记号|就诊号|门诊号|病案号|档案号|患者编号|病人编号",
-        r"[A-Za-z0-9０-９][A-Za-z0-9０-９_\-]{2,63}",
+        r"[A-Za-z0-9０-９](?:[A-Za-z0-9０-９_\-]|[ \n](?=[A-Za-z0-9０-９])){2,63}",
     )
     + r"(?![A-Za-z0-9０-９_\-])"
 )

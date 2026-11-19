@@ -60,7 +60,7 @@ dimension that fails entirely behind one that passes.
 | Dimension | Probes | Status |
 |---|---|---|
 | narrative | 83 regression / 17 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
-| coverage | 136 regression / 20 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
+| coverage | 146 regression / 10 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
 
 ## Mutated probes
 
@@ -100,3 +100,28 @@ person called 周转正常.
 
 Separate directory, separate command, separate report. Challenge results must
 not be cited as evidence for the 175-document corpus, nor the reverse.
+
+## Exploratory dispositions
+
+Every exploratory probe carries a recorded disposition (E3 triage,
+2026-11-19); none is left undecided. The 27 that remain are boundaries, not
+backlog:
+
+- **Bare names and values with no anchor** (16 probes): a name or number
+  standing alone (`李四。`, `2026031501。`), a name before a weak connective
+  (`李四因胸痛入院`), or a name that could only be inferred from neighbouring
+  identifiers. Not detected by design — the false-positive cost on free text
+  is the documented trade-off in `docs/scope.md`.
+- **Phone and landline values broken at non-standard joints** (4 probes):
+  separators are accepted in the standard groupings; a break at any other
+  joint (`138 00001234`, a newline inside the number) is not, because a bare
+  digit pattern has neither a label nor a checksum to vouch for the join.
+  Labelled values and check-summed IDs do accept internal whitespace and are
+  covered in `regression/`.
+- **Names before 伴 / 收入 without a patient marker** (2 probes): the
+  complaint verbs （主诉/自诉/诉） are admitted as name anchors; these two
+  weaker movement/accompaniment verbs are not.
+- **Numeral given names before complaint verbs** (5 probes): `王五主诉…` is
+  not covered, because the verb rule keeps the given-name inventory so that
+  weekday words （周三） are not read as people. Pinned by
+  `tests/test_narrative_verbs.py`; recorded here as a known boundary.

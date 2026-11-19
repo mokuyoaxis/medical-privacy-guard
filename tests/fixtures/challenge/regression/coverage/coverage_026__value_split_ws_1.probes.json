@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_026 via value_split_ws (label): Value split by a space after position 4. Seed note: Labelled inpatient number, digits only (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): missed MEDICAL_RECORD_NUMBER '2026 031501'.",
+  "probe_note": "Mutation of coverage_026 via value_split_ws (label): Value split by a space after position 4. Seed note: Labelled inpatient number, digits only (E1 handwritten seed, 2026-11-19) Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_026",
   "operator": "value_split_ws"
 }

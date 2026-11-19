@@ -11,7 +11,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of narrative_019 via label_drop (label): Label '患者' and its separator dropped; value left in place. Seed note: name before a self-reported verb Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed PERSON_NAME '赵六'.",
+  "probe_note": "Mutation of narrative_019 via label_drop (label): Label '患者' and its separator dropped; value left in place. Seed note: name before a self-reported verb Held in exploratory by E3 (2026-11-19): numeral given names before complaint verbs are a pinned boundary (weekday false positives, e.g. 周三); final ruling pending.",
   "mutated_from": "narrative_019",
   "operator": "label_drop"
 }

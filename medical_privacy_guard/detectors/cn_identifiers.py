@@ -24,7 +24,10 @@ _PHONE_RE = re.compile(
 )
 
 # Candidate 18-digit ID. The check digit X may be upper or lower case.
-_ID18_CANDIDATE_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
+# A single space or newline may sit at any digit joint (copy-paste line
+# breaks, the common 6-8-4 grouping); the spaced form is held to a stricter
+# standard below, so the looser candidate shape costs nothing here.
+_ID18_CANDIDATE_RE = re.compile(r"(?<!\d)(?:\d[ \n]?){17}[\dXx](?!\d)")
 
 # GB 11643-1999 weights and check map.
 _ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
@@ -89,6 +92,25 @@ class CnIdDetector(Detector):
         facts = []
         for m in _ID18_CANDIDATE_RE.finditer(text):
             raw = m.group(0)
+            stripped = raw.replace(" ", "").replace("\n", "")
+            if stripped != raw:
+                # Spaced form: digit runs separated by spaces are common in
+                # ordinary text, so only a checksum-valid number is strong
+                # enough evidence. The contiguous form below keeps the
+                # fail-closed low-confidence report for invalid numbers.
+                if len(stripped) != 18 or not validate_id18(stripped):
+                    continue
+                facts.append(
+                    DetectedFact(
+                        type=self.fact_type,
+                        start=m.start(),
+                        end=m.end(),
+                        confidence=self.confidence_valid,
+                        source=f"regex.{self.name}",
+                        value=raw,
+                    )
+                )
+                continue
             valid = validate_id18(raw)
             facts.append(
                 DetectedFact(

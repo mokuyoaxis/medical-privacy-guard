@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_025__value_split_ws_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "GOVERNMENT_ID",
+      "text": "1101011990\n03077758"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_025 via value_split_ws (label): Value split by a newline after position 10. Seed note: Labelled resident ID with valid GB 11643 check digit over an invented birthdate (E1 handwritten seed, 2026-11-19) Promoted to regression by the E3 fix batch (2026-11-19).",
+  "mutated_from": "coverage_025",
+  "operator": "value_split_ws"
+}

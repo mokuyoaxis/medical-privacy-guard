@@ -19,7 +19,7 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "Mutation of coverage_034 via id_spacing (format): Resident ID written in 6-8-4 groups separated by spaces. Seed note: Combined line: adjacent name, unseparated ID and phone labels (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): missed GOVERNMENT_ID '110101 19900307 7758'.",
+  "probe_note": "Mutation of coverage_034 via id_spacing (format): Resident ID written in 6-8-4 groups separated by spaces. Seed note: Combined line: adjacent name, unseparated ID and phone labels (E1 handwritten seed, 2026-11-19) Promoted to regression by the E3 fix batch (2026-11-19).",
   "mutated_from": "coverage_034",
   "operator": "id_spacing"
 }
