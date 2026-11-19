@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_020__separator_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "孙七"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_020 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: name before an accompanying symptom Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '孙七'.",
+  "mutated_from": "narrative_020",
+  "operator": "separator_swap"
+}

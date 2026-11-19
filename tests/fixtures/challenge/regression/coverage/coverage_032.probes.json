@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_032",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "HOSPITAL_NAME",
+      "text": "宣武医院"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Institution name preceded by a function word (E1 handwritten seed, 2026-11-19)"
+}

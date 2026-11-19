@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_035__label_drop_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "1990年3月7日"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_035 via label_drop (label): Label '出生日期' and its separator dropped; value left in place. Seed note: Labelled birth date, non-padded Chinese form (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_035",
+  "operator": "label_drop"
+}

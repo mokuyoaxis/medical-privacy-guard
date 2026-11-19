@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_031__label_alias_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "POSTAL_CODE",
+      "text": "100000"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_031 via label_alias (label): Label '邮政编码' written as its alias '邮编'. Seed note: Labelled postal code (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_031",
+  "operator": "label_alias"
+}

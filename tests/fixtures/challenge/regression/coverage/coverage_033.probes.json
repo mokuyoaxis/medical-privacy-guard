@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_033",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "text": "BL2026001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Labelled medical record number with letter prefix (E1 handwritten seed, 2026-11-19)"
+}

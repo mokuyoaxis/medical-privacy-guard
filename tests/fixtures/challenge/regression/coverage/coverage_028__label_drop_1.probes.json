@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_028__label_drop_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "2026-09-21"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_028 via label_drop (label): Label '入院日期' and its separator dropped; value left in place. Seed note: Labelled ISO date (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_028",
+  "operator": "label_drop"
+}

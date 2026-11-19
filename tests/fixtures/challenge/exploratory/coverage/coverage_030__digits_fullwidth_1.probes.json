@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_030__digits_fullwidth_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "LANDLINE",
+      "text": "０１０－１２３４５６７８"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_030 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled landline with area code (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed LANDLINE '０１０－１２３４５６７８'.",
+  "mutated_from": "coverage_030",
+  "operator": "digits_fullwidth"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_029__phone_regroup_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PHONE",
+      "text": "13800001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_029 via phone_regroup (format): Grouped mobile number written contiguously. Seed note: Labelled mobile in 3-4-4 grouping (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_029",
+  "operator": "phone_regroup"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_014__separator_swap_2",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "李四"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_014 via separator_swap (label): Label/value separator '：' swapped for '='. Seed note: 医生：/主刀医生： labels were absent from the title list",
+  "mutated_from": "narrative_014",
+  "operator": "separator_swap"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_011__date_restyle_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "2026年9月21日"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_011 via date_restyle (format): Date restyled from '二〇二六年九月二十一日' to '2026年9月21日'. Seed note: fully Chinese-numeral date",
+  "mutated_from": "coverage_011",
+  "operator": "date_restyle"
+}

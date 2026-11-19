@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_019__separator_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "王强"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_019 via separator_swap (label): Label/value separator '：' swapped for ':'. Seed note: signature line",
+  "mutated_from": "coverage_019",
+  "operator": "separator_swap"
+}

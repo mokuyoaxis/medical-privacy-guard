@@ -1,0 +1,14 @@
+{
+  "doc_id": "coverage_016__digits_fullwidth_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "ALLOW",
+  "must_detect": [],
+  "must_not_detect": [
+    "名医生"
+  ],
+  "probe_note": "Mutation of coverage_016 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: over-redaction control: a measure word before a title is not a name",
+  "mutated_from": "coverage_016",
+  "operator": "digits_fullwidth"
+}

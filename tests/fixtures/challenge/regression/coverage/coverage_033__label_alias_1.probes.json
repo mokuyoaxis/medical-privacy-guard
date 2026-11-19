@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_033__label_alias_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "text": "BL2026001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_033 via label_alias (label): Label '病历号' written as its alias '病案号'. Seed note: Labelled medical record number with letter prefix (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_033",
+  "operator": "label_alias"
+}

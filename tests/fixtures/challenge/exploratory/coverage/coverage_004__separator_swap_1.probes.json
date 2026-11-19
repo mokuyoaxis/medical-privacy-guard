@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_004__separator_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张三"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_004 via separator_swap (label): Bracketed value rewritten with separator '：'. Seed note: bracketed field value Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '张三'.",
+  "mutated_from": "coverage_004",
+  "operator": "separator_swap"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_031__label_drop_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "POSTAL_CODE",
+      "text": "100000"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_031 via label_drop (label): Label '邮政编码' and its separator dropped; value left in place. Seed note: Labelled postal code (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed POSTAL_CODE '100000'.",
+  "mutated_from": "coverage_031",
+  "operator": "label_drop"
+}

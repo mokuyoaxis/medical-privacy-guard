@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_031__separator_swap_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "POSTAL_CODE",
+      "text": "100000"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_031 via separator_swap (label): Label/value separator '：' swapped for '='. Seed note: Labelled postal code (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_031",
+  "operator": "separator_swap"
+}

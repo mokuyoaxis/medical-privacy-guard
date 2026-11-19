@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_005__label_drop_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "BED_NUMBER",
+      "text": "12"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_005 via label_drop (label): Label '床号' and its separator dropped; value left in place. Seed note: labelled bed number Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed BED_NUMBER '12'.",
+  "mutated_from": "coverage_005",
+  "operator": "label_drop"
+}

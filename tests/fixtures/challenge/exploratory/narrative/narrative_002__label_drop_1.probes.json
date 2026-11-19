@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_002__label_drop_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "王五"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_002 via label_drop (label): Label '患者' and its separator dropped; value left in place. Seed note: adjacent form + chief-complaint verb Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed PERSON_NAME '王五'.",
+  "mutated_from": "narrative_002",
+  "operator": "label_drop"
+}

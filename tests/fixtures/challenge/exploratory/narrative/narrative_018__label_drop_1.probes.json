@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_018__label_drop_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "李四"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_018 via label_drop (label): Label '患者' and its separator dropped; value left in place. Seed note: name before a prepositional date Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed PERSON_NAME '李四'.",
+  "mutated_from": "narrative_018",
+  "operator": "label_drop"
+}

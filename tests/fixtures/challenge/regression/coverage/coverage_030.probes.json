@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_030",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "LANDLINE",
+      "text": "010-12345678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Labelled landline with area code (E1 handwritten seed, 2026-11-19)"
+}

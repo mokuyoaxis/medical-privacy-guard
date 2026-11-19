@@ -1,0 +1,25 @@
+{
+  "doc_id": "coverage_034__id_spacing_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张三"
+    },
+    {
+      "type": "GOVERNMENT_ID",
+      "text": "110101 19900307 7758"
+    },
+    {
+      "type": "PHONE",
+      "text": "13800001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_034 via id_spacing (format): Resident ID written in 6-8-4 groups separated by spaces. Seed note: Combined line: adjacent name, unseparated ID and phone labels (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): missed GOVERNMENT_ID '110101 19900307 7758'.",
+  "mutated_from": "coverage_034",
+  "operator": "id_spacing"
+}

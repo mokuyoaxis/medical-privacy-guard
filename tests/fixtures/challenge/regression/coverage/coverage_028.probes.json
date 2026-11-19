@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_028",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "2026-09-21"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Labelled ISO date (E1 handwritten seed, 2026-11-19)"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_005__separator_swap_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "BED_NUMBER",
+      "text": "12"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_005 via separator_swap (label): Label/value separator ' ' swapped for ':'. Seed note: labelled bed number",
+  "mutated_from": "coverage_005",
+  "operator": "separator_swap"
+}

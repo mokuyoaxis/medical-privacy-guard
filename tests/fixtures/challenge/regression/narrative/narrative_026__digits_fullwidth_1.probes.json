@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_026__digits_fullwidth_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "潘婷"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_026 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: bare name + 主诉, the form that was released verbatim before",
+  "mutated_from": "narrative_026",
+  "operator": "digits_fullwidth"
+}

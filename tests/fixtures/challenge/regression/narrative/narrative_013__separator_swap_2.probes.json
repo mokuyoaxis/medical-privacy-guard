@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_013__separator_swap_2",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "DOCTOR_NAME",
+      "text": "欧阳修远"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_013 via separator_swap (label): Label/value separator '：' swapped for '='. Seed note: compound surname in a labelled value",
+  "mutated_from": "narrative_013",
+  "operator": "separator_swap"
+}

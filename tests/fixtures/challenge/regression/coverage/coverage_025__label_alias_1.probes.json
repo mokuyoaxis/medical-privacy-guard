@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_025__label_alias_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "GOVERNMENT_ID",
+      "text": "110101199003077758"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_025 via label_alias (label): Label '身份证号' written as its alias '身份证号码'. Seed note: Labelled resident ID with valid GB 11643 check digit over an invented birthdate (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_025",
+  "operator": "label_alias"
+}

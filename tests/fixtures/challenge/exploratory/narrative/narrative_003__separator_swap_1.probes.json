@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_003__separator_swap_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "赵六"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_003 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: adjacent form + past-history marker Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '赵六'.",
+  "mutated_from": "narrative_003",
+  "operator": "separator_swap"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_017__separator_swap_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张伟"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_017 via separator_swap (label): Label/value separator '=' swapped for ':'. Seed note: equals separator: the detector had its own, narrower separator",
+  "mutated_from": "coverage_017",
+  "operator": "separator_swap"
+}

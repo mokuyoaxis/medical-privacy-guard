@@ -59,8 +59,21 @@ dimension that fails entirely behind one that passes.
 
 | Dimension | Probes | Status |
 |---|---|---|
-| narrative | 24 regression / 6 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls |
-| coverage | 23 regression / 0 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship |
+| narrative | 49 regression / 25 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls |
+| coverage | 108 regression / 27 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms |
+
+## Mutated probes
+
+Probes whose sidecar carries `mutated_from` and `operator` fields were derived
+from a handwritten seed by a deterministic operator in
+`tools/mutate_probes.py` (digit width, phone grouping, date restyle, ID
+spacing, label aliases, separator swaps, label drops, value splits). The
+operator rewrites the annotation in the same step as the text, so a mutated
+probe's labels are bookkeeping, not guesses. Mutations that pass the challenge
+checks are filed under `regression/`; those that fail are filed under
+`exploratory/` with the failure shape recorded in `probe_note`. Form-noise
+splits recorded there are copy-and-paste artefacts, not an adversarial-evasion
+suite (still a non-goal, as stated above).
 
 ### narrative
 
@@ -69,10 +82,12 @@ Regression probes cover forms the baseline handles: the adjacent field form
 opener, labelled controls, and two over-redaction controls where an ordinary
 word must not be read as a name.
 
-Exploratory probes are bare names with no field label at all (`李四因胸痛入院。`).
+The original exploratory probes are bare names with no field label at all (`李四因胸痛入院。`).
 `medical_privacy_guard/detectors/person.py` deliberately does not detect bare name tokens — the
 false-positive rate on free text would be unacceptable — so these are expected
-to fail. They are recorded rather than asserted.
+to fail. They are recorded rather than asserted. Mutated probes filed under
+`exploratory/` (see above) record a different kind of gap: a labelled or
+anchored form that a surface variation broke.
 
 One consequence of the adjacent form is worth stating plainly: it now requires
 the given name to come from the name-character inventory in

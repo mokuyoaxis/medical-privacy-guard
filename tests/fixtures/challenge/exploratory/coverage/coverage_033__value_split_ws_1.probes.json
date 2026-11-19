@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_033__value_split_ws_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "text": "BL20 26001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_033 via value_split_ws (label): Value split by a space after position 4. Seed note: Labelled medical record number with letter prefix (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): missed MEDICAL_RECORD_NUMBER 'BL20 26001234'.",
+  "mutated_from": "coverage_033",
+  "operator": "value_split_ws"
+}

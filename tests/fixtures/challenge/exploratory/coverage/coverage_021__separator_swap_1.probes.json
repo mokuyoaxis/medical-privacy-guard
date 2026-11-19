@@ -1,0 +1,25 @@
+{
+  "doc_id": "coverage_021__separator_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "汪洋"
+    },
+    {
+      "type": "DEPARTMENT",
+      "text": "急诊科"
+    },
+    {
+      "type": "DEPARTMENT",
+      "text": "心血管内科"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_021 via separator_swap (label): Label/value separator '' swapped for '：'. Seed note: movement verb: both departments are the patient's Filed under exploratory by E1 validation (2026-11-19): missed PERSON_NAME '汪洋'; missed DEPARTMENT '急诊科'; missed DEPARTMENT '心血管内科'.",
+  "mutated_from": "coverage_021",
+  "operator": "separator_swap"
+}

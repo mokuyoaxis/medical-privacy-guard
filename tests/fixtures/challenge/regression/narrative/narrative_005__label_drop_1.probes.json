@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_005__label_drop_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "欧阳娜娜"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_005 via label_drop (label): Label '患者' and its separator dropped; value left in place. Seed note: compound surname in adjacent form",
+  "mutated_from": "narrative_005",
+  "operator": "label_drop"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_026__separator_swap_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "text": "2026031501"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_026 via separator_swap (label): Label/value separator '：' swapped for ':'. Seed note: Labelled inpatient number, digits only (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_026",
+  "operator": "separator_swap"
+}

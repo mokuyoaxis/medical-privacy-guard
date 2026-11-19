@@ -1,0 +1,15 @@
+{
+  "doc_id": "coverage_035",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "EXACT_DATE",
+      "text": "1990年3月7日"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Labelled birth date, non-padded Chinese form (E1 handwritten seed, 2026-11-19)"
+}

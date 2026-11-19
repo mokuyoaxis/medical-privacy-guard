@@ -1,0 +1,17 @@
+{
+  "doc_id": "narrative_019__digits_fullwidth_1",
+  "dimension": "narrative",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "赵六"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of narrative_019 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: name before a self-reported verb",
+  "mutated_from": "narrative_019",
+  "operator": "digits_fullwidth"
+}

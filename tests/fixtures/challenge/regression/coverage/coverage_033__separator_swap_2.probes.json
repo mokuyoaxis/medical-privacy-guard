@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_033__separator_swap_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "MEDICAL_RECORD_NUMBER",
+      "text": "BL2026001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_033 via separator_swap (label): Label/value separator '：' swapped for '='. Seed note: Labelled medical record number with letter prefix (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_033",
+  "operator": "separator_swap"
+}

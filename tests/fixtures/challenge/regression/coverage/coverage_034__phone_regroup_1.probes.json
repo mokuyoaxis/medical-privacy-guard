@@ -1,0 +1,25 @@
+{
+  "doc_id": "coverage_034__phone_regroup_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PERSON_NAME",
+      "text": "张三"
+    },
+    {
+      "type": "GOVERNMENT_ID",
+      "text": "110101199003077758"
+    },
+    {
+      "type": "PHONE",
+      "text": "138 0000 1234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_034 via phone_regroup (format): Mobile number regrouped as '138 0000 1234'. Seed note: Combined line: adjacent name, unseparated ID and phone labels (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_034",
+  "operator": "phone_regroup"
+}

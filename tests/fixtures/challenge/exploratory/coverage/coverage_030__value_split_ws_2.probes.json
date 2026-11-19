@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_030__value_split_ws_2",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "LANDLINE",
+      "text": "010-1234\n5678"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_030 via value_split_ws (label): Value split by a newline after position 8. Seed note: Labelled landline with area code (E1 handwritten seed, 2026-11-19) Filed under exploratory by E1 validation (2026-11-19): verdict ALLOW != SANITIZE; missed LANDLINE '010-1234\\n5678'.",
+  "mutated_from": "coverage_030",
+  "operator": "value_split_ws"
+}

@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_025__digits_fullwidth_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "GOVERNMENT_ID",
+      "text": "１１０１０１１９９００３０７７７５８"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_025 via digits_fullwidth (format): ASCII digits (and - .) written full-width. Seed note: Labelled resident ID with valid GB 11643 check digit over an invented birthdate (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_025",
+  "operator": "digits_fullwidth"
+}

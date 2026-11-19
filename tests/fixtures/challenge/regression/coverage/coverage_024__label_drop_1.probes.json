@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_024__label_drop_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PHONE",
+      "text": "13800001234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_024 via label_drop (label): Label '联系电话' and its separator dropped; value left in place. Seed note: Labelled mobile number, contiguous digits (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_024",
+  "operator": "label_drop"
+}

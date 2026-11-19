@@ -1,0 +1,17 @@
+{
+  "doc_id": "coverage_029__label_alias_1",
+  "dimension": "coverage",
+  "synthetic": true,
+  "corpus_role": "challenge",
+  "expected_verdict": "SANITIZE",
+  "must_detect": [
+    {
+      "type": "PHONE",
+      "text": "138 0000 1234"
+    }
+  ],
+  "must_not_detect": [],
+  "probe_note": "Mutation of coverage_029 via label_alias (label): Label '手机' written as its alias '手机号'. Seed note: Labelled mobile in 3-4-4 grouping (E1 handwritten seed, 2026-11-19)",
+  "mutated_from": "coverage_029",
+  "operator": "label_alias"
+}
