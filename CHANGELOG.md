@@ -22,6 +22,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Benchmark output now states the over-redaction rate explicitly — the
   share of detections that matched no labelled span (the complement of
   span precision) — in both the human summary and the JSON report.
+- The challenge corpus grew from 63 to 234 regression probes through a
+  deterministic mutation framework (`tools/mutate_probes.py`, seventeen
+  operators whose annotations are rewritten in the same step as the text),
+  seeded only by handwritten probes. Every one of the 54 exploratory
+  probes now carries a recorded disposition in the corpus README: 32 were
+  fixed and promoted, 22 are stated boundaries.
+
+### Fixed
+
+- A labelled patient name followed by narrative text (`患者：张三因胸痛入院`)
+  is now bounded by the same clinical boundary words as the other name
+  captures, instead of swallowing the narrative tail — and the department
+  facts inside it — as one long name.
+- Full-width forms: dates accept full-width separators (`－`/`／`/`．`)
+  alongside full-width digits, and the date transformers parse both;
+  labelled record numbers and landlines accept full-width digits (and
+  full-width dashes for landlines).
+- A resident ID written with a single space or newline at a digit joint
+  (including the 6-8-4 grouping) is detected when the stripped number
+  passes the GB 11643 check digit; a labelled record number accepts a
+  single internal space or newline.
+- `住院号码` / `病历号码` are record-number labels; the patient sex slot
+  accepts the long forms `男性`/`女性`; `收住`/`收治` end a name capture
+  like `收入` does; the narrative complaint-verb rule covers numeral given
+  names (`王五主诉头痛`).
 
 ### Changed
 

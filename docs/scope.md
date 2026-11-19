@@ -21,18 +21,23 @@ when they disagree, this file wins and the other two are updated.
   null carry no identifier and produce no leaf; keys themselves are not treated
   as values;
 - deterministic baseline detectors: CN mobile numbers, landlines, CN resident
-  ID candidates (GB 11643-1999 check digit), email, social-media handles,
+  ID candidates (GB 11643-1999 check digit; a single space or newline at any
+  digit joint is accepted, and the separated form is reported only when the
+  stripped number passes the check digit), email, social-media handles,
   exact dates, labelled patient names, narrative names anchored on a gender
   marker (``张伟，男，67岁``), a complaint verb (``陈曦诉头晕``) or a connective
   at a clause boundary (``陈曦因胸痛入院``),
   staff names (title, suffix, signature or assistant form), relatives named in
   the history (including a kinship term repeated after a label), medical
-  record / specimen / accession numbers, HTTP(S) URLs, IPv4 addresses, labelled
+  record / specimen / accession numbers (a labelled value accepts a single
+  internal space or newline, so a copy-paste line break does not orphan the
+  tail of the number), HTTP(S) URLs, IPv4 addresses, labelled
   precise addresses, postal codes (label-required), institution names,
   department names (labelled, or reached by a movement verb), ward designations,
   bed numbers (suffix and labelled forms),
   ages in digits and in Chinese numerals, sex (clinical-context only, adjacent
-  or comma-separated) and a baseline medical-content signal; addresses with a
+  or comma-separated, including the long forms ``男性``/``女性`` in the patient
+  enumeration slot) and a baseline medical-content signal; addresses with a
   residence verb and no field label are detected when the value ends at an
   administrative or street suffix; Label/value
   separators — colon, equals, whitespace, none, or a bracketed value — are
@@ -51,9 +56,15 @@ when they disagree, this file wins and the other two are updated.
   releases the rank as the context it is. A rank with no name in front of it
   yields no fact; a bare name with no label and no rank is still not detected;
 - mobile-number variants: contiguous and 3-4-4 grouping, ASCII/full-width digits;
+  landlines accept full-width digits and dashes, and dates accept full-width
+  separators (``－``/``／``/``．``) alongside full-width digits;
   valid calendar dates in 1900–2099, including YMD/MDY with non-zero-padded month
   and day, and fully Chinese-numeral dates (``二〇二六年九月二十一日``). Detection retains original source spans; these are bounded format
-  families, not universal Unicode or OCR normalization;
+  families, not universal Unicode or OCR normalization. A phone or landline
+  broken at a non-standard joint (``138 00001234``, a newline inside the
+  number) is not joined: a bare digit pattern has neither a label nor a check
+  digit to vouch for the join, unlike the separated ID and labelled-value
+  forms above;
 - ages in years and in months (1–36 months, the primary infant form), kept
   distinct from a duration ("反复头痛3个月");
 - institution names even when preceded by function words ("患者在宣武医院住院");
@@ -149,7 +160,10 @@ so a narrative opener (``张伟，男，67岁``) was invisible to every gate unt
 independent probe found it reaching release with the name intact. The
 `姓名，性别` opener, a bare name before a complaint verb (``陈曦诉头晕``) and a
 bare name before a connective at a clause boundary (``陈曦因胸痛入院``) are now
-covered. A bare name in ordinary prose is still not detected, and a
+covered. The complaint-verb anchor also covers numeral given names
+(``王五主诉头痛``); the connective anchor still requires an inventory given
+name, because a weekday word (``周三由门诊转来``) is a plausible reading there
+and not before a complaint verb. A bare name in ordinary prose is still not detected, and a
 clause-initial common word shaped like a surname plus a given-name character
 (``文明因交流``) is read as a person; the connective anchor cannot tell the two
 apart without semantic knowledge. See [evaluation.md](evaluation.md).

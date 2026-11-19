@@ -584,8 +584,11 @@ Important limitations include:
   an unrecognised label still yields no fact.
 - **Format variation is not exhausted by the normal corpus.** Current phone
   detection supports contiguous or 3-4-4 grouped mobile numbers with ASCII or
-  full-width digits. Date detection accepts real calendar dates in 1900–2099,
-  including YMD and MDY forms with non-zero-padded months/days, and preserves
+  full-width digits. Resident IDs accept a single space or newline at any
+  digit joint, the separated form gated on the GB 11643 check digit; labelled
+  record numbers accept a single internal space or newline. Date detection accepts real calendar dates in 1900–2099,
+  including YMD and MDY forms with non-zero-padded months/days and full-width
+  separators, and preserves
   original character spans. This does not imply arbitrary Unicode, OCR-noise
   or date-format coverage; new challenge results must be reported separately.
 - **Limited aggregate combination counts are implemented; re-identification
@@ -615,8 +618,8 @@ survive both initial detection and verification.
 | Normal lifecycle | Reproduced 135 SANITIZE, 5 ASK, 35 ALLOW |
 | Per-document verification/release and audit-integrity gates | Passed with the fault-injection regression suite |
 | Marked or adjacent patient names (`患者：张三`, `患者张三`) | Implemented |
-| Grouped/full-width mobile numbers and valid non-padded dates | Implemented; independent challenge results not asserted here |
-| Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb and a clause-boundary connective; a bare name in ordinary prose is still missed |
+| Grouped/full-width mobile numbers, separated IDs, labelled values with internal whitespace and valid non-padded dates | Implemented; independent challenge results not asserted here |
+| Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb (including numeral given names) and a clause-boundary connective; a bare name in ordinary prose is still missed |
 | Department mentions outside labelled/movement context | Not detected by design |
 | Local institution dictionaries | Implemented (`v0.2.5`): local CSV/JSON vocabulary, detected and used as an independent verification signal |
 | Quasi-identifier combination risk | Limited aggregate combination counts implemented (`v0.5.0-rc.3`): group sizes, singleton/small-group counts over caller-selected CSV/JSON columns; the same counts are rendered as a section of the static HTML report; full re-identification/anonymization remains planned |
