@@ -154,12 +154,17 @@ def test_complaint_verb_needs_a_name_character():
     assert _narrative_names("原告陈诉事实经过。") == []
 
 
-def test_numeral_placeholder_names_are_not_covered_by_the_verb_rule():
-    """Known boundary: 张三诉… is missed because 三 is not a name character.
+def test_numeral_names_are_covered_by_the_verb_rule_not_the_connective_rule():
+    """Numeral given names (张三, 王五) are covered before a complaint verb.
 
-    Numeral placeholders are covered in the labelled and adjacent forms
-    (``患者张三``, ``姓名：张三``, ``张三，男``); the verb rule keeps the
-    given-name inventory and therefore does not read 周一/周三 as people.
+    Reversed boundary (E3, 2026-11-19): the verb rule originally kept
+    numeral names out so weekday words （周三） would not read as people,
+    on the theory that labelled and gender forms cover placeholder names.
+    They cannot reach a label-free complaint sentence, so 王五主诉头痛 was
+    released intact. The connective rule keeps the exclusion: 周三由门诊
+    转来 is a plausible weekday reading, 周三诉头痛 is not a plausible
+    weekday sentence.
     """
-    assert _narrative_names("张三诉头痛。") == []
+    assert _narrative_names("张三诉头痛。") == ["张三"]
+    assert _narrative_names("王五主诉头痛3天。") == ["王五"]
     assert _narrative_names("周三由门诊转来。") == []

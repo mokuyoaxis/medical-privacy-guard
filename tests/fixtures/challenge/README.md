@@ -59,7 +59,7 @@ dimension that fails entirely behind one that passes.
 
 | Dimension | Probes | Status |
 |---|---|---|
-| narrative | 83 regression / 17 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
+| narrative | 88 regression / 12 exploratory | names in varied syntactic positions, labelled values outside the name inventory, over-redaction controls, anchor-verb and numeral-style variations |
 | coverage | 146 regression / 10 exploratory | numeral ages and dates, separator spellings, comma-separated sex, bracketed values, labelled beds, unlabelled addresses, out-of-inventory given names, signature and assistant lines, movement verbs, nested kinship, labelled phone/ID/email/record-number forms, context controls, spliced filler |
 
 ## Mutated probes
@@ -104,7 +104,7 @@ not be cited as evidence for the 175-document corpus, nor the reverse.
 ## Exploratory dispositions
 
 Every exploratory probe carries a recorded disposition (E3 triage,
-2026-11-19); none is left undecided. The 27 that remain are boundaries, not
+2026-11-19); none is left undecided. The 22 that remain are boundaries, not
 backlog:
 
 - **Bare names and values with no anchor** (16 probes): a name or number
@@ -121,7 +121,3 @@ backlog:
 - **Names before 伴 / 收入 without a patient marker** (2 probes): the
   complaint verbs （主诉/自诉/诉） are admitted as name anchors; these two
   weaker movement/accompaniment verbs are not.
-- **Numeral given names before complaint verbs** (5 probes): `王五主诉…` is
-  not covered, because the verb rule keeps the given-name inventory so that
-  weekday words （周三） are not read as people. Pinned by
-  `tests/test_narrative_verbs.py`; recorded here as a known boundary.

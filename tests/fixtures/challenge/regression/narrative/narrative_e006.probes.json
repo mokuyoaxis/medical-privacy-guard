@@ -1,5 +1,5 @@
 {
-  "doc_id": "narrative_e002",
+  "doc_id": "narrative_e006",
   "dimension": "narrative",
   "synthetic": true,
   "corpus_role": "challenge",
@@ -11,6 +11,6 @@
     }
   ],
   "must_not_detect": [],
-  "probe_note": "bare name + chief complaint Held in exploratory by E3 (2026-11-19): numeral given names before complaint verbs are a pinned boundary (weekday false positives, e.g. 周三); final ruling pending.",
+  "probe_note": "bare name after a clause boundary Promoted to regression by the E3 ruling (2026-11-19): the pinned verb-rule boundary was reversed; numeral given names are now covered before complaint verbs.",
   "current_status": "not_detected_today"
 }

@@ -43,6 +43,7 @@ from .base import Detector
 from .surnames import (
     COMPOUND_SURNAME_CLASS,
     GIVEN_NAME_CLASS,
+    NUMERAL_GIVEN_CLASS,
     SURNAME_CLASS,
 )
 
@@ -78,11 +79,19 @@ _NARRATIVE_NAME_RE = re.compile(
 # of it, and no ordinary clinical noun ends that way (the words that do —
 # 上诉/申诉/投诉 — do not have a name shape in front). The given name must still
 # come from the inventory, so a surname-like word followed by an unrelated
-# character is not read as a person.
+# character is not read as a person. Numeral given names (王五, 赵六) take the
+# same alternative the adjacent labelled form uses: they were originally
+# excluded here so weekday words （周三） would not read as people, but the
+# labelled and gender forms that were supposed to cover placeholder names
+# cannot reach a label-free complaint sentence at all, so 王五主诉头痛 was
+# released intact. The verb anchor is strong enough to carry them; the
+# connective rule below still excludes numeral names, where the weekday
+# reading （周三由门诊转来） is genuinely plausible.
 _NARRATIVE_SU_NAME_RE = re.compile(
     r"(?P<name>"
     r"(?:" + COMPOUND_SURNAME_CLASS + r")" + GIVEN_NAME_CLASS +
     r"|" + SURNAME_CLASS + GIVEN_NAME_CLASS +
+    r"|" + SURNAME_CLASS + NUMERAL_GIVEN_CLASS +
     r")"
     r"(?=(?:主诉|自诉|自述|诉)[\u4e00-\u9fff])"
 )
