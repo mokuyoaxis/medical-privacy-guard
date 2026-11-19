@@ -36,6 +36,10 @@ replace the overall false-positive count. Exact detection also does not prove
 that the transformer processed every target: that needs independent execution
 evidence and policy-specific postconditions.
 
+The benchmark summary states the over-redaction rate explicitly — false
+positives over all detections — as `over_redaction_rate` in the JSON output
+and as a line in the human-readable summary.
+
 ### Per-document lifecycle and audit gates
 
 The remediation contract requires the following checks for each document:
@@ -615,7 +619,7 @@ survive both initial detection and verification.
 | Unlabelled narrative names and uncommon surnames | Partly covered: the recall guard handles the `姓名，性别` opener, a complaint verb and a clause-boundary connective; a bare name in ordinary prose is still missed |
 | Department mentions outside labelled/movement context | Not detected by design |
 | Local institution dictionaries | Implemented (`v0.2.5`): local CSV/JSON vocabulary, detected and used as an independent verification signal |
-| Quasi-identifier combination risk | Limited aggregate combination counts implemented (`v0.5.0-rc.3`): group sizes, singleton/small-group counts over caller-selected CSV/JSON columns; full re-identification/anonymization remains planned |
+| Quasi-identifier combination risk | Limited aggregate combination counts implemented (`v0.5.0-rc.3`): group sizes, singleton/small-group counts over caller-selected CSV/JSON columns; the same counts are rendered as a section of the static HTML report; full re-identification/anonymization remains planned |
 | Real-world clinical text | Not measured |
 
 ## Verification requirements

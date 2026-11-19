@@ -82,6 +82,11 @@ CSV cell or text `null`. There is no implicit trimming, age binning, date parsin
 or external-population estimation. Original combinations and row membership are
 not serialized; the report includes only column names and aggregate counts.
 
+The same measurements can also be rendered into the static HTML report:
+`report --dataset FILE --quasi-identifier COLUMN` adds a re-identification
+risk section alongside the audit and grant-registry sections, under the same
+aggregate-only rule.
+
 These measurements use the equivalence-class idea described in
 [Sweeney's k-anonymity paper](https://dataprivacylab.org/dataprivacy/projects/kanonymity/kanonymity.pdf).
 They count rows, not distinct people: duplicate records or repeated visits can

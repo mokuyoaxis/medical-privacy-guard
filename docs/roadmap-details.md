@@ -12,8 +12,8 @@
 
 Single version-based roadmap. Each version states its goal, scope, acceptance
 criteria, test requirements, and documentation updates. Status is mirrored in
-[README.md](README.md); the authoritative capability boundary lives in
-[docs/scope.md](docs/scope.md).
+[README.md](../README.md); the authoritative capability boundary lives in
+[docs/scope.md](scope.md).
 
 Acceptance criteria under completed versions describe their release-time scope;
 current capabilities are defined by scope.md and the latest delivered stage.
@@ -351,7 +351,7 @@ turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
 - The default remains process-local memory. Backend switches and old backups
   require isolating old valid grants; no rollback-detection claim is made.
 
-**Docs**: [deployment and recovery](docs/grant-registry.md).
+**Docs**: [deployment and recovery](grant-registry.md).
 
 ### Delivered in rc.3: local approvals and dataset measurements
 
@@ -363,7 +363,7 @@ turns a rejected grant into an ALLOW. Covered by ``tests/test_grants.py``.
 - Aggregate selected-column combination group sizes and singleton/small-group
   fractions. Engineering measurements remain separate from release decisions.
 
-**Docs**: [local approvals](docs/approval-workflow.md); [datasets](docs/datasets.md).
+**Docs**: [local approvals](approval-workflow.md); [datasets](datasets.md).
 
 ### Planned follow-up: broader dataset privacy
 

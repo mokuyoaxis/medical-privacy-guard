@@ -175,7 +175,7 @@ medical-privacy-guard serve --upstream https://api.openai.com --port 8787
 本仓库的所有示例与测试均采用人工构造的占位符、保留示例域名、私有 IP 地址段、`SYNTH-*` 标识符及公开说明的校验示例。严禁在 Issue、Pull Request、测试固件或 CI 产物中提交真实患者记录、生产环境审计日志、截图、密钥凭据或 Token 映射表。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 **版本状态与设计渊源**
-* **当前稳定版**：v0.6.1，新增静态 HTML 审计与授权报告（`report` 命令，中英双语），并提供稳定公共 API、统一的 `medical_privacy_guard` 命名空间与零代码网关。
+* **当前稳定版**：v0.6.1，新增静态 HTML 审计与授权报告（`report` 命令，中英双语）。
 * **上一稳定版**：v0.6.0，提供稳定公共 API、统一的 `medical_privacy_guard` 命名空间与零代码网关。
 * **演进路线**：早期里程碑（文本核心、中文检测与评测线、CSV/JSON、结构化格式与出站适配器）及未来演进目标（**v1.0：医疗 AI 出站隐私网关**）详见 [ROADMAP.md](ROADMAP.md)，完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 

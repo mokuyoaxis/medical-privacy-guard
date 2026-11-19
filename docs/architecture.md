@@ -63,6 +63,7 @@ hardening contract, not proof of complete anonymization. See
 | `medical_privacy_guard/transformers` | Execute deterministic planned operations | transformed text + internal evidence |
 | `medical_privacy_guard/core/verify.py` | Independently check evidence/postconditions, re-scan and re-run policy | pass / fail |
 | `medical_privacy_guard/core/audit.py` | Append metadata-only events with a hash chain when configured | JSONL event |
+| `medical_privacy_guard/core/report.py` | Render aggregate audit, grant-registry and dataset-risk data as one static HTML page; counts and truncated hashes only | static HTML |
 | `medical_privacy_guard/core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
 | `medical_privacy_guard/formats/` | Flatten a JSON, CSV or FHIR payload into string leaves and rebuild it | `StructuredPayload` |
 | `medical_privacy_guard/formats/dicom_inspect.py` | Read DICOM metadata and report identifiers; never writes | `DicomReport` |

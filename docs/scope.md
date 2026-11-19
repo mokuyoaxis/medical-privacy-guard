@@ -71,6 +71,11 @@ when they disagree, this file wins and the other two are updated.
   type-specific postconditions, not exemptions for untransformed dates;
 - metadata-only JSONL audit when configured (no raw PHI, token maps or internal
   transformation evidence); incomplete/short writes must prevent release;
+- a static HTML report (``report``) rendering aggregate audit, grant-registry
+  and dataset-risk data in English or Simplified Chinese: counts, distributions
+  and truncated key hashes only — no original values, detector text or full
+  grant identifiers are embedded. The report informs review; it never changes
+  a verdict or authorizes a release;
 - an optional local institution vocabulary (``.csv`` or ``.json``) supplying
   institution, department, ward and staff terms. Terms are detected alongside
   the built-in rules and give verification a signal independent of them: a term
