@@ -263,12 +263,14 @@ artefacts. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Status and origins.**
 
-- **Current stable**: v0.6.1 — the static HTML audit and grant report
+- **Current stable**: v0.6.2 — a dataset re-identification risk section
+  in the `report`, an explicit benchmark over-redaction rate, and
+  detector fixes from the challenge-corpus evidence line, on top of the
+  static HTML audit and grant report.
+- **Previous stable**: v0.6.1 — the static HTML audit and grant report
   (`report`, in English and Simplified Chinese), on top of the stable
   public API, a single `medical_privacy_guard` namespace, and the
   zero-code gateway.
-- **Previous stable**: v0.6.0 — stable public API, a single
-  `medical_privacy_guard` namespace, and the zero-code gateway.
 - **Roadmap**: earlier milestones (the text core, the Chinese detection and
   evaluation line, CSV/JSON, structured formats and egress adapters) and
   the road to **v1.0, a medical AI egress privacy gateway**, are in
