@@ -4,7 +4,7 @@
 
 | Version | Status |
 |---|---|
-| 0.6.1 | Current stable release; security feedback welcome |
+| 0.6.2 | Current stable release; security feedback welcome |
 | 0.5.x | Previous stable line |
 | < 0.5.0 | Early development; no longer maintained |
 
