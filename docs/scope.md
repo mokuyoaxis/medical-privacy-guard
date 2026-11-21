@@ -245,8 +245,12 @@ the DICOM PS3.15 Annex E Basic Application Confidentiality Profile:
   overlay/curve groups are removed; free-text descriptors and
   structured-report text values are cleaned by the text detectors, and
   any residual detection empties the element rather than passing it.
-  The disposition table (version `ps315-basic-v2`) was audited row by
-  row against PS3.15 Table E.1-1; where it departs from the Basic
+  The disposition table (version `ps315-basic-v3`) was audited row by
+  row against PS3.15 Table E.1-1 and then verified mechanically: every
+  one of the table's 621 rows was probed against the implementation's
+  observed behavior, and the gaps that pass found (radiotherapy,
+  specimen, hanging-protocol and trial rows, among others) were closed;
+  where it departs from the Basic
   Profile — descriptors cleaned rather than removed, dates emptied
   rather than removed — the departure is recorded in the design notes
   and the matching option code is stamped on the output;

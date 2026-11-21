@@ -30,7 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (table version `ps315-basic-v2`): nested icon images, original /
   modified attribute sequences and issuer fields are removed outright,
   structured-report text values are cleaned, and photographic (group
-  0016) elements are removed. The scanner now also lists
+  0016) elements are removed. A subsequent mechanical diff probed all
+  621 rows of the table against the implementation's observed behavior
+  (table version `ps315-basic-v3`): the rows it found still passing
+  through — radiotherapy labels and notes, specimen and container
+  identifiers, hanging-protocol selector values, interpretation and
+  results identifiers, and Ethnic Group among them — now carry
+  dispositions, and Manufacturer's Device Class UID is remapped (its
+  Basic action is U; a manual pass had misread it as keep). Scheduled
+  Procedure Step ID is now removed, as the Basic Profile requires.
+  The scanner now also lists
   `StudyDescription`, and annotates zero-length elements as
   `value empty` at LOW risk instead of reporting them as live
   identifiers.

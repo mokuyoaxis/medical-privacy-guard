@@ -82,7 +82,10 @@ class TestDispositions:
         deidentify_dicom_file(RICH, str(out), salt="s1")
         item = _read(out).RequestAttributesSequence[0]
         assert "ScheduledPerformingPhysicianName" not in item
-        assert item.ScheduledProcedureStepID == "SPS-1"
+        # The Basic Profile removes Scheduled Procedure Step ID (X);
+        # an earlier version kept it and this test pinned that — the
+        # 2026-11-21 mechanical table diff corrected the disposition.
+        assert "ScheduledProcedureStepID" not in item
 
     def test_input_file_is_never_modified(self, tmp_path):
         before = open(RICH, "rb").read()
@@ -210,6 +213,49 @@ class TestRefusals:
         ds.save_as(src, enforce_file_format=True)
         with pytest.raises(ParserError, match="encapsulates a document"):
             deidentify_dicom_file(str(src), str(tmp_path / "out.dcm"))
+
+    def _mechanical_diff_source(self, tmp_path):
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        meta = FileMetaDataset()
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        meta.MediaStorageSOPInstanceUID = generate_uid()
+        meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = Dataset()
+        ds.file_meta = meta
+        ds.SOPClassUID = meta.MediaStorageSOPClassUID
+        ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+        ds.PatientName = "张三"
+        ds.EthnicGroup = "合成族群"
+        ds.ManufacturerDeviceClassUID = generate_uid()
+        ds.RTPlanLabel = "plan-a"
+        ds.SelectorLOValue = "selector-x"
+        ds.PatientSexNeutered = "N"
+        src = tmp_path / "mech.dcm"
+        ds.save_as(src, enforce_file_format=True)
+        return src, ds.ManufacturerDeviceClassUID
+
+    def test_mechanical_diff_additions(self, tmp_path):
+        src, class_uid = self._mechanical_diff_source(tmp_path)
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(str(src), str(out), salt="s1")
+        ds = _read(out)
+        assert "EthnicGroup" not in ds
+        # Basic action is U (remap); a manual pass once misread it as K.
+        assert ds.ManufacturerDeviceClassUID != class_uid
+        assert str(ds.ManufacturerDeviceClassUID).startswith("2.25.")
+        assert ds.RTPlanLabel == ""  # Basic D: emptied, no dummy produced
+        assert ds.SelectorLOValue == ""
+        assert "PatientSexNeutered" not in ds
+
+    def test_mechanical_diff_characteristic_retained_on_request(self, tmp_path):
+        src, _ = self._mechanical_diff_source(tmp_path)
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(
+            str(src), str(out), salt="s1", retain_characteristics=True,
+        )
+        assert _read(out).PatientSexNeutered == "N"
 
 
 class TestTree:

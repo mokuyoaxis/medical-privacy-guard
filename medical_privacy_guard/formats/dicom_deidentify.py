@@ -54,8 +54,9 @@ __all__ = [
 #: Version of the disposition table below. Written into
 #: DeidentificationMethod so a produced file names the rules it was
 #: produced under. v2: row-by-row audit against PS3.15 Table E.1-1
-#: (2026-11-21) — see .internal/design-0.7-dicom-deidentify.md.
-TABLE_VERSION = "ps315-basic-v2"
+#: (2026-11-21); v3: mechanical full-table diff of all 621 rows
+#: (same day) — see .internal/design-0.7-dicom-deidentify.md.
+TABLE_VERSION = "ps315-basic-v3"
 
 # Disposition actions, PS3.15 notation plus two internal ones.
 _X = "X"      # remove the element
@@ -194,7 +195,8 @@ _TABLE: dict[int, str] = {
     0x00181010: _DV,     # SecondaryCaptureDeviceID
     0x0018700A: _DV,     # DetectorID
     0x00181002: _U,      # DeviceUID (remapped, not removed)
-    0x0018100B: _K,      # ManufacturerDeviceClassUID (registered vocabulary)
+    0x0018100B: _U,      # ManufacturerDeviceClassUID (Basic U; an earlier
+                         # manual pass misread the option column as K)
     # -- file meta -------------------------------------------------------
     0x00020012: _K,      # ImplementationClassUID (names the software)
     # -- clinical trial --------------------------------------------------
@@ -204,6 +206,109 @@ _TABLE: dict[int, str] = {
     0x00120081: _X, 0x00120082: _X,
     0x00120022: _X, 0x00120032: _X, 0x00120041: _X, 0x00120043: _X,
     0x00120055: _X, 0x00120073: _X,  # trial ID issuers
+    # -- mechanical-diff additions (Table E.1-1 cross-check, 2026-11-21) -
+    # Rows the hand audit had not reached, found by probing every table
+    # row against the walker (.internal/dicom-table-diff-2026-11-21.md).
+    0x0040A353: _X,  # Address (Trial)
+    0x40000010: _X,  # Arbitrary
+    0x00101081: _X,  # BranchOfService
+    0x04000310: _X,  # CertifiedTimestamp
+    0x00400310: _X,  # CommentsOnRadiationDose
+    0x00400280: _X,  # CommentsOnThePerformedProcedureStep
+    0x0050001B: _X,  # ContainerComponentID
+    0x4008011A: _X,  # DistributionAddress
+    0x00102160: _X,  # EthnicGroup
+    0x00404036: _X,  # HumanPerformerOrganization
+    0x40080300: _X,  # Impressions
+    0x04000600: _X,  # InstanceOriginStatus
+    0x00101050: _X,  # InsurancePlanIdentification
+    0x40080200: _X,  # InterpretationID
+    0x40080202: _X,  # InterpretationIDIssuer
+    0x4008010B: _X,  # InterpretationText
+    0x00101090: _X,  # MedicalRecordLocator
+    0x00081000: _X,  # NetworkID
+    0x21000070: _X,  # Originator
+    0x00401004: _X,  # PatientTransportArrangements
+    0x00400243: _X,  # PerformedLocation
+    0x00400253: _X,  # PerformedProcedureStepID
+    0x00400012: _X,  # PreMedication
+    0x00200027: _X,  # PyramidLabel
+    0x00402001: _X,  # ReasonForTheImagingServiceRequest
+    0x00321070: _X,  # RequestedContrastAgent
+    0x00102299: _X,  # ResponsibleOrganization
+    0x40080040: _X,  # ResultsID
+    0x40080042: _X,  # ResultsIDIssuer
+    0x30060085: _X,  # ROIObservationLabel
+    0x0038001E: _X,  # ScheduledPatientInstitutionResidence
+    0x00400009: _X,  # ScheduledProcedureStepID
+    0x00400011: _X,  # ScheduledProcedureStepLocation
+    0x00321020: _X,  # ScheduledStudyLocation
+    0x004006FA: _X,  # SlideIdentifier
+    0x00380050: _X,  # SpecialNeeds
+    0x0040050A: _X,  # SpecimenAccessionNumber
+    0x0040A354: _X,  # TelephoneNumberTrial
+    0x20300020: _X,  # TextString
+    0x00880910: _X,  # TopicAuthor
+    0x00880912: _X,  # TopicKeywords
+    0x00880906: _X,  # TopicSubject
+    0x00880904: _X,  # TopicTitle
+    0x30100077: _X,  # TreatmentSite
+    0x300A000B: _X,  # TreatmentSites
+    0x22000005: _X,  # BarcodeValue
+    0x22000002: _X,  # LabelText
+    0x300A079A: _X,  # DisplacementReferenceLabel
+    0x30100056: _X,  # RTTreatmentApproachLabel
+    # Basic Z, plus Basic D rows (a dummy value is not produced; the
+    # element is emptied instead — same confidentiality, noted form).
+    0x3010001B: _Z,  # DeviceAlternateIdentifier
+    0x3010007F: _Z,  # FractionationNotes
+    0x30100043: _Z,  # ManufacturersDeviceIdentifier
+    0x3010007B: _Z,  # PrescriptionNotes
+    0x3010005C: _Z,  # ReasonForSuperseding
+    0x300A0615: _Z,  # RTAccessoryDeviceSlotID
+    0x300A0611: _Z,  # RTAccessoryHolderSlotID
+    0x3010005A: _Z,  # RTPhysicianIntentNarrative
+    0x04000564: _Z,  # SourceOfPreviousValues
+    0x3010007A: _Z,  # TreatmentTechniqueNotes
+    0x001811BB: _Z,  # AcquisitionFieldOfViewLabel (D)
+    0x006A0005: _Z,  # AnnotationGroupLabel (D)
+    0x00400512: _Z,  # ContainerIdentifier (D)
+    0x3010002D: _Z,  # DeviceLabel (D)
+    0x30100035: _Z,  # EntityLabel (D)
+    0x30100038: _Z,  # EntityLongLabel (D)
+    0x00340002: _Z,  # FlowIdentifier (D)
+    0x04000563: _Z,  # ModifyingSystem (D)
+    0x04000565: _Z,  # ReasonForTheAttributeModification (D)
+    0x300A0619: _Z,  # RadiationDoseIdentificationLabel (D)
+    0x300A0623: _Z,  # RadiationDoseInVivoMeasurementLabel (D)
+    0x300A067C: _Z,  # RadiationGenerationModeLabel (D)
+    0x300A0002: _Z,  # RTPlanLabel (D)
+    0x30100054: _Z,  # RTPrescriptionLabel (D)
+    0x300A062A: _Z,  # RTToleranceSetLabel (D)
+    0x30060002: _Z,  # StructureSetLabel (D)
+    0x30100033: _Z,  # UserContentLabel (D)
+    0x30100034: _Z,  # UserContentLongLabel (D)
+    0x00400551: _Z,  # SpecimenIdentifier (D)
+    0x00340005: _Z,  # SourceIdentifier (D)
+    0x300A0608: _Z,  # TreatmentPositionGroupLabel (D)
+    0x04000115: _Z,  # CertificateOfSigner (D)
+    0x0040A027: _Z,  # VerifyingOrganization (D)
+    0x00180010: _Z,  # ContrastBolusAgent (Z/D)
+    0x0072005E: _Z, 0x0072005F: _Z, 0x00720065: _Z, 0x00720066: _Z,
+    0x00720068: _Z, 0x0072006C: _Z, 0x0072006D: _Z, 0x0072006E: _Z,
+    0x00720070: _Z, 0x00720071: _Z,  # Selector*Value (D, hanging protocols)
+    0x00203401: _DV,  # ModifyingDeviceID
+    0x00181009: _DV,  # UniqueDeviceIdentifier
+    0x30080105: _DV,  # SourceSerialNumber
+    0x300A0216: _DV,  # SourceManufacturer
+    0x00080055: _DV,  # StationAETitle (device option cleans; noted)
+    0x00189371: _DV,  # XRayDetectorID (D)
+    0x00189367: _DV,  # XRaySourceID (D)
+    0x00189373: _DV,  # XRayDetectorLabel
+    0x300A00B2: _DV,  # TreatmentMachineName
+    0x00102203: _CH,  # PatientSexNeutered (characteristic)
+    0x00340007: _X,  # FrameOriginTimestamp (D; VR is OB — a binary
+                     # timestamp, so it is removed rather than emptied)
 }
 
 #: DICOM-standard UIDs (SOP classes, transfer syntaxes, coding schemes)
