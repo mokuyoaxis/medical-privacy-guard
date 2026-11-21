@@ -24,6 +24,7 @@ from medical_privacy_guard.formats.dicom_inspect import inspect_dicom_file  # no
 BASE = "tests/fixtures/dicom/ct_head_synthetic.dcm"
 RICH = "tests/fixtures/dicom/ct_study_rich.dcm"
 BURNED = "tests/fixtures/dicom/ct_burned_in.dcm"
+J2K = "tests/fixtures/dicom/ct_jpeg2000.dcm"
 
 
 def _read(path):
@@ -281,6 +282,94 @@ class TestAdversarial:
         assert (0x0011, 0x1001) not in ref
         assert (0x6002, 0x0010) not in ds
         assert inspect_dicom_file(str(out)).private_tag_count == 0
+
+
+class TestCompressedSyntax:
+    def test_jpeg2000_pixels_pass_through_and_metadata_is_rewritten(self, tmp_path):
+        before = _read(J2K)
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(J2K, str(out), salt="j2k")
+        ds = _read(out)
+        assert str(ds.file_meta.TransferSyntaxUID) == str(
+            before.file_meta.TransferSyntaxUID
+        )
+        assert ds.PixelData == before.PixelData  # bytes untouched
+        assert ds.PatientName == ""
+        assert str(ds.StudyInstanceUID).startswith("2.25.")
+
+
+class TestAuditAdditions:
+    """Structures the Table E.1-1 cross-check (2026-11-21) caught the
+    first disposition table leaving behind."""
+
+    def _build(self, tmp_path):
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        meta = FileMetaDataset()
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["audit-sop"])
+        meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = Dataset()
+        ds.file_meta = meta
+        ds.SpecificCharacterSet = "ISO_IR 192"
+        ds.PatientName = "张三"
+        ds.PatientID = "MRN-888"
+        ds.SOPClassUID = meta.MediaStorageSOPClassUID
+        ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+        ds.StudyInstanceUID = generate_uid(entropy_srcs=["audit-study"])
+        ds.SeriesInstanceUID = generate_uid(entropy_srcs=["audit-series"])
+        ds.Modality = "CT"
+        ds.IssuerOfPatientID = "协和新医院"
+        ds.TimezoneOffsetFromUTC = "+0800"
+        ds.MedicalAlerts = "联系电话13800001234"
+        ds.GantryID = "GANTRY-7"
+        code_item = Dataset()
+        code_item.CodeValue = "INST-01"
+        code_item.CodingSchemeDesignator = "99LOCAL"
+        code_item.CodeMeaning = "协和新医院"
+        ds.InstitutionCodeSequence = [code_item]
+        icon_item = Dataset()
+        icon_item.Rows = 1
+        icon_item.Columns = 1
+        icon_item.BitsAllocated = 8
+        icon_item.PixelData = b"\x00"
+        ds.IconImageSequence = [icon_item]
+        orig_item = Dataset()
+        orig_item.PatientName = "张三"
+        ds.OriginalAttributesSequence = [orig_item]
+        content_item = Dataset()
+        content_item.ValueType = "TEXT"
+        content_item.TextValue = "联系电话13800001234"
+        ds.ContentSequence = [content_item]
+        ds.add_new(0x00160072, "DS", "39.9")  # GPSLatitude: group 0016 is X
+        src = tmp_path / "audit.dcm"
+        ds.save_as(src, enforce_file_format=True)
+        return str(src)
+
+    def test_structures_removed_and_text_cleaned(self, tmp_path):
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(self._build(tmp_path), str(out), salt="audit")
+        ds = _read(out)
+        assert "IssuerOfPatientID" not in ds
+        assert "TimezoneOffsetFromUTC" not in ds
+        assert "InstitutionCodeSequence" not in ds
+        assert "IconImageSequence" not in ds  # nested pixels cannot be cleaned
+        assert "OriginalAttributesSequence" not in ds  # holds unedited originals
+        assert "GantryID" not in ds  # device identity, off by default
+        assert (0x0016, 0x0072) not in ds
+        assert ds.MedicalAlerts == ""  # phone inside: cleaned value emptied
+        assert ds.ContentSequence[0].TextValue == ""  # SR text cleaned too
+        codes = [i.CodeValue for i in ds.DeidentificationMethodCodeSequence]
+        assert "113104" in codes  # Clean Structured Content is claimed
+
+    def test_device_ids_kept_on_request(self, tmp_path):
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(
+            self._build(tmp_path), str(out), salt="audit", retain_device=True
+        )
+        ds = _read(out)
+        assert ds.GantryID == "GANTRY-7"
 
 
 class TestTableIntegrity:

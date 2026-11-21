@@ -10,7 +10,10 @@ The report separates three things that are easy to blur:
 
 - **metadata findings** — elements whose value carries an identifier, either
   because the tag is on a known-PHI list (``PatientName``, ``PatientID``...)
-  or because the value trips the guard's own detectors over free text;
+  or because the value trips the guard's own detectors over free text. An
+  element present with a zero-length value (what a de-identified file looks
+  like) is still listed, annotated ``value empty`` at LOW risk, so an
+  emptied file is not misread as an unprocessed one;
 - **private tags** — vendor-written elements in odd groups. Their meaning is
   unknowable by construction, so the report counts them and marks the risk
   HIGH without claiming to know what they hold;
@@ -91,6 +94,7 @@ _PHI_TAGS: dict[int, str] = {
     # -- encounter identifiers -------------------------------------------
     0x00080050: "accession_number",
     0x00200010: "study_id",
+    0x00081030: "study_description",
     0x0008103E: "series_description",
 }
 
@@ -112,7 +116,7 @@ class DicomFinding:
     name: str         # element keyword or the report category
     category: str     # report category
     value_kind: str   # "known_phi_tag" | "detector_match" | "private"
-    risk: str         # "HIGH" | "MEDIUM"
+    risk: str         # "HIGH" | "MEDIUM" | "LOW" (LOW: element present, value empty)
     detail: str = ""  # no raw value: category and tag only
 
 
@@ -131,7 +135,8 @@ class DicomReport:
 
     @property
     def metadata_risk(self) -> str:
-        return "HIGH" if self.findings or self.private_tag_count else "LOW"
+        live = any(f.risk == "HIGH" for f in self.findings)
+        return "HIGH" if live or self.private_tag_count else "LOW"
 
     @property
     def safe_to_release(self) -> bool:
@@ -201,6 +206,12 @@ def inspect_dicom_file(path: str) -> DicomReport:
             continue
         value = element.value
         text = value if isinstance(value, str) else str(value or "")
+        # Emptiness is judged on the decoded text, not the raw object:
+        # a zero-length PN reads back as a PersonName wrapper, not a str.
+        if isinstance(value, (list, tuple)):
+            is_empty = all(not str(v).strip() for v in value)
+        else:
+            is_empty = not text.strip()
         kind = "known_phi_tag"
         detail = ""
         if category in _FREE_TEXT_CATEGORIES and text:
@@ -220,12 +231,24 @@ def inspect_dicom_file(path: str) -> DicomReport:
                 types |= {f.type for f in guard.detect(probe)}
             if types:
                 detail = "detectors: " + ", ".join(sorted(types))
+        live = not is_empty
+        if is_empty:
+            # A de-identified file keeps the element with a zero-length
+            # value. Reporting it like a live identifier misleads the
+            # operator, so the finding stays but says so, at LOW risk.
+            detail = "value empty (element present, zero length)"
+        if category in ("patient_identity_removed", "deidentification_method"):
+            # These two are evidence de-identification happened, not
+            # identifiers; listing them is informative, flagging them
+            # HIGH would keep every cleaned file at HIGH forever.
+            detail = "de-identification marker"
+            live = False
         findings.append(DicomFinding(
             tag=f"{tag.group:04X},{tag.element:04X}",
             name=element.keyword or category,
             category=category,
             value_kind=kind,
-            risk="HIGH",
+            risk="HIGH" if live else "LOW",
             detail=detail,
         ))
 

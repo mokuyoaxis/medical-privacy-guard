@@ -107,6 +107,43 @@ def build_burned_in(pydicom_path: str | None) -> "Dataset":  # noqa: F821
     return ds
 
 
+def build_jpeg2000(pydicom_path: str | None) -> "Dataset":  # noqa: F821
+    """A compressed-transfer-syntax file (JPEG 2000 lossless) with a tiny
+    encapsulated pixel frame: the de-identifier must pass the pixels
+    through byte-for-byte and still rewrite the metadata."""
+    if pydicom_path:
+        sys.path.insert(0, pydicom_path)
+    from pydicom.dataset import Dataset, FileMetaDataset
+    from pydicom.encaps import encapsulate
+    from pydicom.uid import JPEG2000Lossless, generate_uid
+
+    meta = FileMetaDataset()
+    meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"  # CT Image Storage
+    meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["j2k-sop"])
+    meta.TransferSyntaxUID = JPEG2000Lossless
+
+    ds = Dataset()
+    ds.file_meta = meta
+    ds.SpecificCharacterSet = "ISO_IR 192"
+    ds.PatientName = "张三"
+    ds.PatientID = "MRN-888"
+    ds.StudyInstanceUID = generate_uid(entropy_srcs=["j2k-study"])
+    ds.SeriesInstanceUID = generate_uid(entropy_srcs=["j2k-series"])
+    ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+    ds.SOPClassUID = meta.MediaStorageSOPClassUID
+    ds.Modality = "CT"
+    ds.Rows = 2
+    ds.Columns = 2
+    ds.BitsAllocated = 16
+    ds.BitsStored = 16
+    ds.HighBit = 15
+    ds.PixelRepresentation = 0
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelData = encapsulate([b"\xff\x4f\xff\x51synthetic-j2k-frame"])
+    return ds
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent / "dicom"))
@@ -118,6 +155,7 @@ def main() -> int:
         (build, "ct_head_synthetic.dcm"),
         (build_rich, "ct_study_rich.dcm"),
         (build_burned_in, "ct_burned_in.dcm"),
+        (build_jpeg2000, "ct_jpeg2000.dcm"),
     ):
         ds = builder(args.pydicom_path)
         target = out / name

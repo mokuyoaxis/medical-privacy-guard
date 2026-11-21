@@ -242,9 +242,14 @@ the DICOM PS3.15 Annex E Basic Application Confidentiality Profile:
   salted hashes under the 2.25 root (DICOM-standard UIDs are vocabulary
   and are never remapped); dates are emptied, or shifted by one fixed
   offset when `--date-shift-days` is given; private tags and
-  overlay/curve groups are removed; free-text descriptors are cleaned
-  by the text detectors, and any residual detection empties the element
-  rather than passing it;
+  overlay/curve groups are removed; free-text descriptors and
+  structured-report text values are cleaned by the text detectors, and
+  any residual detection empties the element rather than passing it.
+  The disposition table (version `ps315-basic-v2`) was audited row by
+  row against PS3.15 Table E.1-1; where it departs from the Basic
+  Profile — descriptors cleaned rather than removed, dates emptied
+  rather than removed — the departure is recorded in the design notes
+  and the matching option code is stamped on the output;
 - the output is self-checked before it lands (no fingerprinted original
   value survives; no private tags remain unless explicitly retained),
   and carries the PS3.15 de-identification markers and method codes;

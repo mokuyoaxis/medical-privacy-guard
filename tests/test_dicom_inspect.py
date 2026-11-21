@@ -126,6 +126,41 @@ class TestTagTableIntegrity:
         assert _PHI_TAGS.get(0x00080021) == "series_date"
 
 
+class TestEmptyValues:
+    def test_emptied_elements_are_annotated_not_reported_as_live(self, tmp_path):
+        """A de-identified file keeps PHI elements at zero length. The
+        finding must say the value is empty and sit at LOW risk, or an
+        operator reads a cleaned file as an unprocessed one."""
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        meta = FileMetaDataset()
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["empty-sop"])
+        meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = Dataset()
+        ds.file_meta = meta
+        ds.PatientName = ""
+        ds.PatientID = ""
+        ds.StudyDate = ""
+        ds.PatientIdentityRemoved = "YES"
+        ds.DeidentificationMethod = "some method"
+        path = tmp_path / "emptied.dcm"
+        ds.save_as(path, enforce_file_format=True)
+
+        report = inspect_dicom_file(str(path))
+        assert report.findings  # elements are still listed
+        assert all(f.risk == "LOW" for f in report.findings)
+        empties = [f for f in report.findings if f.category != "patient_identity_removed"
+                   and f.category != "deidentification_method"]
+        assert all("value empty" in f.detail for f in empties)
+        markers = [f for f in report.findings if f not in empties]
+        assert all("marker" in f.detail for f in markers)
+        assert report.metadata_risk == "LOW"
+        # Pixel risk is untouched by this: still not cleared for release.
+        assert report.safe_to_release is False
+
+
 class TestFailClosed:
     def test_a_non_dicom_file_is_a_parser_error(self, tmp_path):
         p = tmp_path / "not.dcm"

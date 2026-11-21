@@ -19,13 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overlay/curve groups are removed, and free-text descriptors are
   cleaned by the guard's own detectors, with any residual detection
   emptying the element. Outputs carry the PS3.15 de-identification
-  markers and method codes (113100, plus 113105/113107/113109 as
+  markers and method codes (113100, plus 113104/113105/113107/113109 as
   applicable) and are self-checked before they land: a residual
   original value or a surviving private tag withholds the file.
   Pixel data is not processed; files with burned-in annotation are
   refused unless `--allow-burned-in` is given, encapsulated documents
   are refused outright, and the report keeps pixel risk UNKNOWN —
-  metadata de-identification is not a release clearance.
+  metadata de-identification is not a release clearance. The
+  disposition table was audited row by row against PS3.15 Table E.1-1
+  (table version `ps315-basic-v2`): nested icon images, original /
+  modified attribute sequences and issuer fields are removed outright,
+  structured-report text values are cleaned, and photographic (group
+  0016) elements are removed. The scanner now also lists
+  `StudyDescription`, and annotates zero-length elements as
+  `value empty` at LOW risk instead of reporting them as live
+  identifiers.
 
 ## [0.6.3] - 2026-11-21
 

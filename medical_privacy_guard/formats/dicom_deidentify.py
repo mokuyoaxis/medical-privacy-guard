@@ -53,8 +53,9 @@ __all__ = [
 
 #: Version of the disposition table below. Written into
 #: DeidentificationMethod so a produced file names the rules it was
-#: produced under.
-TABLE_VERSION = "ps315-basic-v1"
+#: produced under. v2: row-by-row audit against PS3.15 Table E.1-1
+#: (2026-11-21) — see .internal/design-0.7-dicom-deidentify.md.
+TABLE_VERSION = "ps315-basic-v2"
 
 # Disposition actions, PS3.15 notation plus two internal ones.
 _X = "X"      # remove the element
@@ -92,6 +93,24 @@ _TABLE: dict[int, str] = {
     0x00102180: _X,      # Occupation
     0x00104000: _C,      # PatientComments
     0x001021B0: _C,      # AdditionalPatientHistory
+    # -- audit additions (Table E.1-1 cross-check, 2026-11-21) ---------
+    0x00100021: _X,      # IssuerOfPatientID
+    0x00100050: _X,      # PatientInsurancePlanCodeSequence
+    0x00100101: _X,      # PatientPrimaryLanguageCodeSequence
+    0x00100102: _X,      # PatientPrimaryLanguageModifierCodeSequence
+    0x00101100: _X,      # ReferencedPatientPhotoSequence (holds photos)
+    0x00102155: _X,      # PatientTelecomInformation
+    0x001021F0: _X,      # PatientReligiousPreference
+    0x00100041: _X,      # GenderIdentitySequence
+    0x00100044: _X,      # GenderIdentityCodeSequence
+    0x00100011: _X,      # PersonNamesToUseSequence
+    0x00100015: _X,      # PronounCodeSequence
+    0x00102000: _C,      # MedicalAlerts
+    0x00102110: _C,      # Allergies
+    0x00100045: _C,      # GenderIdentityComment
+    0x00100016: _C,      # PronounComment
+    0x001021C0: _CH,     # PregnancyStatus
+    0x001021A0: _CH,     # SmokingStatus
     # -- institution and staff ----------------------------------------
     0x00080080: _X,      # InstitutionName
     0x00080081: _X,      # InstitutionAddress
@@ -105,19 +124,77 @@ _TABLE: dict[int, str] = {
     0x00081070: _X,      # OperatorsName
     0x00321032: _X,      # RequestingPhysician
     0x00321033: _X,      # RequestingService
+    0x00080082: _X,      # InstitutionCodeSequence
+    0x00080201: _X,      # TimezoneOffsetFromUTC
+    0x00401102: _X,      # PersonAddress
+    0x00401103: _X,      # PersonTelephoneNumbers
+    0x00401104: _X,      # PersonTelecomInformation
+    0x00402009: _X,      # OrderEntererLocation
+    0x00402010: _X,      # OrderCallbackPhoneNumber
+    0x00402011: _X,      # OrderCallbackTelecomInformation
+    0x0040A07A: _X,      # ParticipantSequence
+    0x00401011: _X,      # IntendedRecipientsOfResultsIdentificationSequence
     # -- encounter -----------------------------------------------------
     0x00080050: _Z,      # AccessionNumber
     0x00200010: _Z,      # StudyID
+    0x00380010: _X,      # AdmissionID
+    0x00380011: _X,      # IssuerOfAdmissionID
+    0x00380060: _X,      # ServiceEpisodeID
+    0x00380061: _X,      # IssuerOfServiceEpisodeID
+    0x00380300: _X,      # CurrentPatientLocation
+    0x00380400: _X,      # PatientInstitutionResidence
+    0x00380004: _X,      # ReferencedPatientAliasSequence
+    0x00320012: _X,      # StudyIDIssuer
+    0x00401001: _X,      # RequestedProcedureID
+    0x00401005: _X,      # RequestedProcedureLocation
+    0x00402016: _Z,      # PlacerOrderNumberImagingServiceRequest
+    0x00402017: _Z,      # FillerOrderNumberImagingServiceRequest
+    0x00380500: _C,      # PatientState
+    0x00321030: _C,      # ReasonForStudy
+    0x00321066: _C,      # ReasonForVisit
+    0x00401002: _C,      # ReasonForTheRequestedProcedure
     # -- free-text descriptors -----------------------------------------
     0x00081030: _C,      # StudyDescription
     0x0008103E: _C,      # SeriesDescription
     0x00081080: _C,      # AdmittingDiagnosesDescription
     0x00204000: _C,      # ImageComments
+    0x0040A160: _C,      # TextValue (structured report content)
+    0x00700006: _C,      # UnformattedTextValue (graphic annotation text)
+    # -- structures that must not survive at all ------------------------
+    0x00081120: _X,      # ReferencedPatientSequence
+    0x00880200: _X,      # IconImageSequence (nested pixel data)
+    0x04000500: _X,      # EncryptedAttributesSequence
+    0x04000550: _X,      # ModifiedAttributesSequence
+    0x04000551: _X,      # NonconformingModifiedAttributesSequence
+    0x04000552: _X,      # NonconformingDataElementValue
+    0x04000561: _X,      # OriginalAttributesSequence
+    0x04000402: _X,      # ReferencedDigitalSignatureSequence
+    0x04000403: _X,      # ReferencedSOPInstanceMACSequence
+    0x04000404: _X,      # MAC
+    0xFFFAFFFA: _X,      # DigitalSignaturesSequence
+    0x00880130: _Z,      # StorageMediaFileSetID
     # -- device identity ------------------------------------------------
     0x00080070: _DV,     # Manufacturer
     0x00081090: _DV,     # ManufacturerModelName
     0x00181000: _DV,     # DeviceSerialNumber
     0x00081010: _DV,     # StationName
+    0x00080054: _DV,     # RetrieveAETitle
+    0x00400241: _DV,     # PerformedStationAETitle
+    0x00400001: _DV,     # ScheduledStationAETitle
+    0x00321021: _DV,     # ScheduledStudyLocationAETitle
+    0x00741234: _DV,     # ReceivingAE
+    0x00741236: _DV,     # RequestingAE
+    0x21000140: _DV,     # DestinationAE
+    0x00400010: _DV,     # ScheduledStationName
+    0x00400242: _DV,     # PerformedStationName
+    0x00181004: _DV,     # PlateID
+    0x00181005: _DV,     # GeneratorID
+    0x00181007: _DV,     # CassetteID
+    0x00181008: _DV,     # GantryID
+    0x00181010: _DV,     # SecondaryCaptureDeviceID
+    0x0018700A: _DV,     # DetectorID
+    0x00181002: _U,      # DeviceUID (remapped, not removed)
+    0x0018100B: _K,      # ManufacturerDeviceClassUID (registered vocabulary)
     # -- file meta -------------------------------------------------------
     0x00020012: _K,      # ImplementationClassUID (names the software)
     # -- clinical trial --------------------------------------------------
@@ -125,6 +202,8 @@ _TABLE: dict[int, str] = {
     0x00120031: _X, 0x00120040: _X, 0x00120042: _X, 0x00120050: _X,
     0x00120051: _X, 0x00120060: _X, 0x00120071: _X, 0x00120072: _X,
     0x00120081: _X, 0x00120082: _X,
+    0x00120022: _X, 0x00120032: _X, 0x00120041: _X, 0x00120043: _X,
+    0x00120055: _X, 0x00120073: _X,  # trial ID issuers
 }
 
 #: DICOM-standard UIDs (SOP classes, transfer syntaxes, coding schemes)
@@ -308,6 +387,10 @@ def _process_dataset(ds: Any, ctx: _Context) -> None:
         if action is None:
             if tag.is_private:
                 action = _K if ctx.retain_private else "PRIVATE"
+            elif tag.group == 0x0016:
+                # Photographic/EXIF-style elements: every row for this
+                # group in Table E.1-1 is X (GPS, camera owner, lens).
+                action = _X
             elif _is_overlay_or_curve(tag.group):
                 action = "OVERLAY"
             elif vr == "UI":
@@ -424,7 +507,8 @@ def _stamp_markers(ds: Any, ctx: _Context) -> None:
     ds.PatientIdentityRemoved = "YES"
     ds.DeidentificationMethod = _DEID_METHOD_TEXT
     codes = [("113100", "Basic Application Confidentiality Profile"),
-             ("113105", "Clean Descriptors Option")]
+             ("113105", "Clean Descriptors Option"),
+             ("113104", "Clean Structured Content Option")]
     if ctx.date_shift_days is not None:
         codes.append(("113107", "Retain Longitudinal With Modified Dates Option"))
         ds.LongitudinalTemporalInformationModified = "MODIFIED"
