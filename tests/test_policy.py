@@ -29,6 +29,7 @@ from medical_privacy_guard.core.model import (
 from medical_privacy_guard.core.policy import (
     PolicyEvaluator,
     PolicyProfile,
+    list_builtin_profiles,
     load_builtin_profile,
 )
 
@@ -76,6 +77,18 @@ class TestProfileLoading:
         profile = load_builtin_profile("research")
         assert profile.profile == "research"
         assert profile.policy_version == "research/1"
+
+    def test_load_builtin_teaching_demo(self):
+        profile = load_builtin_profile("teaching-demo")
+        assert profile.profile == "teaching-demo"
+        assert profile.policy_version == "teaching-demo/1"
+
+    def test_list_builtin_profiles(self):
+        assert list_builtin_profiles() == [
+            "external-ai-strict",
+            "research",
+            "teaching-demo",
+        ]
 
     def test_unknown_profile_raises(self):
         with pytest.raises(PolicyError):
@@ -367,3 +380,74 @@ class TestDeterminismAndPrivacy:
             environment=EnvironmentContext(host="localhost", session_id="s1"),
         )
         assert decision.verdict is Verdict.SANITIZE
+
+
+# -- bundled presets ----------------------------------------------------------
+
+
+@pytest.fixture()
+def teaching():
+    return PolicyEvaluator(load_builtin_profile("teaching-demo"))
+
+
+def internal_trusted_recipient() -> Recipient:
+    return Recipient(kind="internal", trust_level=TrustLevel.INTERNAL_TRUSTED)
+
+
+class TestPresetParity:
+    """Every bundled preset must cover the same fact-type surface.
+
+    A preset that silently drops an identifier or medical key would leave
+    that fact type to the fail-closed default; parity keeps the three
+    presets comparable parameter bundles over one shared surface.
+    """
+
+    @pytest.mark.parametrize("name", list_builtin_profiles())
+    def test_identifier_and_medical_keys_match_strict(self, name):
+        strict = load_builtin_profile("external-ai-strict").config
+        other = load_builtin_profile(name).config
+        assert set(other["rules"]["identifiers"]) == set(strict["rules"]["identifiers"])
+        assert set(other["rules"]["medical"]) == set(strict["rules"]["medical"])
+        assert set(other["recipient_risk"]) == set(strict["recipient_risk"])
+        assert set(other["purpose_risk"]) == set(strict["purpose_risk"])
+
+    @pytest.mark.parametrize("name", list_builtin_profiles())
+    def test_verification_required_in_every_preset(self, name):
+        config = load_builtin_profile(name).config
+        assert config["verification"]["required"] is True
+        assert config["verification"]["fail_verdict"] == "BLOCK"
+
+
+class TestTeachingDemoDesign:
+    def test_dates_generalized_not_shifted(self):
+        teaching = load_builtin_profile("teaching-demo").config
+        research = load_builtin_profile("research").config
+        assert teaching["rules"]["identifiers"]["EXACT_DATE"]["action"] == "GENERALIZE"
+        assert research["rules"]["identifiers"]["EXACT_DATE"]["action"] == "DATE_SHIFT"
+
+    def test_education_is_the_home_purpose(self):
+        teaching = load_builtin_profile("teaching-demo").config
+        assert teaching["purpose_risk"]["EDUCATION"] == 0
+        assert teaching["thresholds"]["allow_max"] == 0
+
+    def test_government_id_external_unknown_blocks_by_hard_rule(self, teaching):
+        decision = teaching.evaluate(
+            (fact("GOVERNMENT_ID"),),
+            external_unknown_recipient(),
+            Purpose.EDUCATION,
+        )
+        assert decision.verdict is Verdict.BLOCK
+        assert ReasonCode.GOVERNMENT_ID_PRESENT in decision.reason_codes
+        assert decision.plan is None
+
+    def test_name_tokenized_for_the_classroom(self, teaching):
+        decision = teaching.evaluate(
+            (fact("PERSON_NAME"),),
+            internal_trusted_recipient(),
+            Purpose.EDUCATION,
+        )
+        assert decision.verdict is Verdict.SANITIZE
+        assert decision.plan is not None
+        assert decision.plan.operations == (
+            TransformationOp(op="TOKENIZE", target="PERSON_NAME", entity_type="PERSON_NAME"),
+        )

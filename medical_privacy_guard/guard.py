@@ -444,7 +444,8 @@ class Guard:
         """Create a Guard bound to one policy profile.
 
         Args:
-            profile: builtin profile name (external-ai-strict, research, ...).
+            profile: builtin profile name (external-ai-strict, research,
+                teaching-demo; see ``list_builtin_profiles()``).
             profile_path: optional explicit path to a custom profile YAML.
             audit_dir: optional directory for append-only audit events.
             audit_key: optional HMAC key for the audit chain. When omitted, the

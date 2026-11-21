@@ -226,6 +226,7 @@ medical-privacy-guard/
 │   ├── scope.md
 │   ├── grant-registry.md
 │   ├── approval-workflow.md
+│   ├── policy-profiles.md
 │   ├── datasets.md
 │   ├── roadmap-details.md
 │   └── evaluation.md

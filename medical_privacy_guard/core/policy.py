@@ -751,3 +751,12 @@ def load_builtin_profile(name: str) -> PolicyProfile:
     if not path.is_file():
         raise PolicyError(f"unknown policy profile '{name}': no such bundled profile")
     return PolicyProfile.load(path)
+
+
+def list_builtin_profiles() -> list[str]:
+    """Return the names of the bundled policy profiles (the presets).
+
+    A preset is a parameter bundle shipped with the package; it is not a
+    compliance guarantee and does not by itself authorize any disclosure.
+    """
+    return sorted(p.stem for p in _POLICIES_DIR.glob("*.yaml") if p.is_file())

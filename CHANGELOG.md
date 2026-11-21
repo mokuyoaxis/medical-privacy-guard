@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Third bundled policy preset, `teaching-demo`, for classroom teaching
+  and case demonstrations: names tokenized for a readable narrative,
+  direct identifiers removed, dates generalized rather than shifted,
+  `EDUCATION` as the zero-risk home purpose, and the same hard rules and
+  ALLOW band as `external-ai-strict`. The three presets
+  (`external-ai-strict`, `research`, `teaching-demo`) are now listed by
+  `medical_privacy_guard.core.policy.list_builtin_profiles()`, named in
+  the CLI `--profile` help, and compared in `docs/policy-profiles.md`.
+  A preset is a parameter bundle, not a compliance guarantee.
+
 ## [0.6.2] - 2026-11-20
 
 ### Added

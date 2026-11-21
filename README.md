@@ -250,7 +250,8 @@ and they do not soften.
 
 The full, authoritative capability boundary is
 [docs/scope.md](docs/scope.md); the threat model is
-[docs/threat-model.md](docs/threat-model.md).
+[docs/threat-model.md](docs/threat-model.md). The three bundled policy
+presets are compared in [docs/policy-profiles.md](docs/policy-profiles.md).
 
 ## Data rules and status
 

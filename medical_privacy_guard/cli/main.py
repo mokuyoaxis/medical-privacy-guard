@@ -455,7 +455,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def _add_common(
     parser: argparse.ArgumentParser, recipient_default: str = "external_unknown"
 ) -> None:
-    parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Policy profile name")
+    parser.add_argument(
+        "--profile",
+        default=DEFAULT_PROFILE,
+        help="Policy profile name (bundled presets: external-ai-strict, research, teaching-demo)",
+    )
     parser.add_argument(
         "--recipient",
         default=recipient_default,

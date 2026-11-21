@@ -237,7 +237,7 @@ class TestFailClosed:
             guard.detect(b"bytes not allowed")
 
 
-@pytest.mark.parametrize("profile", ["external-ai-strict", "research"])
+@pytest.mark.parametrize("profile", ["external-ai-strict", "research", "teaching-demo"])
 def test_noop_transform_never_releases(profile, monkeypatch, tmp_path):
     from medical_privacy_guard.transformers.base import TransformOutcome
 
