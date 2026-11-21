@@ -7,8 +7,8 @@ capability boundary is [docs/scope.md](docs/scope.md).
 
 ## Where we are
 
-Current stable: **v0.6.2** (package version `0.6.2`).
-Previous stable: **v0.6.1**. Next stop: **v1.0**.
+Current stable: **v0.6.3** (package version `0.6.3`).
+Previous stable: **v0.6.2**. Next stop: **v1.0**.
 
 | Version | Theme | Status |
 |---|---|---|
@@ -22,6 +22,7 @@ Previous stable: **v0.6.1**. Next stop: **v1.0**.
 | v0.6 | One namespace (`medical_privacy_guard`), stable public API, zero-code HTTP gateway | Released (`v0.6.0`) |
 | v0.6.1 | Static HTML audit and grant report (`report`, English and Simplified Chinese) | Released (`v0.6.1`) |
 | v0.6.2 | Dataset re-identification risk in the report, benchmark over-redaction rate, challenge-corpus evidence-line detector fixes | Released (`v0.6.2`) |
+| v0.6.3 | Third policy preset (`teaching-demo`), discoverable presets, LiteLLM deployment example | Released (`v0.6.3`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 A note on numbering, because it confuses people: the work once planned as
