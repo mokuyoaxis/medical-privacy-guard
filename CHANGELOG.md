@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `medical_privacy_guard.core.policy.list_builtin_profiles()`, named in
   the CLI `--profile` help, and compared in `docs/policy-profiles.md`.
   A preset is a parameter bundle, not a compliance guarantee.
+- LiteLLM deployment example (`docs/litellm-deployment.md` with
+  `examples/litellm_guardrail.py`): two shapes — the guard's HTTP
+  gateway chained in front of a LiteLLM proxy (no code), or the guard
+  registered as a LiteLLM custom guardrail (`pre_call`), where SANITIZE
+  rewrites the extracted texts and ASK/BLOCK reject the call with
+  reason codes only. The example is verified against LiteLLM's
+  `CustomGuardrail.apply_guardrail` interface.
 
 ## [0.6.2] - 2026-11-20
 
