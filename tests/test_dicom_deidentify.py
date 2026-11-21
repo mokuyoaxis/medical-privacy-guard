@@ -227,6 +227,62 @@ class TestTree:
         assert a.StudyInstanceUID == b.StudyInstanceUID
 
 
+class TestAdversarial:
+    """Cases nastier than the fixtures, built in memory (from the
+    2026-11-21 acceptance probe; both probe 'failures' turned out to be
+    probe assertions misreading emptied-but-present tags)."""
+
+    def _build(self, tmp_path):
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        meta = FileMetaDataset()
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["adv-sop"])
+        meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = Dataset()
+        ds.file_meta = meta
+        ds.SpecificCharacterSet = "ISO_IR 192"
+        ds.PatientName = "李四"
+        ds.PatientID = "MRN-999"
+        ds.SOPClassUID = meta.MediaStorageSOPClassUID
+        ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+        ds.StudyInstanceUID = generate_uid(entropy_srcs=["adv-study"])
+        ds.SeriesInstanceUID = generate_uid(entropy_srcs=["adv-series"])
+        ds.Modality = "CT"
+        ds.StudyDescription = "身份证110101199003077758复查"
+        ds.AcquisitionDateTime = "20260312101530.123456+0800"
+        inner = Dataset()
+        inner.ReferencedSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        inner.ReferencedSOPInstanceUID = generate_uid(entropy_srcs=["adv-ref"])
+        inner.add_new(0x00110001, "LO", "nested private value")
+        mid = Dataset()
+        mid.PatientName = "王五"
+        mid.ReferencedImageSequence = [inner]
+        ds.CurrentRequestedProcedureEvidenceSequence = [mid]
+        ds.add_new(0x60020010, "US", 256)
+        src = tmp_path / "adv.dcm"
+        ds.save_as(src, enforce_file_format=True)
+        return str(src)
+
+    def test_nested_and_block_level_content(self, tmp_path):
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(self._build(tmp_path), str(out), salt="adv")
+        ds = _read(out)
+        # A government ID in a descriptor is BLOCK-level: the element empties.
+        assert ds.StudyDescription == ""
+        assert ds.AcquisitionDateTime == ""
+        item = ds.CurrentRequestedProcedureEvidenceSequence[0]
+        # Two levels down: the PN is emptied (Z), the private tag removed.
+        assert item.PatientName == ""
+        ref = item.ReferencedImageSequence[0]
+        assert str(ref.ReferencedSOPInstanceUID).startswith("2.25.")
+        assert str(ref.ReferencedSOPClassUID) == "1.2.840.10008.5.1.4.1.1.2"
+        assert (0x0011, 0x1001) not in ref
+        assert (0x6002, 0x0010) not in ds
+        assert inspect_dicom_file(str(out)).private_tag_count == 0
+
+
 class TestTableIntegrity:
     def test_table_tags_name_the_elements_they_claim(self):
         """The hand-written table is checked against pydicom's dictionary.
