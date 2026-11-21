@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- DICOM de-identification export (`dicom-deidentify`, experimental):
+  writes a new DICOM file — or a directory tree under one shared UID
+  map — with identifying metadata rewritten under a disposition table
+  modelled on the DICOM PS3.15 Annex E Basic Application
+  Confidentiality Profile. Identifiers are removed or emptied, UIDs
+  are remapped as salted hashes under the 2.25 root, dates are emptied
+  (or shifted consistently with `--date-shift-days`), private tags and
+  overlay/curve groups are removed, and free-text descriptors are
+  cleaned by the guard's own detectors, with any residual detection
+  emptying the element. Outputs carry the PS3.15 de-identification
+  markers and method codes (113100, plus 113105/113107/113109 as
+  applicable) and are self-checked before they land: a residual
+  original value or a surviving private tag withholds the file.
+  Pixel data is not processed; files with burned-in annotation are
+  refused unless `--allow-burned-in` is given, encapsulated documents
+  are refused outright, and the report keeps pixel risk UNKNOWN —
+  metadata de-identification is not a release clearance.
+
 ## [0.6.3] - 2026-11-21
 
 ### Added

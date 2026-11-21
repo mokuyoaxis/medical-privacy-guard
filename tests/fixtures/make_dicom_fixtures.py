@@ -47,6 +47,66 @@ def build(pydicom_path: str | None) -> "Dataset":  # noqa: F821
     return ds
 
 
+def build_rich(pydicom_path: str | None) -> "Dataset":  # noqa: F821
+    """A study-shaped file: UIDs, descriptors with identifiers, device data,
+    a request-attributes sequence and an overlay group."""
+    if pydicom_path:
+        sys.path.insert(0, pydicom_path)
+    from pydicom.dataset import Dataset, FileMetaDataset
+    from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+    meta = FileMetaDataset()
+    meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"  # CT Image Storage
+    meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["rich-sop"])
+    meta.TransferSyntaxUID = ExplicitVRLittleEndian
+
+    ds = Dataset()
+    ds.file_meta = meta
+    ds.SpecificCharacterSet = "ISO_IR 192"
+    ds.PatientName = "张三"
+    ds.PatientID = "MRN-888"
+    ds.PatientBirthDate = "19900307"
+    ds.PatientSex = "M"
+    ds.PatientAge = "036Y"
+    ds.InstitutionName = "协和新医院"
+    ds.ReferringPhysicianName = "王^建国"
+    ds.Manufacturer = "SyntheticMed"
+    ds.ManufacturerModelName = "ScannerOne"
+    ds.DeviceSerialNumber = "SN-12345"
+    ds.StationName = "CT-ROOM-1"
+    ds.StudyInstanceUID = generate_uid(entropy_srcs=["rich-study"])
+    ds.SeriesInstanceUID = generate_uid(entropy_srcs=["rich-series"])
+    ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+    ds.SOPClassUID = meta.MediaStorageSOPClassUID
+    ds.StudyDate = "20260312"
+    ds.StudyTime = "101500"
+    ds.SeriesDate = "20260312"
+    ds.AccessionNumber = "ACC-2026-001"
+    ds.StudyID = "ST-1"
+    ds.Modality = "CT"
+    ds.StudyDescription = "张三术后复查 电话13800001234"
+    ds.SeriesDescription = "HEAD ROUTINE 5MM"
+    ds.BurnedInAnnotation = "NO"
+    # A sequence whose items carry their own identifiers.
+    item = Dataset()
+    item.ScheduledProcedureStepID = "SPS-1"
+    item.ScheduledPerformingPhysicianName = "李^娜"
+    item.RequestedProcedureID = "RP-1"
+    ds.RequestAttributesSequence = [item]
+    # An overlay group element: a classic hiding place for annotations.
+    ds.add_new(0x60000010, "US", 512)
+    # One private tag block.
+    ds.add_new(0x00090001, "LO", "vendor note")
+    return ds
+
+
+def build_burned_in(pydicom_path: str | None) -> "Dataset":  # noqa: F821
+    """Same shape as the base fixture, but the pixels carry burned-in text."""
+    ds = build(pydicom_path)
+    ds.BurnedInAnnotation = "YES"
+    return ds
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent / "dicom"))
@@ -54,10 +114,15 @@ def main() -> int:
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    ds = build(args.pydicom_path)
-    target = out / "ct_head_synthetic.dcm"
-    ds.save_as(target, enforce_file_format=True)
-    print(f"written {target}")
+    for builder, name in (
+        (build, "ct_head_synthetic.dcm"),
+        (build_rich, "ct_study_rich.dcm"),
+        (build_burned_in, "ct_burned_in.dcm"),
+    ):
+        ds = builder(args.pydicom_path)
+        target = out / name
+        ds.save_as(target, enforce_file_format=True)
+        print(f"written {target}")
     return 0
 
 

@@ -67,6 +67,7 @@ hardening contract, not proof of complete anonymization. See
 | `medical_privacy_guard/core/dictionary.py` | Load a local institution vocabulary (CSV/JSON) | `InstitutionDictionary` |
 | `medical_privacy_guard/formats/` | Flatten a JSON, CSV or FHIR payload into string leaves and rebuild it | `StructuredPayload` |
 | `medical_privacy_guard/formats/dicom_inspect.py` | Read DICOM metadata and report identifiers; never writes | `DicomReport` |
+| `medical_privacy_guard/formats/dicom_deidentify.py` | Write a new DICOM file with metadata rewritten under the PS3.15 disposition table; self-checked before it lands | `DicomDeidReport` |
 | `medical_privacy_guard/core/benchmark.py` | Evaluate detection and per-document lifecycle expectations | benchmark report |
 | `medical_privacy_guard/adapters/` | Classify an external call into a payload and enforce the decision before sending | `Payload` (`payload_for`, `release_or_raise`) |
 | `medical_privacy_guard/adapters/mcp_gateway.py` | Proxy a stdio MCP session, holding back `tools/call` the guard refuses | rewritten / refused JSON-RPC |
@@ -239,7 +240,7 @@ medical-privacy-guard/
 │   ├── transformers/           # transformation registry
 │   ├── policies/               # bundled policy YAML files
 │   ├── cli/                    # CLI entry point
-│   ├── formats/                # admission + json / csv / fhir; dicom_inspect (read-only)
+│   ├── formats/                # admission + json / csv / fhir; dicom_inspect (read-only), dicom_deidentify
 │   └── adapters/               # mcp_gateway + http_gateway + openai_compat + anthropic_compat
 ├── tools/
 │   ├── audit_contracts.py

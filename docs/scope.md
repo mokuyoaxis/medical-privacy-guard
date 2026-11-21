@@ -232,6 +232,28 @@ writes. The report separates metadata findings, private tags and pixel risk:
 pydicom is an optional extra (`medical-privacy-guard[dicom]`). A missing extra
 is a parser error, not a degraded scan.
 
+## DICOM de-identification boundary
+
+`dicom-deidentify` is the separate writing tool the scanner's boundary
+implies. It produces a new file under a disposition table modelled on
+the DICOM PS3.15 Annex E Basic Application Confidentiality Profile:
+
+- listed identifiers are removed or emptied; UIDs are remapped as
+  salted hashes under the 2.25 root (DICOM-standard UIDs are vocabulary
+  and are never remapped); dates are emptied, or shifted by one fixed
+  offset when `--date-shift-days` is given; private tags and
+  overlay/curve groups are removed; free-text descriptors are cleaned
+  by the text detectors, and any residual detection empties the element
+  rather than passing it;
+- the output is self-checked before it lands (no fingerprinted original
+  value survives; no private tags remain unless explicitly retained),
+  and carries the PS3.15 de-identification markers and method codes;
+- pixel data is not processed. A file with `BurnedInAnnotation` = YES
+  is refused unless `--allow-burned-in` is given, a file encapsulating
+  a document is refused outright, and every report keeps pixel risk
+  UNKNOWN. A de-identified file is therefore **not** reported safe to
+  release: metadata disposition is one layer, not a clearance.
+
 ## ASK approval grants
 
 ASK is the one verdict that needs something outside the guard to complete it.
@@ -396,6 +418,11 @@ need implementation-level regression validation, not just documentation.
 The read-only DICOM metadata scanner is experimental and requires the optional
 ``dicom`` extra. It reports identifiers without rewriting the file; pixel risk
 remains UNKNOWN and no file is reported safe to release.
+
+DICOM de-identification export (``dicom-deidentify``) is likewise
+experimental: it rewrites metadata under the PS3.15 disposition table
+and self-checks the output, but it does not process pixel data and its
+output is not a release clearance.
 
 ## Definitions
 

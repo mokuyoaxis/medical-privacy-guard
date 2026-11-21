@@ -200,6 +200,12 @@ local SQLite registry with revocation. See
 - The DICOM tool `dicom-inspect` is read-only. It reports identifying
   metadata tags and never modifies a file. Burned-in pixel text is an
   unknown risk, so the tool never calls an image file "safe".
+- Its companion `dicom-deidentify` writes a NEW file whose metadata is
+  rewritten under a PS3.15 Annex E disposition table (identifiers
+  removed or emptied, UIDs remapped, dates emptied or shifted, private
+  tags removed, descriptors cleaned by the text detectors). Pixel data
+  is not processed, files with burned-in annotation are refused by
+  default, and the output is never claimed safe to release.
 
 **Evaluation, and what it does not prove.** The benchmark corpus holds 175
 synthetic Chinese clinical notes: 140 with 1,474 labelled spans across 24

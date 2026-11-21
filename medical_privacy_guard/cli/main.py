@@ -11,6 +11,7 @@ Commands:
     serve [--upstream URL] [--host H] [--port N] [--profile P]
     mcp-gateway [--profile P] [--recipient T] [--purpose U] -- <server command...>
     dicom-inspect <file> [--json]
+    dicom-deidentify <file-or-dir> --out <path> [options]
     grant-issue <request_file> --approve --issuer ID --ttl-seconds N -o GRANT
     grant-db-init / grant-status / grant-revoke [--grant-db DB]
     dataset-risk <files...> --quasi-identifier COLUMN
@@ -147,7 +148,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  Start here    repl, inspect, sanitize\n\n"
             "  Approval      grant-issue, grant-db-init, grant-status, grant-revoke\n\n"
             "  Gateways      serve, mcp-gateway\n\n"
-            "  Data checks   benchmark, dataset-risk, dataset-sanitize, dicom-inspect\n\n"
+            "  Data checks   benchmark, dataset-risk, dataset-sanitize, dicom-inspect, dicom-deidentify\n\n"
             "  Audit         audit-verify, report\n\n"
             "Examples:\n\n"
             "  medical-privacy-guard inspect note.txt --recipient external_unknown\n\n"
@@ -430,6 +431,43 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_dicom.add_argument("file", help="DICOM file to inspect")
     p_dicom.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+
+    p_deid = sub.add_parser(
+        "dicom-deidentify",
+        help="Write a de-identified copy of a DICOM file or directory.",
+        description=(
+            "Produce a NEW DICOM file (or directory tree) whose identifying "
+            "metadata has been rewritten under the PS3.15 Annex E basic "
+            "confidentiality profile disposition table: identifiers removed "
+            "or emptied, UIDs remapped under a salt, dates emptied (or "
+            "shifted with --date-shift-days), private tags removed, and "
+            "free-text descriptors cleaned by the guard's own detectors. "
+            "The input is never modified. Pixel data is not processed and "
+            "files with burned-in annotation are refused unless "
+            "--allow-burned-in is given. Requires the optional pydicom extra."
+        ),
+        epilog="Example:\n\n  medical-privacy-guard dicom-deidentify scan.dcm --out clean.dcm",
+    )
+    p_deid.add_argument("input", help="DICOM file or directory to de-identify")
+    p_deid.add_argument("--out", required=True, help="Output file or directory (must differ from the input)")
+    p_deid.add_argument("--profile", default="external-ai-strict",
+                        help="Policy profile for free-text descriptor cleaning (default: external-ai-strict)")
+    p_deid.add_argument("--salt", default=None,
+                        help="Salt for UID remapping; default is random per run. "
+                             "A fixed salt makes mappings reproducible across runs -- and linkable by whoever holds it")
+    p_deid.add_argument("--date-shift-days", type=int, default=None,
+                        help="Shift all dates by this many days instead of emptying them")
+    p_deid.add_argument("--allow-burned-in", action="store_true",
+                        help="Export files whose BurnedInAnnotation is YES anyway (pixel risk stays UNKNOWN)")
+    p_deid.add_argument("--retain-private", action="store_true",
+                        help="Keep private tags instead of removing them")
+    p_deid.add_argument("--retain-characteristics", action="store_true",
+                        help="Keep patient characteristics (sex, age, size, weight)")
+    p_deid.add_argument("--retain-device", action="store_true",
+                        help="Keep device identity (manufacturer, model, serial, station)")
+    p_deid.add_argument("--audit-dir", default=None,
+                        help="Append a hash-chained audit event for this run to this directory")
+    p_deid.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
     for name, help_text, example in (
         ("dataset-risk", "Report aggregate quasi-identifier combinations in CSV/JSON rows",
@@ -1151,6 +1189,58 @@ def _cmd_dicom_inspect(args: argparse.Namespace) -> int:
     return EXIT_OK if report.safe_to_release and report.metadata_risk == "LOW" else EXIT_BLOCK
 
 
+def _cmd_dicom_deidentify(args: argparse.Namespace) -> int:
+    """De-identify a DICOM file or directory into a new output path.
+
+    Refusals (unreadable input, burned-in annotation, encapsulated
+    document, failed self-check) are errors, not partial output: the
+    writer either produces a self-checked file or nothing.
+    """
+    try:
+        from medical_privacy_guard.formats.dicom_deidentify import (
+            deidentify_dicom_file,
+            deidentify_dicom_tree,
+            report_to_json,
+            write_audit_event,
+        )
+
+        options = dict(
+            profile=args.profile,
+            salt=args.salt,
+            date_shift_days=args.date_shift_days,
+            allow_burned_in=args.allow_burned_in,
+            retain_private=args.retain_private,
+            retain_characteristics=args.retain_characteristics,
+            retain_device=args.retain_device,
+        )
+        if os.path.isdir(args.input):
+            report = deidentify_dicom_tree(args.input, args.out, **options)
+        else:
+            report = deidentify_dicom_file(args.input, args.out, **options)
+        if args.audit_dir:
+            write_audit_event(report, args.audit_dir)
+    except ParserError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    if args.json:
+        print(report_to_json(report))
+    else:
+        d = report.to_dict()
+        if "files" in d:
+            print(f"De-identified {len(d['files'])} file(s) into {args.out}")
+            print(f"Actions: {d['totals']}")
+            print(f"UIDs remapped: {d['uid_remapped']}  Private tags removed: {d['private_removed']}")
+            if d["skipped"]:
+                print(f"Skipped (not DICOM): {', '.join(d['skipped'])}")
+        else:
+            print(f"De-identified: {d['source']} -> {d['output']}")
+            print(f"Actions: {d['actions']}")
+            print(f"UIDs remapped: {d['uid_remapped']}  Private tags removed: {d['private_removed']}")
+            print(f"Burned-in annotation: {d['burned_in_annotation']}")
+        print("Pixel annotation risk: UNKNOWN (pixel data is not processed)")
+    return EXIT_OK
+
+
 def _human_benchmark(report) -> str:
     lines = [
         f"Corpus: {report.documents} documents "
@@ -1257,6 +1347,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_mcp_gateway(args)
         if args.command == "dicom-inspect":
             return _cmd_dicom_inspect(args)
+        if args.command == "dicom-deidentify":
+            return _cmd_dicom_deidentify(args)
         # Unreachable while the subparsers are ``required``, and deliberately
         # not ``parser.error``: that exits 2, which this CLI reserves for BLOCK.
         parser.print_usage(sys.stderr)
