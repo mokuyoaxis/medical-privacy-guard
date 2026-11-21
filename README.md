@@ -251,7 +251,9 @@ and they do not soften.
 The full, authoritative capability boundary is
 [docs/scope.md](docs/scope.md); the threat model is
 [docs/threat-model.md](docs/threat-model.md). The three bundled policy
-presets are compared in [docs/policy-profiles.md](docs/policy-profiles.md).
+presets are compared in [docs/policy-profiles.md](docs/policy-profiles.md);
+deploying behind a LiteLLM proxy is covered in
+[docs/litellm-deployment.md](docs/litellm-deployment.md).
 
 ## Data rules and status
 
