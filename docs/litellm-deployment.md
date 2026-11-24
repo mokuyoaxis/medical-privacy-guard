@@ -11,28 +11,113 @@ this guard adds is a decision, not just a mask: four verdicts
 (ALLOW / SANITIZE / ASK / BLOCK), Chinese clinical detectors,
 post-transformation verification, and a tamper-evident audit chain.
 
+## Pin the LiteLLM version first
+
+Every command in this guide assumes **LiteLLM 1.108.0**, the first
+release of the 1.108 LTS line (November 2026). The LTS line receives
+patch releases as 1.108.x; moving along it is a deliberate upgrade —
+pin the exact version, re-run the walkthrough below, then roll out.
+
+```bash
+pip install "litellm==1.108.0"
+# or, as a container: ghcr.io/berriai/litellm:v1.108.0
+```
+
+> **Never deploy LiteLLM 1.107.0.** That release was a supply-chain
+> compromise: on 21 October 2026 the release pipeline was hijacked and
+> every 1.107.0 wheel on PyPI carried a credential stealer. PyPI has
+> removed the release, and during the exposure window the floating
+> Docker tags (`latest`, `main-latest`, `main-stable`) pointed at the
+> compromised image. Pinning an exact version — and never floating on
+> a tag — is what keeps a repeat of that incident from becoming your
+> incident. If a 1.107.0 install is found anywhere, treat every key it
+> could read as stolen and rotate them.
+
 ## Shape A — chained gateway (no code)
 
 Run the guard's HTTP gateway in front of the LiteLLM proxy. Clients
 talk to the guard; the guard sanitizes or withholds, then forwards to
 LiteLLM as its fixed upstream.
 
-```bash
-# 1. LiteLLM proxy, as usual (providers, keys, routing live here)
-litellm --config litellm-config.yaml --port 4000
+### 1. Configure and start LiteLLM
 
-# 2. The guard in front of it
+A minimal `litellm-config.yaml` — providers, keys and routing live
+here, as usual:
+
+```yaml
+model_list:
+  - model_name: clinical-chat
+    litellm_params:
+      model: openai/<your-model>
+      api_key: os.environ/OPENAI_API_KEY
+```
+
+```bash
+pip install "litellm==1.108.0"
+litellm --config litellm-config.yaml --port 4000
+```
+
+### 2. Start the guard in front of it
+
+```bash
 medical-privacy-guard serve \
     --upstream http://127.0.0.1:4000 \
     --profile external-ai-strict \
     --port 8787
 ```
 
+Check the gateway is up (this endpoint is unauthenticated and returns
+no configuration):
+
+```bash
+curl http://127.0.0.1:8787/healthz
+# {"status":"ok","service":"medical-privacy-guard"}
+```
+
+### 3. Send a guarded request
+
 Clients change only their base URL:
 
 ```python
 client = OpenAI(base_url="http://127.0.0.1:8787/v1", api_key="...")
 ```
+
+A request carrying a phone number is sanitized before LiteLLM sees
+it. With synthetic data:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"clinical-chat","messages":[{"role":"user",
+       "content":"患者复诊，联系电话13800000000"}]}'
+```
+
+The request is forwarded, and what LiteLLM receives is the transformed
+text — the raw number never crosses the boundary:
+
+```text
+患者复诊，联系电话[REDACTED]
+```
+
+A request carrying a government ID is withheld outright. The client
+gets HTTP 403 with reason codes and risk metadata — never payload
+text — and nothing is forwarded:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"clinical-chat","messages":[{"role":"user",
+       "content":"身份证号110101199003078888"}]}'
+```
+
+```json
+{"error":{"message":"Request withheld by medical privacy guard (BLOCK)",
+"type":"privacy_guard_block","code":"BLOCK",
+"reason_codes":["GOVERNMENT_ID_PRESENT"],"risk_level":"HIGH",
+"risk_score":75,"policy_version":"external-ai-strict/1"}}
+```
+
+(The ID above is a synthetic test value, as is the phone number.)
 
 What you get with this shape:
 
@@ -47,9 +132,10 @@ What you get with this shape:
 ## Shape B — a LiteLLM custom guardrail (in-process)
 
 If LiteLLM must stay the outermost layer, register the guard as a
-LiteLLM custom guardrail. The complete, tested implementation is
-[examples/litellm_guardrail.py](../examples/litellm_guardrail.py);
-the registration in `litellm-config.yaml` is:
+LiteLLM custom guardrail. The complete implementation is
+[examples/litellm_guardrail.py](../examples/litellm_guardrail.py),
+verified against LiteLLM 1.108.0 (the LTS line above); the
+registration in `litellm-config.yaml` is:
 
 ```yaml
 model_list:
@@ -72,7 +158,7 @@ guardrails:
 Start the proxy from the directory holding `litellm_guardrail.py`:
 
 ```bash
-pip install litellm medical-privacy-guard
+pip install "litellm==1.108.0" medical-privacy-guard
 litellm --config litellm-config.yaml --port 4000
 ```
 
@@ -107,6 +193,23 @@ each text is decided on its own; cross-message context is not part of
 the decision. Responses are not inspected (the guardrail returns them
 unchanged), matching the gateway boundary in [scope.md](scope.md).
 When either limitation matters, use Shape A.
+
+## A note on LiteLLM's Presidio option
+
+If you also run LiteLLM's built-in Presidio masking, deploy Presidio
+from its current home. Presidio is no longer a Microsoft project: it
+moved to the community Data Privacy Stack organisation in 2026, and
+official container images are published to GHCR:
+
+```bash
+docker pull ghcr.io/data-privacy-stack/presidio-analyzer:2.2.366
+docker pull ghcr.io/data-privacy-stack/presidio-anonymizer:2.2.366
+```
+
+Pin a release tag from the package page, as above. LiteLLM's Presidio
+tutorial still shows the legacy `mcr.microsoft.com/presidio-*`
+images; those are no longer updated and should not be used for a new
+deployment.
 
 ## Which shape
 

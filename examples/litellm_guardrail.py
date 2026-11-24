@@ -20,7 +20,9 @@ endpoint behind LiteLLM: a contracted, vetted provider is
 therefore rejected by this guardrail. That is the fail-closed design,
 not a malfunction.
 
-Requires: pip install litellm medical-privacy-guard
+Requires: pip install "litellm==1.108.0" medical-privacy-guard
+(the example is verified against LiteLLM 1.108.0, the 1.108 LTS line;
+never deploy LiteLLM 1.107.0 — see docs/litellm-deployment.md)
 """
 
 from typing import Literal, Optional

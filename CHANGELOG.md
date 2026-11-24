@@ -44,6 +44,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `value empty` at LOW risk instead of reporting them as live
   identifiers.
 
+### Changed
+
+- LiteLLM deployment example reviewed and finalized
+  (`docs/litellm-deployment.md`, `examples/litellm_guardrail.py`):
+  LiteLLM is now pinned to 1.108.0, the first release of the 1.108 LTS
+  line, and the guide warns against 1.107.0 — the October 2026
+  supply-chain compromise whose PyPI wheels carried a credential
+  stealer — and against floating image tags. The chained-gateway shape
+  is now a full walkthrough (configuration, startup, health check, a
+  sanitized request and a withheld one, with the actual outputs), and
+  a note corrects the Presidio container source: images come from the
+  community Data Privacy Stack registry on GHCR
+  (`ghcr.io/data-privacy-stack/presidio-*`), not the legacy Microsoft
+  Container Registry images that LiteLLM's tutorial still shows. The
+  guardrail example was re-verified end to end against a real
+  LiteLLM 1.108.0 install.
+
 ## [0.6.3] - 2026-11-21
 
 ### Added
