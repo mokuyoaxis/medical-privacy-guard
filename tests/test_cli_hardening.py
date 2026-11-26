@@ -290,7 +290,15 @@ def test_dataset_sanitize_rejects_an_unresolvable_audit_directory(
         ]
     )
     assert code == EXIT_ERROR
-    assert "cannot validate dataset output and audit directories" in capsys.readouterr().err
+    # Python 3.12 raises inside Path.resolve() and lands in the validation
+    # layer; 3.13+ realpath tolerates the loop, so the run proceeds and
+    # the audit writer fails closed on the same path instead. Both are
+    # the product refusing the directory — only the message differs.
+    err = capsys.readouterr().err
+    assert (
+        "cannot validate dataset output and audit directories" in err
+        or "cannot create audit directory" in err
+    )
 
 
 # -- report command -------------------------------------------------------------
