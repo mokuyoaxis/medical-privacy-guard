@@ -272,14 +272,14 @@ artefacts. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Status and origins.**
 
-- **Current stable**: v0.6.3 — a third policy preset (`teaching-demo`)
+- **Current stable**: v0.7.0 — DICOM de-identification export
+  (`dicom-deidentify`) under a PS3.15 Basic Profile disposition table
+  with a published conformance statement, and the LiteLLM deployment
+  guide finalized on the pinned 1.108.0 LTS line.
+- **Previous stable**: v0.6.3 — a third policy preset (`teaching-demo`)
   with the three bundled presets discoverable and compared, and a
   LiteLLM deployment guide (chained gateway or in-process guardrail),
   on top of the dataset re-identification risk report.
-- **Previous stable**: v0.6.2 — a dataset re-identification risk section
-  in the `report`, an explicit benchmark over-redaction rate, and
-  detector fixes from the challenge-corpus evidence line, on top of the
-  static HTML audit and grant report.
 - **Roadmap**: earlier milestones (the text core, the Chinese detection and
   evaluation line, CSV/JSON, structured formats and egress adapters) and
   the road to **v1.0, a medical AI egress privacy gateway**, are in

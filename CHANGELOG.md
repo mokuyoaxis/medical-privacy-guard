@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-26
+
 ### Added
 
 - DICOM de-identification export (`dicom-deidentify`, experimental):
@@ -43,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `StudyDescription`, and annotates zero-length elements as
   `value empty` at LOW risk instead of reporting them as live
   identifiers.
+- DICOM Conformance Statement (`docs/dicom-conformance.md`): the
+  de-identification export's basis, defaults and operator options,
+  method codes, declared deviations from the Basic Profile, and its
+  non-claims — pixel data unprocessed, no anonymisation or compliance
+  claim — in one citable document.
 
 ### Changed
 

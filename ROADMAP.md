@@ -7,8 +7,8 @@ capability boundary is [docs/scope.md](docs/scope.md).
 
 ## Where we are
 
-Current stable: **v0.6.3** (package version `0.6.3`).
-Previous stable: **v0.6.2**. Next stop: **v1.0**.
+Current stable: **v0.7.0** (package version `0.7.0`).
+Previous stable: **v0.6.3**. Next stop: **v1.0**.
 
 | Version | Theme | Status |
 |---|---|---|
@@ -23,6 +23,7 @@ Previous stable: **v0.6.2**. Next stop: **v1.0**.
 | v0.6.1 | Static HTML audit and grant report (`report`, English and Simplified Chinese) | Released (`v0.6.1`) |
 | v0.6.2 | Dataset re-identification risk in the report, benchmark over-redaction rate, challenge-corpus evidence-line detector fixes | Released (`v0.6.2`) |
 | v0.6.3 | Third policy preset (`teaching-demo`), discoverable presets, LiteLLM deployment example | Released (`v0.6.3`) |
+| v0.7.0 | DICOM de-identification export (PS3.15 Basic Profile, mechanical full-table diff) with conformance statement; LiteLLM guide finalized on pinned 1.108.0 LTS | Released (`v0.7.0`) |
 | v1.0 | Medical AI egress privacy gateway | Target |
 
 A note on numbering, because it confuses people: the work once planned as

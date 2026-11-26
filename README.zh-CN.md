@@ -175,8 +175,8 @@ medical-privacy-guard serve --upstream https://api.openai.com --port 8787
 本仓库的所有示例与测试均采用人工构造的占位符、保留示例域名、私有 IP 地址段、`SYNTH-*` 标识符及公开说明的校验示例。严禁在 Issue、Pull Request、测试固件或 CI 产物中提交真实患者记录、生产环境审计日志、截图、密钥凭据或 Token 映射表。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 **版本状态与设计渊源**
-* **当前稳定版**：v0.6.3，新增第三档政策预设 `teaching-demo`（教学演示），三档预设可列举、可对照，并附 LiteLLM 部署示例（网关串联与进程内 guardrail 两种形态）。
-* **上一稳定版**：v0.6.2，`report` 新增数据集再识别风险节，benchmark 明确给出过度脱敏率，并纳入挑战语料证据线修复的若干检测问题。
+* **当前稳定版**：v0.7.0，新增 DICOM 去标识化导出（`dicom-deidentify`，依 PS3.15 Basic Profile 处置表，并附一致性声明），LiteLLM 部署指南定稿并锁定 1.108.0 LTS。
+* **上一稳定版**：v0.6.3，新增第三档政策预设 `teaching-demo`（教学演示），三档预设可列举、可对照，并附 LiteLLM 部署示例（网关串联与进程内 guardrail 两种形态）。
 * **演进路线**：早期里程碑（文本核心、中文检测与评测线、CSV/JSON、结构化格式与出站适配器）及未来演进目标（**v1.0：医疗 AI 出站隐私网关**）详见 [ROADMAP.md](ROADMAP.md)，完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 本项目的部分工程哲学源于更早的 [agent-guard](https://github.com/mokuyoaxis/agent-guard) 项目。两者相互独立，威胁模型与具体实现各不相同，但底层的安全观一脉相承：**能规避的错误尽量规避，拿不准的边界果断收紧，所有裁决留痕可查。**

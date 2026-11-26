@@ -257,6 +257,8 @@ the DICOM PS3.15 Annex E Basic Application Confidentiality Profile:
 - the output is self-checked before it lands (no fingerprinted original
   value survives; no private tags remain unless explicitly retained),
   and carries the PS3.15 de-identification markers and method codes;
+  the basis, defaults, declared deviations and non-claims are stated
+  in full in the [DICOM Conformance Statement](dicom-conformance.md);
 - pixel data is not processed. A file with `BurnedInAnnotation` = YES
   is refused unless `--allow-burned-in` is given, a file encapsulating
   a document is refused outright, and every report keeps pixel risk
