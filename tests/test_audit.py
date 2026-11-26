@@ -528,3 +528,93 @@ class TestChainIntegrity:
         report = AuditWriter(tmp_path).verify()
         assert report.verified, report.failures
         assert report.chained == 48
+
+
+# --- hardening coverage (2026-11-26): parser and writer failure branches ---
+
+
+def test_from_json_line_rejects_non_object_payload():
+    with pytest.raises(TypeError):
+        AuditEvent.from_json_line("[1, 2, 3]")
+
+
+def test_from_json_line_rejects_invalid_container_fields(tmp_path):
+    writer = AuditWriter(tmp_path)
+    writer.record(sample_event())
+    line = (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()[0]
+
+    payload = json.loads(line)
+    payload["entity_counts"] = ["PHONE"]
+    with pytest.raises(TypeError):
+        AuditEvent.from_json_line(json.dumps(payload))
+
+    payload = json.loads(line)
+    payload["reason_codes"] = {"CONTACT_IDENTIFIER_PRESENT": 1}
+    with pytest.raises(TypeError):
+        AuditEvent.from_json_line(json.dumps(payload))
+
+
+def test_writer_rejects_directory_under_a_file(tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(AuditError):
+        AuditWriter(blocker / "audit")
+
+
+def test_writer_tightens_permissions_of_an_existing_loose_log(tmp_path):
+    import os
+    import stat
+
+    log = tmp_path / "events.jsonl"
+    log.write_text("", encoding="utf-8")
+    os.chmod(log, 0o644)
+    AuditWriter(tmp_path)
+    assert stat.S_IMODE(os.stat(log).st_mode) == 0o600
+
+
+def test_writer_rejects_a_log_path_that_is_a_directory(tmp_path):
+    (tmp_path / "events.jsonl").mkdir()
+    with pytest.raises(AuditError):
+        AuditWriter(tmp_path)
+
+
+def test_lock_reports_unavailable_when_fcntl_is_missing(tmp_path, monkeypatch):
+    import os
+
+    import medical_privacy_guard.core.audit as audit_module
+
+    monkeypatch.setattr(audit_module, "fcntl", None)
+    fd = os.open(tmp_path / "lock-target", os.O_CREAT | os.O_RDWR)
+    try:
+        assert AuditWriter._acquire(fd) is False
+    finally:
+        os.close(fd)
+
+
+def test_chain_head_skips_a_corrupt_tail_and_grows_its_window(tmp_path):
+    writer = AuditWriter(tmp_path)
+    writer.record(sample_event())
+    log = tmp_path / "events.jsonl"
+    first = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write("this line is not json\n")
+        handle.write("x" * 70000 + "\n")
+
+    writer.record(replace(sample_event(), event_id="e2"))
+    lines = [ln for ln in log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    appended = json.loads(lines[-1])
+    assert appended["event_id"] == "e2"
+    assert appended["prev_hash"] == first["event_hash"]
+
+
+def test_read_events_missing_file_and_blank_lines(tmp_path):
+    from medical_privacy_guard.core.audit import read_events
+
+    assert read_events(tmp_path / "absent.jsonl") == ()
+    writer = AuditWriter(tmp_path)
+    writer.record(sample_event())
+    writer.record(replace(sample_event(), event_id="e2"))
+    log = tmp_path / "events.jsonl"
+    lines = log.read_text(encoding="utf-8").splitlines()
+    log.write_text("\n" + lines[0] + "\n\n\n" + lines[1] + "\n", encoding="utf-8")
+    assert [event.event_id for event in read_events(log)] == ["e1", "e2"]

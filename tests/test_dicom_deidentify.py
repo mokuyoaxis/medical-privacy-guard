@@ -440,3 +440,176 @@ class TestTableIntegrity:
         for tag, keyword in expected.items():
             assert tag in _TABLE
             assert keyword_for_tag(tag) == keyword
+
+
+class TestHardeningCoverage:
+    """Branches the fixture-driven tests do not reach: date-helper edges,
+    the VR fallback for unlisted elements, both self-checks, tree
+    aggregation and the audit-event writer."""
+
+    def _context(self, **overrides):
+        from medical_privacy_guard.formats.dicom_deidentify import _Context
+
+        options = dict(
+            profile="external-ai-strict",
+            salt=b"unit-test-salt",
+            date_shift_days=None,
+            retain_private=False,
+            retain_characteristics=False,
+            retain_device=False,
+        )
+        options.update(overrides)
+        return _Context(**options)
+
+    def test_map_values_maps_each_item_of_a_multi_value(self):
+        from medical_privacy_guard.formats.dicom_deidentify import _map_values
+
+        assert _map_values(["a", "b"], str.upper) == ["A", "B"]
+        assert _map_values("a", str.upper) == "A"
+
+    def test_shift_date_empties_an_unparseable_value(self):
+        from medical_privacy_guard.formats.dicom_deidentify import _shift_date
+
+        assert _shift_date("not-a-date", 5) == ""
+        assert _shift_date("20261301", 5) == ""  # month 13 does not exist
+
+    def test_apply_datetime_branches(self):
+        from medical_privacy_guard.formats.dicom_deidentify import _apply_datetime
+
+        shifting = self._context(date_shift_days=10)
+        assert _apply_datetime("20260101123000", shifting) == "20260111123000"
+        assert _apply_datetime("20269901123000", shifting) == ""
+        assert _apply_datetime("garbage", shifting) == ""
+        assert _apply_datetime("20260101123000", self._context()) == ""
+
+    def test_clean_text_passes_whitespace_through(self):
+        from medical_privacy_guard.formats.dicom_deidentify import _clean_text
+
+        assert _clean_text("   ", self._context()) == "   "
+
+    def test_clean_text_passes_the_original_through_when_the_result_is_not_text(self):
+        from types import SimpleNamespace
+
+        from medical_privacy_guard.formats.dicom_deidentify import _clean_text
+
+        ctx = self._context()
+        ctx.guard = SimpleNamespace(
+            sanitize=lambda *args: SimpleNamespace(sanitized_payload=object(), text=123)
+        )
+        assert _clean_text("原始文本", ctx) == "原始文本"
+
+    def test_unlisted_elements_fall_back_to_vr_rules(self, tmp_path):
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        meta = FileMetaDataset()
+        meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        meta.MediaStorageSOPInstanceUID = generate_uid(entropy_srcs=["fb-sop"])
+        meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds = Dataset()
+        ds.file_meta = meta
+        ds.SpecificCharacterSet = "ISO_IR 192"
+        ds.PatientName = "张三"
+        ds.PatientID = "MRN-001"
+        ds.SOPClassUID = meta.MediaStorageSOPClassUID
+        ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+        ds.StudyInstanceUID = generate_uid(entropy_srcs=["fb-study"])
+        ds.SeriesInstanceUID = generate_uid(entropy_srcs=["fb-series"])
+        ds.Modality = "CT"
+        # None of the four elements below is in the disposition table, so
+        # the VR/keyword fallback decides: *Name (LO) is removed,
+        # *Description / *Comments text is cleaned, UI values are remapped.
+        ds.ProtocolName = "头部平扫协议"
+        ds.DerivationDescription = "联系电话13800000000"
+        ds.TransactionUID = ""
+        ds.StudyComments = ["", "电话13800000000"]
+        ds.StudyDescription = ""
+        source = tmp_path / "in.dcm"
+        ds.save_as(source, enforce_file_format=True)
+
+        out = tmp_path / "out.dcm"
+        deidentify_dicom_file(str(source), str(out), salt="s1")
+        result = _read(out)
+        assert "ProtocolName" not in result
+        assert "13800000000" not in str(result.DerivationDescription)
+        assert result.TransactionUID == ""
+        assert "13800000000" not in str(result.StudyComments)
+
+    def test_self_check_withholds_the_output_when_cleaning_is_bypassed(
+        self, tmp_path, monkeypatch
+    ):
+        import medical_privacy_guard.formats.dicom_deidentify as dd
+
+        monkeypatch.setattr(dd, "_clean_text", lambda text, ctx: text)
+        out = tmp_path / "out.dcm"
+        with pytest.raises(ParserError, match="self-check failed"):
+            deidentify_dicom_file(RICH, str(out), salt="s1")
+        assert not out.exists()
+
+    def test_private_tag_self_check_removes_the_temp_file(self, tmp_path, monkeypatch):
+        import medical_privacy_guard.formats.dicom_deidentify as dd
+
+        monkeypatch.setattr(dd, "_process_dataset", lambda ds, ctx: None)
+        out_dir = tmp_path / "out"
+        with pytest.raises(ParserError, match="private tags remain"):
+            deidentify_dicom_file(RICH, str(out_dir / "out.dcm"), salt="s1")
+        assert not (out_dir / "out.dcm").exists()
+        assert list(out_dir.glob("*.tmp")) == []
+
+    def test_tree_rejects_an_output_directory_equal_to_the_input(self, tmp_path):
+        with pytest.raises(ParserError, match="must differ"):
+            deidentify_dicom_tree(str(tmp_path), str(tmp_path))
+
+    def test_tree_report_aggregates_totals(self, tmp_path):
+        import json
+        import shutil
+
+        from medical_privacy_guard.formats.dicom_deidentify import report_to_json
+
+        source_root = tmp_path / "in"
+        (source_root / "sub").mkdir(parents=True)
+        shutil.copy(BASE, source_root / "a.dcm")
+        shutil.copy(BASE, source_root / "sub" / "b.dcm")
+        (source_root / "notes.txt").write_text("not dicom", encoding="utf-8")
+        report = deidentify_dicom_tree(str(source_root), str(tmp_path / "out"), salt="s1")
+        assert report.skipped == ("notes.txt",)
+        data = json.loads(report_to_json(report))
+        assert len(data["files"]) == 2
+        assert data["totals"]
+        # Both files are copies of one fixture and the tree shares a single
+        # UID map, so only the first file registers new mappings.
+        assert data["uid_remapped"] >= 1
+
+    def test_tree_aborts_on_a_burned_in_file(self, tmp_path):
+        import shutil
+
+        source_root = tmp_path / "in"
+        source_root.mkdir()
+        shutil.copy(BURNED, source_root / "burned.dcm")
+        with pytest.raises(ParserError, match="BurnedInAnnotation"):
+            deidentify_dicom_tree(str(source_root), str(tmp_path / "out"))
+
+    def test_write_audit_event_for_single_and_tree_reports(self, tmp_path):
+        from medical_privacy_guard.core.audit import AuditWriter
+        from medical_privacy_guard.formats.dicom_deidentify import write_audit_event
+
+        audit_dir = tmp_path / "audit"
+        report = deidentify_dicom_file(BASE, str(tmp_path / "out.dcm"), salt="s1")
+        write_audit_event(report, str(audit_dir))
+
+        source_root = tmp_path / "in"
+        source_root.mkdir()
+        import shutil
+
+        shutil.copy(BASE, source_root / "a.dcm")
+        tree = deidentify_dicom_tree(str(source_root), str(tmp_path / "tree-out"), salt="s1")
+        write_audit_event(tree, str(audit_dir))
+
+        writer = AuditWriter(audit_dir)
+        events = writer.read_all()
+        assert len(events) == 2
+        assert all(event.decision == "SANITIZE" for event in events)
+        assert all("DICOM_DEIDENTIFY" in event.reason_codes for event in events)
+        assert events[0].entity_counts["files"] == 1
+        assert events[1].entity_counts["files"] == 1
+        assert writer.verify().verified
