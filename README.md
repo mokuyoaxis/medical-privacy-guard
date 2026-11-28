@@ -1,3 +1,12 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/iris-anniversary-1128-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo/iris-anniversary-1128.svg">
+    <img src="docs/assets/logo/iris-anniversary-1128.svg" width="64" height="64" alt="MessiaHub emblem — 11.28 anniversary edition (M and iris flower)">
+  </picture><br>
+  <sub>MessiaHub emblem · 11.28 anniversary edition</sub>
+</p>
+
 # medical-privacy-guard
 
 [![PyPI](https://img.shields.io/pypi/v/medical-privacy-guard.svg)](https://pypi.org/project/medical-privacy-guard/)
